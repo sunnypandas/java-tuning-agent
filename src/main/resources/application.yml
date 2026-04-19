@@ -1,0 +1,19 @@
+spring:
+  application:
+    name: java-tuning-agent
+  main:
+    banner-mode: off
+    keep-alive: true
+    web-application-type: none
+  ai:
+    mcp:
+      server:
+        name: java-tuning-agent
+        version: 0.0.1
+        stdio: true
+
+java-tuning-agent:
+  command-whitelist:
+    - jps
+    - jcmd
+    - jstat

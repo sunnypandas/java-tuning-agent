@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "java-tuning-agent": {
+      "type": "stdio",
+      "command": "mvn",
+      "args": [
+        "-f",
+        "${workspaceFolder}/pom.xml",
+        "spring-boot:run",
+        "-P",
+        "stdio-mcp-dev",
+        "-q"
+      ]
+    }
+  }
+}

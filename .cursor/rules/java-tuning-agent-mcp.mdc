@@ -1,0 +1,12 @@
+---
+description: Forces the java-tuning-agent MCP workflow skill to be read before JVM/MCP tuning tasks in this repo.
+alwaysApply: true
+---
+
+# Java tuning agent — use the workflow skill
+
+When the user asks for **JVM tuning**, **GC / memory / leak** diagnosis, **local Java process** analysis, or whenever you call MCP server **`user-java-tuning-agent`** / **`java-tuning-agent`** tools (`listJavaApps`, `inspectJvmRuntime`, `collectMemoryGcEvidence`, `generateTuningAdvice`):
+
+1. **Read** `.cursor/skills/java-tuning-agent-workflow/SKILL.md` first and follow its **phased pipeline**, PID rules, **mandatory step-3 scope gate** (AskQuestion or explicit chat; **no silent “quick pass”**), and `formattedSummary` rendering (no outer Markdown fence around the whole summary).
+2. Before invoking tools, read the JSON schemas under the workspace `mcps/user-java-tuning-agent/tools/` when argument shape is unclear.
+3. Optional: user can attach the skill explicitly with **`/java-tuning-agent-workflow`** in Agent chat.

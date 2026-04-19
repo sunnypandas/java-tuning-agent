@@ -1,0 +1,9 @@
+# Profile "mcp-schema-export": one-shot export of MCP tool JSON Schemas during Maven build.
+# Disables stdio MCP transport and JVM keep-alive so the process exits after export.
+spring:
+  main:
+    keep-alive: false
+  ai:
+    mcp:
+      server:
+        stdio: false

@@ -1,0 +1,27 @@
+# Build output
+target/
+**/target/
+
+# Temporary hidden directories
+.tmp/
+.temp/
+.cache/
+.history/
+**/.tmp/
+**/.temp/
+**/.cache/
+**/.history/
+
+# IDE metadata
+.idea/
+.vscode/
+
+# Local dependency cache
+.m2-repository/
+
+# JVM dumps
+*.hprof
+
+# Keep Cursor workspace metadata
+!.cursor/
+!.cursor/**

@@ -1,0 +1,12 @@
+spring:
+  application:
+    name: memory-leak-demo
+
+server:
+  port: 8091
+
+memory-leak-demo:
+  recent-history-limit: 10
+  features:
+    # Two-lock deadlock threads for thread-dump validation (disable in shared environments if needed).
+    deadlock-demo: true

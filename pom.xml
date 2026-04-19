@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+		 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+		 xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+
+	<parent>
+		<groupId>org.springframework.boot</groupId>
+		<artifactId>spring-boot-starter-parent</artifactId>
+		<version>3.5.13</version>
+		<relativePath/>
+	</parent>
+
+	<groupId>com.alibaba.cloud.ai</groupId>
+	<artifactId>java-tuning-agent</artifactId>
+	<version>0.0.1-SNAPSHOT</version>
+	<name>Examples::JavaTuningAgent</name>
+	<description>Java tuning agent example for Spring AI Alibaba.</description>
+
+	<properties>
+		<java.version>17</java.version>
+		<spring-ai.version>1.1.2</spring-ai.version>
+		<spring-ai-alibaba.version>1.1.2.2</spring-ai-alibaba.version>
+		<!-- Empty unless profile stdio-mcp-dev sets MCP stdio flags for spring-boot:run -->
+		<mcp.stdio.jvm.args></mcp.stdio.jvm.args>
+		<!-- Set -Dmcp.schema.export.skip=true to skip JSON export during package -->
+		<mcp.schema.export.skip>false</mcp.schema.export.skip>
+	</properties>
+
+	<dependencyManagement>
+		<dependencies>
+			<dependency>
+				<groupId>org.springframework.ai</groupId>
+				<artifactId>spring-ai-bom</artifactId>
+				<version>${spring-ai.version}</version>
+				<type>pom</type>
+				<scope>import</scope>
+			</dependency>
+			<dependency>
+				<groupId>com.alibaba.cloud.ai</groupId>
+				<artifactId>spring-ai-alibaba-bom</artifactId>
+				<version>${spring-ai-alibaba.version}</version>
+				<type>pom</type>
+				<scope>import</scope>
+			</dependency>
+		</dependencies>
+	</dependencyManagement>
+
+	<dependencies>
+
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-actuator</artifactId>
+		</dependency>
+
+		<dependency>
+			<groupId>com.alibaba.cloud.ai</groupId>
+			<artifactId>spring-ai-alibaba-agent-framework</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.ai</groupId>
+			<artifactId>spring-ai-starter-mcp-server</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-test</artifactId>
+			<scope>test</scope>
+		</dependency>
+	</dependencies>
+
+	<build>
+		<plugins>
+			<plugin>
+				<groupId>org.codehaus.mojo</groupId>
+				<artifactId>exec-maven-plugin</artifactId>
+				<version>3.5.0</version>
+				<executions>
+					<execution>
+						<id>export-mcp-tool-schemas</id>
+						<phase>prepare-package</phase>
+						<goals>
+							<!-- Fork a JVM: same-JVM exec:java would hang on agent/MCP threads or break Maven on System.exit -->
+							<goal>exec</goal>
+						</goals>
+						<configuration>
+							<skip>${mcp.schema.export.skip}</skip>
+							<executable>java</executable>
+							<classpathScope>runtime</classpathScope>
+							<arguments>
+								<argument>-classpath</argument>
+								<classpath/>
+								<argument>com.alibaba.cloud.ai.examples.javatuning.JavaTuningAgentApplication</argument>
+								<argument>--spring.profiles.active=mcp-schema-export</argument>
+								<argument>--java-tuning-agent.schema-export.output-path=${project.build.directory}/mcp-tool-schemas.json</argument>
+							</arguments>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
+			<plugin>
+				<groupId>org.springframework.boot</groupId>
+				<artifactId>spring-boot-maven-plugin</artifactId>
+				<configuration>
+					<jvmArguments>${mcp.stdio.jvm.args}</jvmArguments>
+				</configuration>
+			</plugin>
+			<plugin>
+				<groupId>org.codehaus.mojo</groupId>
+				<artifactId>build-helper-maven-plugin</artifactId>
+				<version>3.6.0</version>
+				<executions>
+					<execution>
+						<id>attach-mcp-tool-schemas</id>
+						<phase>package</phase>
+						<goals>
+							<goal>attach-artifact</goal>
+						</goals>
+						<configuration>
+							<skipAttach>${mcp.schema.export.skip}</skipAttach>
+							<artifacts>
+								<artifact>
+									<file>${project.build.directory}/mcp-tool-schemas.json</file>
+									<type>json</type>
+									<classifier>mcp-schemas</classifier>
+								</artifact>
+							</artifacts>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
+		</plugins>
+	</build>
+
+	<profiles>
+		<!--
+		  Local MCP development on Windows: run the agent via spring-boot:run so the JVM does not
+		  keep target/java-tuning-agent-*.jar open. Use "mvn compile" while iterating; only run
+		  "mvn package" when the server is stopped and you need a redistributable jar.
+		-->
+		<profile>
+			<id>stdio-mcp-dev</id>
+			<properties>
+				<mcp.stdio.jvm.args>-Dspring.ai.mcp.server.stdio=true -Dspring.main.web-application-type=none -Dspring.main.banner-mode=off -Dspring.main.keep-alive=true</mcp.stdio.jvm.args>
+			</properties>
+		</profile>
+	</profiles>
+</project>
