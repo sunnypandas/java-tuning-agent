@@ -25,7 +25,11 @@ description: >-
 
 Use when the user analyzes **production-exported** files (histogram, thread dump, `.hprof`, jcmd/jstat text) **without** a live target PID on this machine. This path **does not** replace the default online pipeline; do not call `listJavaApps` unless the user also wants local processes.
 
-**Draft:** Build an `OfflineBundleDraft` JSON in chat (authoritative copy lives in the conversation). Fixed order for gathering input: B1 JVM 标识 → B2 JDK 信息 → B3 运行时快照文本 → B4 类直方图（文件路径或粘贴）→ B5 线程 dump → B6 堆转储路径或分块上传结果。推荐项 R1–R3 必须可标记「本次没有」。若必选缺失，调用 `validateOfflineAnalysisDraft(draft, proceedWithMissingRequired=false)` 获取 `missingRequired` 与中文 `nextPromptZh`；用户确认降级时改 `proceedWithMissingRequired=true`。
+**Draft:** Build an `OfflineBundleDraft` JSON in chat (authoritative copy lives in the conversation). Fixed order for gathering input: B1 JVM 标识 → B2 JDK 信息 → B3 运行时快照文本 → B4 类直方图（文件路径或粘贴）→ B5 线程 dump → B6 堆转储路径或分块上传结果.
+
+**Recommended R1–R3 (GC log, app log, repeated samples):** For **each** item, the host must force a **binary choice** — supply `gcLogPathOrText` / `appLogPathOrText` / `repeatedSamplesPathOrText`, **or** set the matching `explicitlyNoGcLog` / `explicitlyNoAppLog` / `explicitlyNoRepeatedSamples` flag. If the user leaves an item neither filled nor explicitly absent, the server does **not** auto-flag it as missing; avoiding that silent gap is the agent’s responsibility.
+
+若必选缺失，调用 `validateOfflineAnalysisDraft(draft, proceedWithMissingRequired=false)` 获取 `missingRequired` 与中文 `nextPromptZh`；用户确认降级时改 `proceedWithMissingRequired=true`。
 
 **Large heap:** `submitOfflineHeapDumpChunk` — first call leave `uploadId` empty and set `chunkTotal`; reuse returned `uploadId` for chunks `0 .. chunkTotal-1` (Base64). Then `finalizeOfflineHeapDump(uploadId, sha256Hex, sizeBytes)` → put `finalizeHeapDumpPath` into `draft.heapDumpAbsolutePath`.
 

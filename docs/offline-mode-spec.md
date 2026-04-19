@@ -136,6 +136,13 @@
 - [ ] 向导支持回退修改某步；中文默认文案可用。
 - [ ] 新增工具仍使用与线上一致的 consent/token 语义（具体字段名以 MCP schema 为准）。
 
+### 8.1 实现边界与已知局限（首版）
+
+- **推荐项 R1–R3：** 服务端仅在草稿中 **`explicitlyNoGcLog` / `explicitlyNoAppLog` / `explicitlyNoRepeatedSamples` 为 true** 时，向 `missingData` 写入「本次没有」类说明。若用户**既未填写内容也未勾选「本次没有」**，MCP 层**不会**自动生成「推荐项缺失」条目；**宿主向导（Agent 对话 UI）应对每个推荐项强制二选一：提供路径或粘贴，或显式「本次没有」**，以免静默遗漏。
+- **草稿中的扩展字段：** `gcLogPathOrText`、`appLogPathOrText`、`repeatedSamplesPathOrText`、`backgroundNotes` 已保留在 `OfflineBundleDraft` 中，**首版不传入** `MemoryGcEvidencePack` 或现有诊断规则；GC/应用日志内容暂不参与引擎自动推理，后续如需应单独开需求。
+- **回退编辑：** 无服务端会话与草稿版本历史；用户通过在同一会话内**重发完整草稿 JSON** 实现回退或改某一步，与设计「无状态方案 C」一致。
+- **文案语言：** 校验接口的 `nextPromptZh` 为中文；写入 `missingData` 的部分技术短句当前为英文，与 `formattedSummary` 中英混排可并存，后续可统一为中文键名。
+
 ---
 
 ## 9. 待定项（实现前可再定）
@@ -154,3 +161,4 @@
 | 2026-04-19 | 增加「相关文档」表，并与 `docs/superpowers/specs/2026-04-19-offline-mode-design.md` 设计稿交叉引用（brainstorming 补全）。 |
 | 2026-04-19 | 增加与 `docs/superpowers/plans/2026-04-19-offline-mode.md` 实现计划链接。 |
 | 2026-04-19 | 待定项更新：工具名与 advice 对接已落地；补充 MCP schema 同步说明。 |
+| 2026-04-19 | 新增 §8.1 实现边界与已知局限（评审后固化）。 |
