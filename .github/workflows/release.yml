@@ -22,8 +22,17 @@ jobs:
           java-version: "17"
           cache: maven
 
+      # Tag must be vX.Y.Z… — Maven version is the tag without the leading "v".
+      - name: Resolve Maven revision from tag
+        run: |
+          TAG="${{ github.ref_name }}"
+          case "$TAG" in v*) ;;
+            *) echo "::error::Release tags must start with 'v' (got '$TAG')"; exit 1 ;;
+          esac
+          echo "MVN_REVISION=${TAG#v}" >> "$GITHUB_ENV"
+
       - name: Build and test
-        run: mvn -B verify
+        run: mvn -B verify -Drevision="$MVN_REVISION"
 
       - name: Create GitHub Release with assets
         uses: softprops/action-gh-release@v2
