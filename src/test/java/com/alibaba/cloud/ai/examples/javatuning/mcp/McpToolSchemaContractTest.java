@@ -63,6 +63,39 @@ class McpToolSchemaContractTest {
 					assertThat(schema.path("properties").path("confirmationToken").path("type").asText())
 						.isEqualTo("string");
 				}
+				case "validateOfflineAnalysisDraft" -> {
+					assertThat(schema.path("properties").path("draft").path("type").asText()).isEqualTo("object");
+					assertThat(schema.path("properties").path("proceedWithMissingRequired").path("type").asText())
+						.isEqualTo("boolean");
+				}
+				case "submitOfflineHeapDumpChunk" -> {
+					assertThat(schema.path("properties").path("uploadId").path("type").asText()).isEqualTo("string");
+					assertThat(schema.path("properties").path("chunkIndex").path("type").asText()).isIn("integer",
+							"number");
+					assertThat(schema.path("properties").path("chunkTotal").path("type").asText()).isIn("integer",
+							"number");
+					assertThat(schema.path("properties").path("chunkBase64").path("type").asText()).isEqualTo("string");
+				}
+				case "finalizeOfflineHeapDump" -> {
+					assertThat(schema.path("properties").path("uploadId").path("type").asText()).isEqualTo("string");
+					assertThat(schema.path("properties").path("expectedSha256Hex").path("type").asText())
+						.isEqualTo("string");
+					assertThat(schema.path("properties").path("expectedSizeBytes").path("type").asText()).isIn(
+							"integer", "number");
+				}
+				case "generateOfflineTuningAdvice" -> {
+					JsonNode ctxOff = schema.path("properties").path("codeContextSummary");
+					assertThat(ctxOff.path("type").asText()).isEqualTo("object");
+					JsonNode draft = schema.path("properties").path("draft");
+					assertThat(draft.path("type").asText()).isEqualTo("object");
+					assertThat(schema.path("properties").path("environment").path("type").asText()).isEqualTo("string");
+					assertThat(schema.path("properties").path("optimizationGoal").path("type").asText())
+						.isEqualTo("string");
+					assertThat(schema.path("properties").path("confirmationToken").path("type").asText())
+						.isEqualTo("string");
+					assertThat(schema.path("properties").path("proceedWithMissingRequired").path("type").asText())
+						.isEqualTo("boolean");
+				}
 				default -> throw new AssertionError("Unexpected tool: " + def.name());
 			}
 		}
@@ -72,7 +105,8 @@ class McpToolSchemaContractTest {
 	void privilegedToolsShouldDocumentKeyFieldsInSchema() throws Exception {
 		for (var callback : toolCallbackProvider.getToolCallbacks()) {
 			var def = callback.getToolDefinition();
-			if (!"collectMemoryGcEvidence".equals(def.name()) && !"generateTuningAdvice".equals(def.name())) {
+			if (!"collectMemoryGcEvidence".equals(def.name()) && !"generateTuningAdvice".equals(def.name())
+					&& !"generateOfflineTuningAdvice".equals(def.name())) {
 				continue;
 			}
 			JsonNode schema = mapper.readTree(def.inputSchema());

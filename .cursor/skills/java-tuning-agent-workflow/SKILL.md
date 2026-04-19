@@ -10,6 +10,7 @@ description: >-
   process analysis, jcmd/jstat/MCP tools user-java-tuning-agent or java-tuning-agent.
   中文场景：JVM调优、内存、堆、GC、垃圾回收、内存泄漏、Full GC、Java进程、结合源码诊断。
   Also when the user names an app or provides a source path for deeper CodeContextSummary.
+  Offline / imported bundle: validateOfflineAnalysisDraft → optional submitOfflineHeapDumpChunk + finalizeOfflineHeapDump → generateOfflineTuningAdvice (see [Offline mode](#offline-mode-imported-bundle)).
 ---
 
 # Java tuning agent — end-to-end MCP workflow
@@ -19,6 +20,18 @@ description: >-
 - The **java-tuning-agent** MCP server is enabled (Cursor may show it as **user-java-tuning-agent**).
 - Host commands **jps**, **jcmd**, **jstat** are available to that process; tools only work against JVMs the same user can see.
 - Read [reference.md](reference.md) for exact JSON argument shapes when building tool calls.
+
+## Offline mode (imported bundle)
+
+Use when the user analyzes **production-exported** files (histogram, thread dump, `.hprof`, jcmd/jstat text) **without** a live target PID on this machine. This path **does not** replace the default online pipeline; do not call `listJavaApps` unless the user also wants local processes.
+
+**Draft:** Build an `OfflineBundleDraft` JSON in chat (authoritative copy lives in the conversation). Fixed order for gathering input: B1 JVM 标识 → B2 JDK 信息 → B3 运行时快照文本 → B4 类直方图（文件路径或粘贴）→ B5 线程 dump → B6 堆转储路径或分块上传结果。推荐项 R1–R3 必须可标记「本次没有」。若必选缺失，调用 `validateOfflineAnalysisDraft(draft, proceedWithMissingRequired=false)` 获取 `missingRequired` 与中文 `nextPromptZh`；用户确认降级时改 `proceedWithMissingRequired=true`。
+
+**Large heap:** `submitOfflineHeapDumpChunk` — first call leave `uploadId` empty and set `chunkTotal`; reuse returned `uploadId` for chunks `0 .. chunkTotal-1` (Base64). Then `finalizeOfflineHeapDump(uploadId, sha256Hex, sizeBytes)` → put `finalizeHeapDumpPath` into `draft.heapDumpAbsolutePath`.
+
+**Advice:** `generateOfflineTuningAdvice` requires the same **consent semantics** as online privileged collection: non-blank `confirmationToken` when the draft includes class histogram, thread dump, or heap path (use canonical `java-tuning-agent:ui-approval:v1:pid=0:scopes=...` style with offline-appropriate scope names if the host encodes selections, or the user’s verbatim phrase).
+
+**Output:** Prefer rendering `formattedSummary` like the online pipeline (no outer Markdown fence).
 
 ## Default pipeline (four tools in order)
 

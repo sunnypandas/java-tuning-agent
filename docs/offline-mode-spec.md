@@ -140,9 +140,9 @@
 
 ## 9. 待定项（实现前可再定）
 
-- 独立模式的**精确入口**（工具名、是否多工具、是否子状态机）。
-- 分块的**默认块大小**、**校验算法**、超时与错误码约定。
-- 离线结果与 `generateTuningAdvice` 的**对接方式**（新工具组装 payload 再调既有 advice，或专用报告结构——需设计与评审）。
+- 分块的**默认块大小**、超时与错误码约定（首版实现已采用 SHA-256 + 调用方提供总长度；块大小由宿主决定）。
+
+**MCP 工具 JSON 同步：** 运行 `mvn -q package`（确保未设置 `mcp.schema.export.skip=true`）会在 `target/mcp-tool-schemas.json` 生成全部工具的 `inputSchema`（含离线四件套）；将条目同步到 Cursor 工程内 `mcps/user-java-tuning-agent/tools/`（与现有 schema export 流程一致）。
 
 ---
 
@@ -153,3 +153,4 @@
 | 2026-04-19 | 初稿：基于评审确认（独立模式、降级、顺序向导、文件/粘贴、回退、分块校验、「本次没有」、新工具+一致 consent、中文、单会话）。 |
 | 2026-04-19 | 增加「相关文档」表，并与 `docs/superpowers/specs/2026-04-19-offline-mode-design.md` 设计稿交叉引用（brainstorming 补全）。 |
 | 2026-04-19 | 增加与 `docs/superpowers/plans/2026-04-19-offline-mode.md` 实现计划链接。 |
+| 2026-04-19 | 待定项更新：工具名与 advice 对接已落地；补充 MCP schema 同步说明。 |

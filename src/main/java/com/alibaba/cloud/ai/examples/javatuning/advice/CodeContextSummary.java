@@ -27,4 +27,8 @@ public record CodeContextSummary(
 			List<String> applicationNames) {
 		return new CodeContextSummary(dependencies, configuration, applicationNames, List.of(), List.of());
 	}
+
+	public static CodeContextSummary empty() {
+		return new CodeContextSummary(List.of(), Map.of(), List.of(), List.of(), List.of());
+	}
 }

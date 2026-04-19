@@ -22,7 +22,9 @@ class JavaTuningAgentApplicationTests {
 	@Test
 	void shouldRegisterMcpToolCallbacks() {
 		assertThat(Arrays.stream(toolCallbackProvider.getToolCallbacks()).map(callback -> callback.getToolDefinition().name()))
-			.contains("listJavaApps", "inspectJvmRuntime", "collectMemoryGcEvidence", "generateTuningAdvice");
+			.contains("listJavaApps", "inspectJvmRuntime", "collectMemoryGcEvidence", "generateTuningAdvice",
+					"validateOfflineAnalysisDraft", "submitOfflineHeapDumpChunk", "finalizeOfflineHeapDump",
+					"generateOfflineTuningAdvice");
 	}
 
 }
