@@ -1,9 +1,17 @@
 name: Release
 
+# Why "Releases" can be empty: the default CI workflow only uploads *Actions artifacts*.
+# A row on the Releases page is created only when *this* workflow runs (tag v* or manual run below).
 on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Semver only, no v prefix (e.g. 0.1.0)"
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -22,14 +30,25 @@ jobs:
           java-version: "17"
           cache: maven
 
-      # Tag must be vX.Y.Z… — Maven version is the tag without the leading "v".
-      - name: Resolve Maven revision from tag
+      - name: Resolve version and release tag
         run: |
-          TAG="${{ github.ref_name }}"
-          case "$TAG" in v*) ;;
-            *) echo "::error::Release tags must start with 'v' (got '$TAG')"; exit 1 ;;
-          esac
-          echo "MVN_REVISION=${TAG#v}" >> "$GITHUB_ENV"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            V="${{ github.event.inputs.version }}"
+            case "$V" in
+              v*) echo "::error::Use version without leading v (e.g. 0.1.0), got: $V"; exit 1 ;;
+            esac
+            echo "MVN_REVISION=$V" >> "$GITHUB_ENV"
+            echo "RELEASE_TAG=v$V" >> "$GITHUB_ENV"
+            echo "Release from manual run as v$V"
+          else
+            TAG="${{ github.ref_name }}"
+            case "$TAG" in v*) ;;
+              *) echo "::error::Release tags must start with v (got: $TAG)"; exit 1 ;;
+            esac
+            echo "MVN_REVISION=${TAG#v}" >> "$GITHUB_ENV"
+            echo "RELEASE_TAG=$TAG" >> "$GITHUB_ENV"
+            echo "Release from tag $TAG"
+          fi
 
       - name: Build and test
         run: mvn -B verify -Drevision="$MVN_REVISION"
@@ -37,6 +56,9 @@ jobs:
       - name: Create GitHub Release with assets
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          # When the tag is new (e.g. manual run), point it at this commit. Ignored if tag already exists.
+          target_commitish: ${{ github.sha }}
           files: |
             target/java-tuning-agent-*.jar
             target/java-tuning-agent-*-mcp-schemas.json
