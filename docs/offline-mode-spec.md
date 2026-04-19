@@ -9,6 +9,7 @@
 |------|------|
 | **本文** | 产品需求：必选/推荐/背景、向导与降级、分块与「本次没有」、验收草案。 |
 | [设计稿 `docs/superpowers/specs/2026-04-19-offline-mode-design.md`](superpowers/specs/2026-04-19-offline-mode-design.md) | 实现设计：工程上下文、**方案对比**（A/B/C）、推荐架构（无状态草稿 + 分块上传 + 终局分析）、文件→`MemoryGcEvidencePack` 映射风险、测试方向。 |
+| [实现计划 `docs/superpowers/plans/2026-04-19-offline-mode.md`](superpowers/plans/2026-04-19-offline-mode.md) | 分任务实现步骤、文件职责表、TDD 任务分解、与 spec 的覆盖对照。 |
 
 ---
 
@@ -151,3 +152,4 @@
 |------|------|
 | 2026-04-19 | 初稿：基于评审确认（独立模式、降级、顺序向导、文件/粘贴、回退、分块校验、「本次没有」、新工具+一致 consent、中文、单会话）。 |
 | 2026-04-19 | 增加「相关文档」表，并与 `docs/superpowers/specs/2026-04-19-offline-mode-design.md` 设计稿交叉引用（brainstorming 补全）。 |
+| 2026-04-19 | 增加与 `docs/superpowers/plans/2026-04-19-offline-mode.md` 实现计划链接。 |
