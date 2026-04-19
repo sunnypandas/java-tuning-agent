@@ -14,13 +14,16 @@
   Output directory (created if missing).
 
 .PARAMETER ProcessId
-  Target JVM PID (decimal). Discover with jcmd / jps -lvm.
+  Target JVM PID. If omitted, lists JVMs via jcmd -l (fallback jps -lvm) and prompts for index or PID.
 
 .PARAMETER SkipHeapDump
   Omit GC.heap_dump (no b6-heap-dump.hprof).
 
 .EXAMPLE
   .\scripts\export-jvm-diagnostics.ps1 -ExportDir 'D:\exports\case-001' -ProcessId 12345
+
+.EXAMPLE
+  .\scripts\export-jvm-diagnostics.ps1 -ExportDir 'D:\exports\case-001'
 
 .EXAMPLE
   .\scripts\export-jvm-diagnostics.ps1 -ExportDir '.\out\diag' -ProcessId 12345 -SkipHeapDump
@@ -31,9 +34,8 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$ExportDir,
 
-    [Parameter(Mandatory = $true)]
-    [ValidateRange(1, [int]::MaxValue)]
-    [int]$ProcessId,
+    [Parameter(Mandatory = $false, HelpMessage = 'Omitted = list jcmd -l / jps -lvm and pick interactively')]
+    [int]$ProcessId = 0,
 
     [switch]$SkipHeapDump
 )
@@ -110,9 +112,131 @@ function Add-Section {
     return "`r`n=== $Title ===`r`n" + ($Body.TrimEnd() + "`r`n")
 }
 
+function Invoke-ToolTextRaw {
+    param(
+        [Parameter(Mandatory = $true)][string]$ExePath,
+        [Parameter(Mandatory = $true)][string[]]$ToolArgs
+    )
+    $priorEa = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $stdout = & $ExePath @ToolArgs 2>&1
+        $code = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $priorEa
+    }
+    return @{
+        Code = $code
+        Text = (Convert-NativeLines $stdout)
+    }
+}
+
+function Parse-JvmListLines {
+    param([string]$Text)
+    $rows = New-Object System.Collections.Generic.List[object]
+    foreach ($line in ($Text -split "`r?`n")) {
+        $t = $line.TrimEnd()
+        if ([string]::IsNullOrWhiteSpace($t)) {
+            continue
+        }
+        if ($t -match '^\s*(\d+)(?:\s+(.+))?$') {
+            $desc = if ($Matches[2]) { $Matches[2].Trim() } else { '(no description)' }
+            [void]$rows.Add([pscustomobject]@{ Pid = [int]$Matches[1]; Description = $desc })
+        }
+    }
+    return ,$rows.ToArray()
+}
+
+function Remove-JcmdNoiseEntries {
+    param([object[]]$Entries)
+    if ($null -eq $Entries -or $Entries.Count -eq 0) {
+        return ,@()
+    }
+    $filtered = @($Entries | Where-Object {
+            $d = $_.Description
+            $d -notmatch '(?i)sun\.tools\.jcmd\.JCmd' -and $d -notmatch '(?i)jdk\.jcmd[/\\]sun\.tools\.jcmd'
+        })
+    return ,$filtered
+}
+
+function Get-JavaVmEntries {
+    param(
+        [Parameter(Mandatory = $true)][string]$JcmdExe,
+        [Parameter(Mandatory = $true)][string]$JpsExe
+    )
+    $r1 = Invoke-ToolTextRaw -ExePath $JcmdExe -ToolArgs @('-l')
+    $entries = @()
+    if ($r1.Code -eq 0 -and $r1.Text.Trim()) {
+        $entries = Remove-JcmdNoiseEntries (Parse-JvmListLines $r1.Text)
+    }
+    if ($entries.Count -eq 0) {
+        $r2 = Invoke-ToolTextRaw -ExePath $JpsExe -ToolArgs @('-lvm')
+        if ($r2.Code -ne 0) {
+            throw ("Could not list JVM processes.`njcmd -l exit=$($r1.Code)`n$($r1.Text)`n---`njps -lvm exit=$($r2.Code)`n$($r2.Text)")
+        }
+        if ($r2.Text.Trim()) {
+            $entries = Remove-JcmdNoiseEntries (Parse-JvmListLines $r2.Text)
+        }
+    }
+    return ,$entries
+}
+
+function Resolve-InteractivePid {
+    param([object[]]$Entries)
+    if ($null -eq $Entries -or $Entries.Count -eq 0) {
+        throw 'No local Java processes found. Start a JVM on this machine, or run this shell as the same user as the target process.'
+    }
+    if ($Entries.Count -eq 1) {
+        $only = $Entries[0]
+        Write-Host ''
+        Write-Host ('Using sole JVM: PID {0} — {1}' -f $only.Pid, $only.Description) -ForegroundColor Cyan
+        return [int]$only.Pid
+    }
+    Write-Host ''
+    Write-Host 'Java VMs (jcmd -l, or jps -lvm if needed):' -ForegroundColor Yellow
+    $idx = 1
+    foreach ($e in $Entries) {
+        Write-Host ('  [{0,-4}] PID {1,-9} {2}' -f $idx, $e.Pid, $e.Description)
+        $idx++
+    }
+    Write-Host ''
+    while ($true) {
+        $ans = Read-Host 'Enter line number [1-n] or target PID'
+        $ans = $ans.Trim()
+        if ($ans -notmatch '^\d+$') {
+            Write-Host 'Enter digits only (index or PID).' -ForegroundColor Red
+            continue
+        }
+        $n = [int]$ans
+        if ($n -ge 1 -and $n -le $Entries.Count) {
+            return [int]$Entries[$n - 1].Pid
+        }
+        $hit = @($Entries | Where-Object { $_.Pid -eq $n })
+        if ($hit.Count -eq 1) {
+            return [int]$hit[0].Pid
+        }
+        Write-Host 'No such index or PID in the list.' -ForegroundColor Red
+    }
+}
+
 $jcmd = Resolve-JdkTool -Name 'jcmd'
 $jstat = Resolve-JdkTool -Name 'jstat'
-$pidStr = "$ProcessId"
+$jps = Resolve-JdkTool -Name 'jps'
+
+if ($ProcessId -lt 0) {
+    throw 'ProcessId cannot be negative.'
+}
+$resolvedPid = 0
+if ($ProcessId -gt 0) {
+    $resolvedPid = $ProcessId
+}
+else {
+    $vmEntries = Get-JavaVmEntries -JcmdExe $jcmd -JpsExe $jps
+    $resolvedPid = Resolve-InteractivePid -Entries $vmEntries
+}
+
+$pidStr = "$resolvedPid"
 
 $root = $ExportDir.Trim()
 if (-not [System.IO.Path]::IsPathRooted($root)) {
@@ -129,11 +253,13 @@ $metaFile = Join-Path $root 'export-metadata.txt'
 java-tuning-agent export-jvm-diagnostics
 exportedAtLocal: $($stamp.ToString('o'))
 exportedAtUtc:   $stampUtc
-processId:       $ProcessId
+processId:       $resolvedPid
+pidSource:       $(if ($ProcessId -gt 0) { 'parameter' } else { 'interactive' })
 host:            $env:COMPUTERNAME
 skipHeapDump:    $SkipHeapDump
 jcmd:            $jcmd
 jstat:           $jstat
+jps:             $jps
 "@ | Set-Content -LiteralPath $metaFile -Encoding utf8
 
 # --- B1 ---
@@ -163,7 +289,7 @@ try {
     $b3 = Join-Path $root 'b3-runtime-snapshot.txt'
     $parts = @()
     $parts += 'Merged snapshot aligned with java-tuning-agent SafeJvmRuntimeCollector.'
-    $parts += ('targetPid: ' + $ProcessId + '    utc: ' + $stampUtc)
+    $parts += ('targetPid: ' + $resolvedPid + '    utc: ' + $stampUtc)
     $parts += Add-Section 'VM.flags' ([System.IO.File]::ReadAllText($fFlags))
     $parts += Add-Section 'GC.heap_info' ([System.IO.File]::ReadAllText($fHeap))
     $parts += Add-Section 'jstat -gcutil' ([System.IO.File]::ReadAllText($fGcUtil))
