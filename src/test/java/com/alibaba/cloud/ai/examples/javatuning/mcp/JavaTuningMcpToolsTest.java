@@ -51,7 +51,7 @@ class JavaTuningMcpToolsTest {
 						new TuningAdviceReport(List.of(), List.of(), List.of(), List.of(), List.of(), "medium",
 								List.of("stub-reason"), ""));
 		given(workflowService.collectEvidence(any(MemoryGcEvidenceRequest.class)))
-				.willReturn(new MemoryGcEvidencePack(stubSnapshot(123L), null, null, List.of(), List.of(), null));
+				.willReturn(new MemoryGcEvidencePack(stubSnapshot(123L), null, null, List.of(), List.of(), null, null));
 
 		JavaTuningMcpTools tools = new JavaTuningMcpTools(discoveryService, collector, workflowService);
 
@@ -75,7 +75,8 @@ class JavaTuningMcpToolsTest {
 		JvmRuntimeCollector collector = mock(JvmRuntimeCollector.class);
 		JavaTuningWorkflowService workflowService = mock(JavaTuningWorkflowService.class);
 
-		MemoryGcEvidencePack pack = new MemoryGcEvidencePack(stubSnapshot(123L), null, null, List.of(), List.of(), null);
+		MemoryGcEvidencePack pack = new MemoryGcEvidencePack(stubSnapshot(123L), null, null, List.of(), List.of(), null,
+				null);
 		given(workflowService.collectEvidence(any(MemoryGcEvidenceRequest.class))).willReturn(pack);
 		given(workflowService.generateAdviceFromEvidence(eq(pack), any(CodeContextSummary.class), any(), any()))
 				.willReturn(new TuningAdviceReport(List.of(), List.of(), List.of(), List.of(), List.of(), "high",
@@ -110,7 +111,7 @@ class JavaTuningMcpToolsTest {
 		JavaTuningWorkflowService workflowService = mock(JavaTuningWorkflowService.class);
 
 		MemoryGcEvidencePack pack = new MemoryGcEvidencePack(stubSnapshot(123L), null, null, List.of(), List.of(),
-				"C:\\tmp\\dump.hprof");
+				"C:\\tmp\\dump.hprof", null);
 		given(workflowService.collectEvidence(any(MemoryGcEvidenceRequest.class))).willReturn(pack);
 		given(workflowService.generateAdviceFromEvidence(eq(pack), any(CodeContextSummary.class), any(), any()))
 				.willReturn(new TuningAdviceReport(List.of(), List.of(), List.of(), List.of(), List.of(), "high",

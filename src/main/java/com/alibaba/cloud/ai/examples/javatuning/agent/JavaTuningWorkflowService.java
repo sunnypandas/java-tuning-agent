@@ -35,7 +35,7 @@ public class JavaTuningWorkflowService {
 
 	public TuningAdviceReport generateAdvice(TuningAdviceRequest request) {
 		MemoryGcEvidencePack evidence = new MemoryGcEvidencePack(request.runtimeSnapshot(), request.classHistogramHint(),
-				null, List.of(), List.of(), null);
+				null, List.of(), List.of(), null, null);
 		return generateAdviceFromEvidence(evidence, request.codeContextSummary(), request.environment(),
 				request.optimizationGoal());
 	}
@@ -53,7 +53,22 @@ public class JavaTuningWorkflowService {
 		TuningAdviceReport merged = new TuningAdviceReport(base.findings(), base.recommendations(), hotspots,
 				base.missingData(), base.nextSteps(), base.confidence(), base.confidenceReasons(), "");
 		String summary = TuningAdviceReportFormatter.toMarkdown(merged);
+		summary = appendHeapShallowSectionIfAny(evidence, summary);
 		return new TuningAdviceReport(merged.findings(), merged.recommendations(), merged.suspectedCodeHotspots(),
 				merged.missingData(), merged.nextSteps(), merged.confidence(), merged.confidenceReasons(), summary);
+	}
+
+	private static String appendHeapShallowSectionIfAny(MemoryGcEvidencePack evidence, String summary) {
+		if (evidence.heapShallowSummary() == null) {
+			return summary;
+		}
+		if (!evidence.heapShallowSummary().errorMessage().isEmpty()) {
+			return summary + "\n\n### Heap dump shallow summary (failed)\n\n" + evidence.heapShallowSummary()
+					.errorMessage();
+		}
+		if (evidence.heapShallowSummary().summaryMarkdown().isEmpty()) {
+			return summary;
+		}
+		return summary + "\n\n" + evidence.heapShallowSummary().summaryMarkdown();
 	}
 }

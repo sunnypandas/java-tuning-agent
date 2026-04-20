@@ -4,6 +4,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 
+import com.alibaba.cloud.ai.examples.javatuning.offline.SharkHeapDumpSummarizer;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -13,6 +14,17 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 
 class SafeJvmRuntimeCollectorTest {
+
+	private static final SharkHeapDumpSummarizer TEST_HEAP_SUMMARIZER = new SharkHeapDumpSummarizer(40, 32000);
+
+	private static SafeJvmRuntimeCollector testCollector(CommandExecutor executor) {
+		return new SafeJvmRuntimeCollector(executor, RuntimeCollectionPolicy.safeReadonly(), TEST_HEAP_SUMMARIZER,
+				false);
+	}
+
+	private static SafeJvmRuntimeCollector testCollector(CommandExecutor executor, RuntimeCollectionPolicy policy) {
+		return new SafeJvmRuntimeCollector(executor, policy, TEST_HEAP_SUMMARIZER, false);
+	}
 
 	private static void stubExtendedCollectors(CommandExecutor executor, String pid) {
 		given(executor.run(List.of("jcmd", pid, "VM.version"))).willReturn(pid + ":\nOpenJDK 64-Bit Server VM (test)");
@@ -40,7 +52,7 @@ class SafeJvmRuntimeCollectorTest {
 				  0.00   0.00  12.34  78.90  92.21   88.12     145    1.234      2    0.456      -       -     1.690
 		""");
 
-		SafeJvmRuntimeCollector collector = new SafeJvmRuntimeCollector(executor, RuntimeCollectionPolicy.safeReadonly());
+		SafeJvmRuntimeCollector collector = testCollector(executor);
 
 		JvmRuntimeSnapshot snapshot = collector.collect(123L, RuntimeCollectionPolicy.CollectionRequest.safeReadonly());
 
@@ -87,7 +99,7 @@ class SafeJvmRuntimeCollectorTest {
 				  0.00   0.00  12.34  78.90  92.21   88.12     145    1.234      2    0.456      -       -     1.690
 		""");
 
-		SafeJvmRuntimeCollector collector = new SafeJvmRuntimeCollector(executor, RuntimeCollectionPolicy.safeReadonly());
+		SafeJvmRuntimeCollector collector = testCollector(executor);
 		JvmRuntimeSnapshot snapshot = collector.collect(123L, RuntimeCollectionPolicy.CollectionRequest.safeReadonly());
 
 		assertThat(snapshot.threadCount()).isEqualTo(24L);
@@ -114,7 +126,7 @@ class SafeJvmRuntimeCollectorTest {
 				  0.00   0.00  12.34  78.90  92.21   88.12     145    1.234      2    0.456      -       -     1.690
 				""");
 
-		SafeJvmRuntimeCollector collector = new SafeJvmRuntimeCollector(executor, RuntimeCollectionPolicy.safeReadonly());
+		SafeJvmRuntimeCollector collector = testCollector(executor);
 
 		JvmRuntimeSnapshot snapshot = collector.collect(123L, RuntimeCollectionPolicy.CollectionRequest.safeReadonly());
 
@@ -144,7 +156,7 @@ class SafeJvmRuntimeCollectorTest {
 				  0.00   0.00  12.34  78.90  92.21   88.12     145    1.234      2    0.456      -       -     1.690
 				""");
 
-		SafeJvmRuntimeCollector collector = new SafeJvmRuntimeCollector(executor, RuntimeCollectionPolicy.safeReadonly());
+		SafeJvmRuntimeCollector collector = testCollector(executor);
 
 		JvmRuntimeSnapshot snapshot = collector.collect(123L, RuntimeCollectionPolicy.CollectionRequest.safeReadonly());
 
@@ -167,7 +179,7 @@ class SafeJvmRuntimeCollectorTest {
 				  0.00   0.00  12.34  78.90  92.21   88.12     145    1.234      2    0.456      -       -     1.690
 				""");
 
-		SafeJvmRuntimeCollector collector = new SafeJvmRuntimeCollector(executor, RuntimeCollectionPolicy.safeReadonly());
+		SafeJvmRuntimeCollector collector = testCollector(executor);
 
 		JvmRuntimeSnapshot snapshot = collector.collect(123L, RuntimeCollectionPolicy.CollectionRequest.safeReadonly());
 
@@ -178,8 +190,7 @@ class SafeJvmRuntimeCollectorTest {
 
 	@Test
 	void shouldRejectPrivilegedCollectionWithoutConfirmation() {
-		SafeJvmRuntimeCollector collector = new SafeJvmRuntimeCollector(mock(CommandExecutor.class),
-				RuntimeCollectionPolicy.safeReadonly());
+		SafeJvmRuntimeCollector collector = testCollector(mock(CommandExecutor.class));
 
 		assertThatThrownBy(() -> collector.collect(123L,
 				new RuntimeCollectionPolicy.CollectionRequest(true, true, false, false, null)))
@@ -189,8 +200,7 @@ class SafeJvmRuntimeCollectorTest {
 
 	@Test
 	void shouldRejectMemoryGcEvidenceWithoutConfirmationForHistogramCollection() {
-		SafeJvmRuntimeCollector collector = new SafeJvmRuntimeCollector(mock(CommandExecutor.class),
-				RuntimeCollectionPolicy.safeReadonly());
+		SafeJvmRuntimeCollector collector = testCollector(mock(CommandExecutor.class));
 
 		assertThatThrownBy(() -> collector.collectMemoryGcEvidence(
 				new MemoryGcEvidenceRequest(123L, true, false, false, "", null)))
@@ -200,8 +210,7 @@ class SafeJvmRuntimeCollectorTest {
 
 	@Test
 	void shouldRejectHeapDumpWithoutOutputPath() {
-		SafeJvmRuntimeCollector collector = new SafeJvmRuntimeCollector(mock(CommandExecutor.class),
-				RuntimeCollectionPolicy.safeReadonly());
+		SafeJvmRuntimeCollector collector = testCollector(mock(CommandExecutor.class));
 
 		assertThatThrownBy(() -> collector.collectMemoryGcEvidence(
 				new MemoryGcEvidenceRequest(123L, false, false, true, "", "confirmed")))
@@ -211,8 +220,7 @@ class SafeJvmRuntimeCollectorTest {
 
 	@Test
 	void shouldRejectHeapDumpWithoutConfirmationToken() {
-		SafeJvmRuntimeCollector collector = new SafeJvmRuntimeCollector(mock(CommandExecutor.class),
-				RuntimeCollectionPolicy.safeReadonly());
+		SafeJvmRuntimeCollector collector = testCollector(mock(CommandExecutor.class));
 
 		assertThatThrownBy(() -> collector.collectMemoryGcEvidence(
 				new MemoryGcEvidenceRequest(123L, false, false, true, "C:/tmp/dump.hprof", "  ")))
@@ -243,7 +251,7 @@ class SafeJvmRuntimeCollectorTest {
 				   2:             2              80  [B
 				""");
 
-		SafeJvmRuntimeCollector collector = new SafeJvmRuntimeCollector(executor, RuntimeCollectionPolicy.safeReadonly());
+		SafeJvmRuntimeCollector collector = testCollector(executor);
 
 		MemoryGcEvidencePack pack = collector.collectMemoryGcEvidence(
 				new MemoryGcEvidenceRequest(123L, true, false, false, "", "confirmed"));
@@ -281,7 +289,7 @@ class SafeJvmRuntimeCollectorTest {
 			return "Heap dump file created";
 		});
 
-		SafeJvmRuntimeCollector collector = new SafeJvmRuntimeCollector(executor, RuntimeCollectionPolicy.safeReadonly());
+		SafeJvmRuntimeCollector collector = testCollector(executor);
 
 		MemoryGcEvidencePack pack = collector.collectMemoryGcEvidence(
 				new MemoryGcEvidenceRequest(123L, false, false, true, abs, "confirmed"));
@@ -312,7 +320,7 @@ class SafeJvmRuntimeCollectorTest {
 				""");
 		given(executor.run(List.of("jcmd", "123", "GC.heap_dump", abs))).willReturn("done\n");
 
-		SafeJvmRuntimeCollector collector = new SafeJvmRuntimeCollector(executor, RuntimeCollectionPolicy.safeReadonly());
+		SafeJvmRuntimeCollector collector = testCollector(executor);
 		MemoryGcEvidencePack pack = collector.collectMemoryGcEvidence(
 				new MemoryGcEvidenceRequest(123L, false, false, true, abs, "confirmed"));
 
@@ -346,7 +354,7 @@ class SafeJvmRuntimeCollectorTest {
 				       at java.lang.Thread.sleep(Native Method)
 				""");
 
-		SafeJvmRuntimeCollector collector = new SafeJvmRuntimeCollector(executor, RuntimeCollectionPolicy.safeReadonly());
+		SafeJvmRuntimeCollector collector = testCollector(executor);
 
 		MemoryGcEvidencePack pack = collector.collectMemoryGcEvidence(
 				new MemoryGcEvidenceRequest(123L, false, true, false, "", "confirmed"));
@@ -376,7 +384,7 @@ class SafeJvmRuntimeCollectorTest {
 				""");
 		given(executor.run(List.of("jcmd", "123", "GC.class_histogram"))).willReturn("   ");
 
-		SafeJvmRuntimeCollector collector = new SafeJvmRuntimeCollector(executor, RuntimeCollectionPolicy.safeReadonly());
+		SafeJvmRuntimeCollector collector = testCollector(executor);
 
 		MemoryGcEvidencePack pack = collector.collectMemoryGcEvidence(
 				new MemoryGcEvidenceRequest(123L, true, false, false, "", "confirmed"));
@@ -405,7 +413,7 @@ class SafeJvmRuntimeCollectorTest {
 				""");
 		given(executor.run(List.of("jcmd", "123", "GC.class_histogram"))).willReturn("not a histogram");
 
-		SafeJvmRuntimeCollector collector = new SafeJvmRuntimeCollector(executor, RuntimeCollectionPolicy.safeReadonly());
+		SafeJvmRuntimeCollector collector = testCollector(executor);
 
 		MemoryGcEvidencePack pack = collector.collectMemoryGcEvidence(
 				new MemoryGcEvidenceRequest(123L, true, false, false, "", "confirmed"));
@@ -439,7 +447,7 @@ class SafeJvmRuntimeCollectorTest {
 				""");
 		given(executor.run(List.of("jcmd", "123", "PerfCounter.print"))).willReturn("some.other.counter 1\n");
 
-		SafeJvmRuntimeCollector collector = new SafeJvmRuntimeCollector(executor, RuntimeCollectionPolicy.safeReadonly());
+		SafeJvmRuntimeCollector collector = testCollector(executor);
 		JvmRuntimeSnapshot snapshot = collector.collect(123L, RuntimeCollectionPolicy.CollectionRequest.safeReadonly());
 
 		assertThat(snapshot.threadCount()).isNull();

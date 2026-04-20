@@ -7,9 +7,11 @@ import com.alibaba.cloud.ai.examples.javatuning.advice.CodeContextSummary;
 import com.alibaba.cloud.ai.examples.javatuning.advice.TuningAdviceReport;
 import com.alibaba.cloud.ai.examples.javatuning.offline.HeapDumpChunkRepository;
 import com.alibaba.cloud.ai.examples.javatuning.offline.HeapDumpChunkSubmissionResult;
+import com.alibaba.cloud.ai.examples.javatuning.offline.HeapDumpFileSummaryResult;
 import com.alibaba.cloud.ai.examples.javatuning.offline.OfflineAnalysisService;
 import com.alibaba.cloud.ai.examples.javatuning.offline.OfflineBundleDraft;
 import com.alibaba.cloud.ai.examples.javatuning.offline.OfflineDraftValidationResult;
+import com.alibaba.cloud.ai.examples.javatuning.offline.SharkHeapDumpSummarizer;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 
@@ -22,10 +24,13 @@ public class OfflineMcpTools {
 
 	private final HeapDumpChunkRepository heapDumpChunkRepository;
 
+	private final SharkHeapDumpSummarizer heapDumpSummarizer;
+
 	public OfflineMcpTools(OfflineAnalysisService offlineAnalysisService,
-			HeapDumpChunkRepository heapDumpChunkRepository) {
+			HeapDumpChunkRepository heapDumpChunkRepository, SharkHeapDumpSummarizer heapDumpSummarizer) {
 		this.offlineAnalysisService = offlineAnalysisService;
 		this.heapDumpChunkRepository = heapDumpChunkRepository;
+		this.heapDumpSummarizer = heapDumpSummarizer;
 	}
 
 	@Tool(description = """
@@ -72,7 +77,8 @@ public class OfflineMcpTools {
 	@Tool(description = """
 			离线模式：从导入材料生成与在线模式相同结构的 TuningAdviceReport（含 formattedSummary）。\
 			需先通过校验或声明降级（proceedWithMissingRequired）。\
-			若草稿包含类直方图、线程栈或堆路径，须提供非空 confirmationToken（与 collectMemoryGcEvidence / generateTuningAdvice 特权语义一致）。""")
+			若草稿包含类直方图、线程栈或堆路径，须提供非空 confirmationToken（与 collectMemoryGcEvidence / generateTuningAdvice 特权语义一致）。\
+			当 heapDumpAbsolutePath 指向已存在的 .hprof 时，服务端自动用 Shark 做浅层按类索引，并参与规则诊断与报告（见 java-tuning-agent.heap-summary.auto-enabled）。""")
 	public TuningAdviceReport generateOfflineTuningAdvice(
 			@ToolParam(description = "可选源码根与包名，用于热点关联。") CodeContextSummary codeContextSummary,
 			@ToolParam(description = "完整 OfflineBundleDraft（heap 路径可为 finalizeOfflineHeapDump 的结果）。") OfflineBundleDraft draft,
@@ -86,6 +92,20 @@ public class OfflineMcpTools {
 		CodeContextSummary ctx = codeContextSummary == null ? CodeContextSummary.empty() : codeContextSummary;
 		return offlineAnalysisService.generateOfflineAdvice(draft, ctx, environment, optimizationGoal,
 				confirmationToken, proceedWithMissingRequired);
+	}
+
+	@Tool(description = """
+			离线模式：在 MCP 服务端本地解析 heap dump 文件（.hprof），生成有字符上限的 Markdown 摘要。\
+			摘要为 Shark **浅层按类型**合计（实例与数组），**不是** MAT retained/dominator 分析；不向模型传输原始二进制。\
+			可与 finalizeOfflineHeapDump 输出的路径配合使用。""")
+	public HeapDumpFileSummaryResult summarizeOfflineHeapDumpFile(
+			@ToolParam(description = "已完成写入的 .hprof 绝对路径（可与 OfflineBundleDraft.heapDumpAbsolutePath 相同）。") String heapDumpAbsolutePath,
+			@ToolParam(description = "按浅层字节排序后输出的最大类型条数；留空则用服务端默认（通常 40）。") Integer topClassLimit,
+			@ToolParam(description = "Markdown 最大字符数；留空则用服务端默认（通常 32000）。") Integer maxOutputChars) {
+		Path path = heapDumpAbsolutePath == null || heapDumpAbsolutePath.isBlank()
+				? null
+				: Path.of(heapDumpAbsolutePath.trim());
+		return HeapDumpFileSummaryResult.from(heapDumpSummarizer.summarize(path, topClassLimit, maxOutputChars));
 	}
 
 }

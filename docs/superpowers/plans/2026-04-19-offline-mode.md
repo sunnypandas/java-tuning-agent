@@ -444,3 +444,16 @@ Plan complete and saved to `docs/superpowers/plans/2026-04-19-offline-mode.md`.
 2. **Inline Execution** — Run tasks in this session using **executing-plans**, batch with checkpoints.
 
 **Which approach?**
+
+---
+
+## 实现后补充：堆转储自动浅层摘要（Shark）
+
+**目标**：当 `heapDumpAbsolutePath` / 在线 `GC.heap_dump` 产生有效 `.hprof` 文件时，**自动**用 LeakCanary **Shark** 做浅层按类统计，写入 `MemoryGcEvidencePack.heapShallowSummary`，供 `MemoryGcDiagnosisEngine`（如 `HeapDumpShallowDominanceRule`）与 `formattedSummary` 使用；原始 dump 不进入 LLM。
+
+**相关实现要点**（与初版计划相比为增量）：
+
+- 依赖：`com.squareup.leakcanary:shark-graph` + `kotlin-stdlib`（`pom.xml`）。
+- 配置：`java-tuning-agent.heap-summary.auto-enabled`（默认 `true`）、`java-tuning-agent.offline.heap-summary.default-top-classes`、`default-max-output-chars`。
+- 工具：保留 `summarizeOfflineHeapDumpFile` 用于**单独**摘要；终局 **`generateOfflineTuningAdvice` 不再需要** `attachHeapDumpSummary` 之类开关——自动摘要由组装器/采集器完成。
+- 文档：`README.md`、`docs/offline-mode-spec.md` §5.1、`docs/superpowers/specs/2026-04-19-offline-mode-design.md`、本 skill/reference 已同步。

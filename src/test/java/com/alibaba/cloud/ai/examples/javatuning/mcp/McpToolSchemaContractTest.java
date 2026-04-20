@@ -96,6 +96,14 @@ class McpToolSchemaContractTest {
 					assertThat(schema.path("properties").path("proceedWithMissingRequired").path("type").asText())
 						.isEqualTo("boolean");
 				}
+				case "summarizeOfflineHeapDumpFile" -> {
+					assertThat(schema.path("properties").path("heapDumpAbsolutePath").path("type").asText())
+						.isEqualTo("string");
+					assertThat(schema.path("properties").path("topClassLimit").path("type").asText()).isIn("integer",
+							"number");
+					assertThat(schema.path("properties").path("maxOutputChars").path("type").asText()).isIn("integer",
+							"number");
+				}
 				default -> throw new AssertionError("Unexpected tool: " + def.name());
 			}
 		}

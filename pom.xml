@@ -72,6 +72,19 @@
 			<artifactId>spring-boot-starter-test</artifactId>
 			<scope>test</scope>
 		</dependency>
+
+		<!-- Shark: parse .hprof locally for bounded shallow heap summaries (no raw dump sent to LLM). -->
+		<dependency>
+			<groupId>com.squareup.leakcanary</groupId>
+			<artifactId>shark-graph</artifactId>
+			<version>2.14</version>
+		</dependency>
+		<!-- Required at compile time for kotlin.sequences (Shark exposes Kotlin Sequence in public API). -->
+		<dependency>
+			<groupId>org.jetbrains.kotlin</groupId>
+			<artifactId>kotlin-stdlib</artifactId>
+			<version>1.9.24</version>
+		</dependency>
 	</dependencies>
 
 	<build>

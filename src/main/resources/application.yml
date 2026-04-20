@@ -17,3 +17,11 @@ java-tuning-agent:
     - jps
     - jcmd
     - jstat
+  # When true (default via code), index .hprof with Shark after GC.heap_dump or when offline draft path exists.
+  heap-summary:
+    auto-enabled: true
+  offline:
+    heap-summary:
+      default-top-classes: 40
+      default-max-output-chars: 32000
+    # chunk-base-dir: # optional; empty uses java.io.tmpdir/java-tuning-agent-offline-chunks

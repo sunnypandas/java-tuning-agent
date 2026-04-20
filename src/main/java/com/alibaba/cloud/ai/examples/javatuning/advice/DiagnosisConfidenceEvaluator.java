@@ -37,6 +37,14 @@ public final class DiagnosisConfidenceEvaluator {
 		if (evidence.heapDumpPath() != null && !evidence.heapDumpPath().isBlank()) {
 			reasons.add("Heap dump file captured (GC.heap_dump); use MAT/VisualVM dominator tree on the returned path");
 		}
+		if (evidence.heapShallowSummary() != null && evidence.heapShallowSummary().analysisSucceeded()
+				&& evidence.heapShallowSummary().totalTrackedShallowBytes() > 0L) {
+			reasons.add("Heap dump was indexed (Shark); shallow-by-class leaders were used in heuristics and below in the report");
+		}
+		else if (evidence.heapShallowSummary() != null && !evidence.heapShallowSummary().errorMessage().isEmpty()) {
+			reasons.add("Heap dump path was present but shallow summarization failed: " + evidence.heapShallowSummary()
+					.errorMessage());
+		}
 
 		boolean leak = scratch.findings()
 			.stream()

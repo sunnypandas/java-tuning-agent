@@ -12,7 +12,7 @@
 
 - MCP 入口：`JavaTuningMcpTools` — `listJavaApps` → `inspectJvmRuntime(pid)` → `collectMemoryGcEvidence(request)` → `generateTuningAdvice(...)`。
 - 诊断核心：`JavaTuningWorkflowService#generateAdviceFromEvidence(MemoryGcEvidencePack, CodeContextSummary, environment, optimizationGoal)`。
-- 证据载体：`MemoryGcEvidencePack` = `JvmRuntimeSnapshot` + `ClassHistogramSummary` + `ThreadDumpSummary` + `missingData` / `warnings` + `heapDumpPath`。
+- 证据载体：`MemoryGcEvidencePack` = `JvmRuntimeSnapshot` + `ClassHistogramSummary` + `ThreadDumpSummary` + `missingData` / `warnings` + `heapDumpPath` + **可选** `heapShallowSummary`（对 `.hprof` 做 **Shark** 浅层按类统计后的结构化结果 + 有界 Markdown 文本；与线上一致，在 `heapDumpPath` 有效且 `java-tuning-agent.heap-summary.auto-enabled` 为 `true` 时由采集器/组装器自动填充）。
 - 在线路径下，`generateTuningAdvice` 在特权 flag 为真时先 `collectEvidence` 再 `generateAdviceFromEvidence`；否则仅构造轻量 `MemoryGcEvidencePack`（仅 snapshot）。
 
 ### 1.2 离线模式要解决的问题
@@ -111,7 +111,7 @@
 | jcmd/jstat 纯文本导出 | `JvmRuntimeSnapshot` | **优先**：复用/扩展现有 parser（如 `GcHeapInfoParser`、`SafeJvmRuntimeCollector` 输出的结构若可捕获则直填）。**否则**：最小化 snapshot（pid 来自元数据、version/flags 用正则或子集解析）+ `warnings` 标明「快照为部分解析」。 |
 | 类直方图文本 | `ClassHistogramSummary` | 复用现有直方图解析路径（与 `HistogramClassNames` 等一致）。 |
 | 线程 dump 文本 | `ThreadDumpSummary` | 复用 `ThreadDumpParser`。 |
-| `.hprof` 路径 | `heapDumpPath` + 可选后续分析 | 与线上一致存路径字符串；引擎若仅保留路径不做 MAT，须在 `missingData`/文档中说明限制。 |
+| `.hprof` 路径 | `heapDumpPath` + **自动** `heapShallowSummary`（可关） | 存**绝对路径**字符串；在自动摘要开启且文件存在时，用 **Shark** 建索引并生成**浅层**按类合计（`HeapShallowClassEntry` 列表、总浅层字节、有界 Markdown）。**不**替代 MAT 的 dominator/retained 分析；失败时 `errorMessage` 非空并写入 `warnings`。规则层可消费 `heapShallowSummary`（如 `HeapDumpShallowDominanceRule`）。 |
 
 **降级**：任一解析失败不阻断「用户选择继续」；写入 `warnings` / `missingData`，并由 `DiagnosisConfidenceEvaluator` 反映置信度。
 
@@ -156,3 +156,4 @@
 | 日期 | 说明 |
 |------|------|
 | 2026-04-19 | 初稿：brainstorming  Retrofit — 方案 A/B/C、推荐无状态草稿 + 分块工具、映射表、与 spec 分工。 |
+| 2026-04-19 | 更新 §1.1 / §4：`.hprof` 自动 Shark 浅层摘要字段 `heapShallowSummary`、可配置 `heap-summary.auto-enabled`、与规则/报告关系。 |

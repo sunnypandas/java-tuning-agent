@@ -84,8 +84,17 @@
 
 ## 5. 新增工具与 Consent
 
-- 离线分析通过**新增专用工具**（或协作的一组工具）实现输入收集与分析触发，**不替换**现有 `listJavaApps` / `inspectJvmRuntime` / `collectMemoryGcEvidence` / `generateTuningAdvice` 的语义。
+- 离线分析通过**新增专用工具**（当前共 **五个**：`validateOfflineAnalysisDraft`、`submitOfflineHeapDumpChunk`、`finalizeOfflineHeapDump`、`generateOfflineTuningAdvice`、`summarizeOfflineHeapDumpFile`）实现输入收集与分析触发，**不替换**现有 `listJavaApps` / `inspectJvmRuntime` / `collectMemoryGcEvidence` / `generateTuningAdvice` 的语义。
 - **Consent 语义与线上一致**：继续使用同一套 `confirmationToken`（及 heap 路径等既有规则中与授权相关的字段）表达用户同意；离线场景下应对齐为「用户确认使用本批导入材料进行相应分析」，**不**另起一套审批模型，以免调用方混乱。
+
+### 5.1 堆转储（`.hprof`）自动浅层摘要（Shark）
+
+- **产品目标**：当草稿或采集结果提供**已落地且可读**的 `.hprof` 路径时，分析端应**自动**对该文件做**有界**的浅层按类统计（LeakCanary **Shark**），将结构化结果写入证据包并参与规则诊断与报告，而不是仅把路径当作字符串提示。
+- **不作为**：原始二进制不送入 LLM；浅层统计**不是** Eclipse MAT 的 retained-size / dominator 分析。
+- **默认行为**：服务端默认开启自动索引（配置项 `java-tuning-agent.heap-summary.auto-enabled=true`）。关闭后仍保留 `heapDumpPath` / `heapDumpAbsolutePath` 字符串，但不填充 `heapShallowSummary`、不追加摘要 Markdown。
+- **可选工具**：`summarizeOfflineHeapDumpFile` 仍可用于**单独**拉取某路径的摘要（Markdown + `topByShallowBytes` 等），无需完整离线草稿。
+
+证据模型字段与引擎规则见 [`docs/superpowers/specs/2026-04-19-offline-mode-design.md`](superpowers/specs/2026-04-19-offline-mode-design.md) §1.1 / §4 更新说明。
 
 ---
 
@@ -149,7 +158,7 @@
 
 - 分块的**默认块大小**、超时与错误码约定（首版实现已采用 SHA-256 + 调用方提供总长度；块大小由宿主决定）。
 
-**MCP 工具 JSON 同步：** 运行 `mvn -q package`（确保未设置 `mcp.schema.export.skip=true`）会在 `target/mcp-tool-schemas.json` 生成全部工具的 `inputSchema`（含离线四件套）；将条目同步到 Cursor 工程内 `mcps/user-java-tuning-agent/tools/`（与现有 schema export 流程一致）。
+**MCP 工具 JSON 同步：** 运行 `mvn -q package`（确保未设置 `mcp.schema.export.skip=true`）会在 `target/mcp-tool-schemas.json` 生成全部工具的 `inputSchema`（当前共 **九个**工具：四个在线 + 五个离线）；将条目同步到 Cursor 工程内 `mcps/user-java-tuning-agent/tools/`（与现有 schema export 流程一致）。
 
 ---
 
@@ -162,3 +171,4 @@
 | 2026-04-19 | 增加与 `docs/superpowers/plans/2026-04-19-offline-mode.md` 实现计划链接。 |
 | 2026-04-19 | 待定项更新：工具名与 advice 对接已落地；补充 MCP schema 同步说明。 |
 | 2026-04-19 | 新增 §8.1 实现边界与已知局限（评审后固化）。 |
+| 2026-04-19 | 新增 §5.1：`.hprof` 自动 Shark 浅层摘要、配置项说明、九个 MCP 工具与 schema 同步文案更新。 |

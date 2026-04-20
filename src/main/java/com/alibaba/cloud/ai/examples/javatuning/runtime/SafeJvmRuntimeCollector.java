@@ -6,6 +6,9 @@ import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import com.alibaba.cloud.ai.examples.javatuning.offline.SharkHeapDumpSummarizer;
+import com.alibaba.cloud.ai.examples.javatuning.runtime.HeapDumpShallowSummary;
+
 public class SafeJvmRuntimeCollector implements JvmRuntimeCollector {
 
 	private static final String JCMD = "jcmd";
@@ -34,9 +37,16 @@ public class SafeJvmRuntimeCollector implements JvmRuntimeCollector {
 
 	private final RuntimeCollectionPolicy policy;
 
-	public SafeJvmRuntimeCollector(CommandExecutor executor, RuntimeCollectionPolicy policy) {
+	private final SharkHeapDumpSummarizer heapDumpSummarizer;
+
+	private final boolean autoHeapSummary;
+
+	public SafeJvmRuntimeCollector(CommandExecutor executor, RuntimeCollectionPolicy policy,
+			SharkHeapDumpSummarizer heapDumpSummarizer, boolean autoHeapSummary) {
 		this.executor = executor;
 		this.policy = policy;
+		this.heapDumpSummarizer = heapDumpSummarizer;
+		this.autoHeapSummary = autoHeapSummary;
 	}
 
 	@Override
@@ -122,12 +132,19 @@ public class SafeJvmRuntimeCollector implements JvmRuntimeCollector {
 				warnings.add("Unable to collect GC.class_histogram: " + ex.getMessage());
 			}
 		}
+		HeapDumpShallowSummary heapShallowSummary = null;
 		if (request.includeHeapDump()) {
 			Path dumpPath = Path.of(request.heapDumpOutputPath()).toAbsolutePath().normalize();
 			try {
 				String output = executor.run(heapDumpCommand(Long.toString(request.pid()), dumpPath.toString()));
 				if (Files.isRegularFile(dumpPath)) {
 					heapDumpPathResult = dumpPath.toString();
+					if (autoHeapSummary) {
+						heapShallowSummary = heapDumpSummarizer.summarize(dumpPath, null, null);
+						if (!heapShallowSummary.analysisSucceeded()) {
+							warnings.add("Heap dump shallow summary failed: " + heapShallowSummary.errorMessage());
+						}
+					}
 				}
 				else {
 					missingData.add("heapDump");
@@ -164,7 +181,7 @@ public class SafeJvmRuntimeCollector implements JvmRuntimeCollector {
 				snapshot.vmFlags(), snapshot.jvmVersion(), snapshot.threadCount(), snapshot.loadedClassCount(), metadata,
 				snapshot.warnings());
 		return new MemoryGcEvidencePack(enrichedSnapshot, classHistogram, threadDump, List.copyOf(missingData),
-				List.copyOf(warnings), heapDumpPathResult);
+				List.copyOf(warnings), heapDumpPathResult, heapShallowSummary);
 	}
 
 	private List<String> vmFlagsCommand(String pidValue) {

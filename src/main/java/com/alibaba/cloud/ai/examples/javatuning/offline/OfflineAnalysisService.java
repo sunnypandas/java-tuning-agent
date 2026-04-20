@@ -46,7 +46,7 @@ public class OfflineAnalysisService {
 		List<String> missing = new ArrayList<>(base.missingData());
 		appendRecommendedAbsenceNotes(draft, missing);
 		MemoryGcEvidencePack pack = new MemoryGcEvidencePack(base.snapshot(), base.classHistogram(), base.threadDump(),
-				missing, base.warnings(), base.heapDumpPath());
+				missing, base.warnings(), base.heapDumpPath(), base.heapShallowSummary());
 		return workflowService.generateAdviceFromEvidence(pack, codeContextSummary, environment, optimizationGoal);
 	}
 

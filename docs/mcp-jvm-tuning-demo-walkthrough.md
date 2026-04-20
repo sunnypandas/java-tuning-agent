@@ -1,22 +1,25 @@
 # MCP JVM Tuning Demo Walkthrough
 
-这份文档是一份可直接照着操作的分享脚本，目标是完成两段演示：
+这份文档是一份可直接照着操作的分享脚本，目标是完成三段演示：
 
-1. 先展示当前注册的 MCP，并重点介绍 `java-tuning-agent` 以及它暴露的 4 个 tool
-2. 先手动完成一次 JVM tuning 流程，再用 `.cursor` 里的 skill 演示一次全流程
+1. 先展示当前注册的 MCP，并重点介绍 `java-tuning-agent` 以及它暴露的 tool（**共 9 个**：4 个在线 JVM 链路 + 5 个离线导入；本脚本 **主线演示在线 4 步**）
+2. 先手动完成一次在线 JVM tuning 流程
+3. 补充一段离线模式导入材料测试，再用 `.cursor` 里的 skill 演示一次全流程
 
 建议把整场分享控制在 10 到 15 分钟，保持“先认知，再操作，再自动化”的节奏。
 
 ## Demo Storyline
 
-建议按下面 3 段来讲：
+建议按下面 4 段来讲：
 
 1. `MCP 是什么`
   先展示当前客户端里注册了哪些 MCP server，说明 `java-tuning-agent` 只是其中之一
 2. `java-tuning-agent 能做什么`
-  简单介绍它的 4 个 tool，解释这 4 类能力分别负责什么
-3. `怎么把它真正用起来`
-  先手动完成一次排查流程，再让 Agent 通过 skill 自动跑完整流程
+  简单介绍在线排查链路的 **4** 个核心 tool（完整能力含离线共 **9** 个，见仓库 [README](../README.md)）
+3. `在线流程怎么落地`
+  先手动完成一次在线排查流程
+4. `离线流程怎么落地`
+  演示离线草稿校验、可选 heap dump 分块上传、离线结论生成，再让 Agent 通过 skill 自动跑在线全流程
 
 ## Demo Preparation
 
@@ -83,7 +86,7 @@ curl.exe -X POST http://localhost:8091/api/leak/deadlock/trigger
 - [tool 参数参考](/c:/Users/panpa/Workspace/java-tuning-agent/.cursor/skills/java-tuning-agent-workflow/reference.md:1)
 - [项目规则](/c:/Users/panpa/Workspace/java-tuning-agent/.cursor/rules/java-tuning-agent-mcp.mdc:1)
 
-你可以顺手提一句：这个 skill 约束了 Agent 必须按固定流程调用这 4 个 tool，而不是随便跳步骤。
+你可以顺手提一句：这个 skill 约束了 Agent 必须按固定流程调用 **在线**这 4 个 tool（离线另有五条工具链），而不是随便跳步骤。
 
 ## Part 1: 展示当前注册的 MCP
 
@@ -101,11 +104,13 @@ curl.exe -X POST http://localhost:8091/api/leak/deadlock/trigger
 > 当前客户端里可以注册多个 MCP server，`java-tuning-agent` 只是其中一个。  
 > 它的定位不是改代码，而是把本机 JVM 的诊断能力包装成标准 MCP tool，让 Agent 可以按流程调用。
 
-## Part 2: 介绍 `java-tuning-agent` 和它的 4 个 tool
+## Part 2: 介绍 `java-tuning-agent`（在线四条主线）
+
+完整注册表里还有 **5 个离线 tool**（草稿校验、heap 分块上传与 finalize、离线 `generateOfflineTuningAdvice`、可选 `summarizeOfflineHeapDumpFile`），本段不展开，详见 [README](../README.md) 与 [offline-mode-spec.md](../offline-mode-spec.md)。
 
 ### 讲解重点
 
-这 4 个 tool 建议按这个顺序讲：
+在线排查的 **4** 个 tool 建议按这个顺序讲：
 
 
 | Tool                      | 作用               | 现场怎么讲                                      |
@@ -115,6 +120,7 @@ curl.exe -X POST http://localhost:8091/api/leak/deadlock/trigger
 | `collectMemoryGcEvidence` | 采集中等成本证据         | 需要时再拿 histogram、thread dump、heap dump      |
 | `generateTuningAdvice`    | 产出结构化分析结论        | 最后把现象归纳成 findings、recommendations、hotspots |
 
+若现场有人问 **heap dump**：补充说明采集到 `.hprof` 后，服务端在默认配置下会用 **Shark** 做**浅层**按类摘要并写进报告（非 MAT dominator）；详见 README。
 
 ### 讲解词
 
@@ -260,7 +266,134 @@ C:/Users/panpa/AppData/Local/Temp/java-tuning-agent-heap-<pid>.hprof
 > 今天为了把整条 workflow 讲清楚，我们显式把过程拆开演示了一遍。  
 > 但对真实用户来说，他看到的是一条诊断流程，不需要先知道每一步背后叫什么名字。
 
-## Part 4: 用 skill 演示一次全流程
+## Part 4: 离线模式测试步骤（无本机目标 PID）
+
+这段用于演示“生产导出的诊断材料”如何离线导入并生成结论，不依赖当前机器存在目标 Java 进程。
+
+### 适用场景
+
+- 线上 JVM 不能直接连，只有导出的文本与 `.hprof`
+- 想复盘历史问题（incident postmortem）
+- 希望在分享中对比“在线链路 vs 离线链路”
+
+### 离线链路（建议讲解顺序）
+
+建议按下面顺序演示（对应 5 个离线 tool）：
+
+1. `validateOfflineAnalysisDraft`
+2. `submitOfflineHeapDumpChunk`（可选，heap dump 很大时）
+3. `finalizeOfflineHeapDump`（仅分块上传时）
+4. `summarizeOfflineHeapDumpFile`（可选，仅看浅层摘要）
+5. `generateOfflineTuningAdvice`
+
+### Step 1. 先构建离线草稿并做一次校验
+
+先准备一个 `draft`（最小建议先填 B1-B6）：
+
+- `jvmIdentityText`（B1）
+- `jdkInfoText`（B2）
+- `runtimeSnapshotText`（B3）
+- `classHistogram`（B4，`filePath` 或 `inlineText`）
+- `threadDump`（B5，`filePath` 或 `inlineText`）
+- `heapDumpAbsolutePath`（B6，可先为空字符串，后续再填）
+
+推荐项 R1-R3 也要二选一填写：
+
+- 提供 `gcLogPathOrText`，或 `explicitlyNoGcLog=true`
+- 提供 `appLogPathOrText`，或 `explicitlyNoAppLog=true`
+- 提供 `repeatedSamplesPathOrText`，或 `explicitlyNoRepeatedSamples=true`
+
+首次校验建议 `proceedWithMissingRequired=false`，先看缺失项：
+
+```json
+{
+  "draft": {
+    "jvmIdentityText": "...",
+    "jdkInfoText": "...",
+    "runtimeSnapshotText": "...",
+    "classHistogram": { "filePath": "C:/demo/offline/class-histogram.txt", "inlineText": "" },
+    "threadDump": { "filePath": "C:/demo/offline/thread-dump.txt", "inlineText": "" },
+    "heapDumpAbsolutePath": "",
+    "gcLogPathOrText": "",
+    "appLogPathOrText": "",
+    "repeatedSamplesPathOrText": "",
+    "explicitlyNoGcLog": true,
+    "explicitlyNoAppLog": true,
+    "explicitlyNoRepeatedSamples": true,
+    "backgroundNotes": {}
+  },
+  "proceedWithMissingRequired": false
+}
+```
+
+#### 预期
+
+- 返回 `missingRequired`（若不为空，先补齐或确认降级）
+- 返回 `allowedToProceed` 与 `nextPromptZh`
+
+### Step 2. （可选）大文件 heap dump 走分块上传
+
+如果 `.hprof` 无法直接放到 MCP 服务端可访问路径，就走分块：
+
+1. 首块调用 `submitOfflineHeapDumpChunk`：`uploadId=""`，并传总分块数 `chunkTotal`
+2. 后续分块复用返回的 `uploadId`，按 `chunkIndex=0..chunkTotal-1` 提交
+3. 全部提交后调用 `finalizeOfflineHeapDump`
+
+`finalizeOfflineHeapDump` 成功后会返回 `finalizeHeapDumpPath`，把它写回 `draft.heapDumpAbsolutePath`。
+
+### Step 3. （可选）先预览 heap dump 浅层摘要
+
+如果现场想先展示“堆里是什么类型占用大”，可以先调用：
+
+- `summarizeOfflineHeapDumpFile(heapDumpAbsolutePath, topClassLimit, maxOutputChars)`
+
+这一步返回的是 Shark 的**浅层按类统计**（非 MAT dominator/retained 分析），适合作为分享中的“快速预读”。
+
+### Step 4. 生成离线 tuning 建议
+
+准备 `codeContextSummary` 后调用 `generateOfflineTuningAdvice`：
+
+- 若 `draft` 中包含 class histogram / thread dump / heap dump 路径，`confirmationToken` 需要非空
+- 若你决定“缺项也继续”，把 `proceedWithMissingRequired=true`
+
+示例（含源码上下文）：
+
+```json
+{
+  "codeContextSummary": {
+    "dependencies": [],
+    "configuration": {},
+    "applicationNames": ["MemoryLeakDemoApplication"],
+    "sourceRoots": ["C:/Users/panpa/Workspace/java-tuning-agent/compat/memory-leak-demo/src/main/java"],
+    "candidatePackages": ["com.alibaba.cloud.ai.compat.memoryleakdemo"]
+  },
+  "draft": { "...": "使用上一步确认后的完整 draft" },
+  "environment": "prod",
+  "optimizationGoal": "diagnose memory leak and reduce full gc",
+  "confirmationToken": "offline-approved-by-user",
+  "proceedWithMissingRequired": false
+}
+```
+
+#### 预期
+
+重点展示输出：
+
+- `findings`
+- `recommendations`
+- `suspectedCodeHotspots`
+- `confidence`
+- `formattedSummary`
+
+如果 `heapDumpAbsolutePath` 指向有效 `.hprof`，报告末尾通常会追加 heap shallow summary 小节。
+
+### 离线模式分享讲解词（可直接照读）
+
+> 离线模式的核心不是“连在线 JVM”，而是“把现场导出的诊断证据重新组织成结构化结论”。  
+> 我们先校验草稿完整性，再按需上传/合并 heap dump，最后统一生成 tuning report。  
+> 这样线上环境不可直连时，团队仍然可以把分析流程标准化、可复用。
+
+## Part 5: 用 skill 演示一次全流程
 
 这一段建议在 Cursor Agent 里演示，因为仓库里已经配好了 `.cursor` skill 和 rule。
 
@@ -308,7 +441,7 @@ Agent 应该会按固定顺序走：
 
 ### 这一段建议强调的价值
 
-- 不是把 4 个 tool 藏起来，而是把调用顺序产品化
+- 不是把 tool 藏起来，而是把（在线）调用顺序产品化
 - 不是让 Agent 自由发挥，而是让它遵守 skill 和 rule
 - 手动流程适合教学和调试
 - skill 流程适合真实使用和复用
@@ -318,10 +451,11 @@ Agent 应该会按固定顺序走：
 如果你想把全程压缩成一段比较自然的分享，可以照下面的节奏：
 
 1. “先看 MCP 列表，我们的 `java-tuning-agent` 是其中一个 server。”
-2. “它暴露了 4 个 tool，分别负责找 JVM、看快照、补证据、出结论。”
+2. “在线排查链路是 4 个 core tool（整站还注册离线等共 9 个），分别负责找 JVM、看快照、补证据、出结论。”
 3. “我先手动演示一遍，但会用用户语言来描述诉求，而不是直接念 tool 名字。”
-4. “现在再用 skill 跑一次，你会发现 Agent 已经会自己按这条流程去编排。”
-5. “这就是把 JVM tuning 经验沉淀成 MCP tool 和 skill 之后的价值。”
+4. “接着演示离线模式：校验草稿、可选上传 heap dump、最后生成离线结论。”
+5. “现在再用 skill 跑一次在线流程，你会发现 Agent 已经会自己按这条流程去编排。”
+6. “这就是把 JVM tuning 经验沉淀成 MCP tool 和 skill 之后的价值。”
 
 ## Troubleshooting During Demo
 

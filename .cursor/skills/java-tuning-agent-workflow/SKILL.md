@@ -10,7 +10,7 @@ description: >-
   process analysis, jcmd/jstat/MCP tools user-java-tuning-agent or java-tuning-agent.
   中文场景：JVM调优、内存、堆、GC、垃圾回收、内存泄漏、Full GC、Java进程、结合源码诊断。
   Also when the user names an app or provides a source path for deeper CodeContextSummary.
-  Offline / imported bundle: validateOfflineAnalysisDraft → optional submitOfflineHeapDumpChunk + finalizeOfflineHeapDump → generateOfflineTuningAdvice (see [Offline mode](#offline-mode-imported-bundle)).
+  Offline / imported bundle: validateOfflineAnalysisDraft → optional submitOfflineHeapDumpChunk + finalizeOfflineHeapDump → generateOfflineTuningAdvice; optional summarizeOfflineHeapDumpFile (see [Offline mode](#offline-mode-imported-bundle)).
 ---
 
 # Java tuning agent — end-to-end MCP workflow
@@ -33,9 +33,11 @@ Use when the user analyzes **production-exported** files (histogram, thread dump
 
 **Large heap:** `submitOfflineHeapDumpChunk` — first call leave `uploadId` empty and set `chunkTotal`; reuse returned `uploadId` for chunks `0 .. chunkTotal-1` (Base64). Then `finalizeOfflineHeapDump(uploadId, sha256Hex, sizeBytes)` → put `finalizeHeapDumpPath` into `draft.heapDumpAbsolutePath`.
 
+**Heap dump shallow analysis (automatic):** When `heapDumpAbsolutePath` points to an **existing** `.hprof` file and **`java-tuning-agent.heap-summary.auto-enabled`** is `true` (default), the server **indexes the dump with Shark** (LeakCanary), fills **`heapShallowSummary`** on the evidence pack, runs rules that consume it (e.g. shallow dominance), and **appends** a bounded Markdown table **after** the main report sections inside `formattedSummary`. This is **shallow-by-class** statistics only—not MAT retained-size analysis. Raw binary is **not** sent to the LLM. To **only** preview a summary without running the full offline advice pipeline, call **`summarizeOfflineHeapDumpFile`** (returns Markdown + structured top rows).
+
 **Advice:** `generateOfflineTuningAdvice` requires the same **consent semantics** as online privileged collection: non-blank `confirmationToken` when the draft includes class histogram, thread dump, or heap path (use canonical `java-tuning-agent:ui-approval:v1:pid=0:scopes=...` style with offline-appropriate scope names if the host encodes selections, or the user’s verbatim phrase).
 
-**Output:** Prefer rendering `formattedSummary` like the online pipeline (no outer Markdown fence).
+**Output:** Prefer rendering `formattedSummary` like the online pipeline (no outer Markdown fence). Expect the optional **heap dump summary** subsection at the end when a dump was indexed successfully, or a short **failed** heading if indexing errored.
 
 ## Default pipeline (four tools in order)
 
@@ -173,7 +175,7 @@ If the user later specifies a different directory, override this default for tha
 
 ## Output expectations — `formattedSummary`
 
-After step 4, `TuningAdviceReport` includes **`formattedSummary`**: a **single Markdown document** (not HTML) with a **fixed section order**: Findings → Recommendations → Suspected code hotspots → Missing data → Next steps → Confidence. The generator uses **`##` / `###` headings**, **bold labels**, **bullet lists**, and **fenced code blocks** (info string `text`) for long evidence strings so structure survives in the string.
+After step 4, `TuningAdviceReport` includes **`formattedSummary`**: a **single Markdown document** (not HTML) with a **fixed section order** for the rule-based body: Findings → Recommendations → Suspected code hotspots → Missing data → Next steps → Confidence. When a heap dump was **indexed** (online or offline), the workflow may **append** an extra `###` block for **heap shallow summary** (or a failure note) **after** the Confidence section. The generator uses **`##` / `###` headings**, **bold labels**, **bullet lists**, and **fenced code blocks** (info string `text`) for long evidence strings so structure survives in the string.
 
 ### How to show it in chat (readability)
 

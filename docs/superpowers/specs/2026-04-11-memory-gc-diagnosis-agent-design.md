@@ -524,18 +524,18 @@ This section tracks what the **current codebase** does relative to §5–§10. U
 | Layer | Location | Notes |
 |-------|----------|--------|
 | Structured runtime | `runtime.*` | `JvmRuntimeSnapshot` (includes `jvmVersion`, `threadCount` from `PerfCounter.print`’s `java.threads.live`, `loadedClassCount` from `jstat -class`), `JvmMemorySnapshot` (incl. optional `oldGenCommittedBytes`), `JvmGcSnapshot`, parsers (`GcHeapInfoParser`, `JstatGcUtilParser`, `ClassHistogramParser`, `ThreadDumpParser`, …), `SafeJvmRuntimeCollector` (default commands: `VM.flags`, **`VM.version`**, `GC.heap_info`, `jstat -gcutil`, **`jstat -class`**, **`PerfCounter.print`**). |
-| Evidence pack | `runtime.*` | `MemoryGcEvidencePack`, `MemoryGcEvidenceRequest`, optional `ThreadDumpSummary`; histogram + thread dump behind policy + `confirmationToken`. |
-| Diagnosis | `advice.*` | `MemoryGcDiagnosisEngine`, `DiagnosisRule` implementations (`HighHeapPressureRule`, `SuspectedLeakRule`, `AllocationChurnRule`, `GcStrategyMismatchRule`, `EvidenceGapRule`), `DiagnosisConfidenceEvaluator`. |
+| Evidence pack | `runtime.*` | `MemoryGcEvidencePack`, `MemoryGcEvidenceRequest`, optional `ThreadDumpSummary`; histogram + thread dump behind policy + `confirmationToken`. When a **`.hprof`** file exists and **`java-tuning-agent.heap-summary.auto-enabled`** is `true`, the pack may include **`heapShallowSummary`** (Shark shallow-by-class totals + bounded Markdown). |
+| Diagnosis | `advice.*` | `MemoryGcDiagnosisEngine`, `DiagnosisRule` implementations (`HighHeapPressureRule`, `SuspectedLeakRule`, `HeapDumpShallowDominanceRule`, `ThreadDumpInsightsRule`, `AllocationChurnRule`, `GcStrategyMismatchRule`, `EvidenceGapRule`), `DiagnosisConfidenceEvaluator`. |
 | Source correlation | `source.*` | `LocalSourceHotspotFinder` maps histogram FQCNs to `.java` paths under `CodeContextSummary.sourceRoots`. |
 | Workflow | `agent.*` | `JavaTuningWorkflowService` orchestrates diagnosis + hotspot attachment. |
 | Discovery | `discovery.*` | `JavaApplicationDescriptor` adds **`workDirHint`** (`-Duser.dir`), **`applicationTypeHint`**, **`portHints`** (`-Dserver.port` / `--server.port`), **`discoveryConfidence`**; **`userHint`** / **`jvmVersionHint`** remain empty on jps-only discovery unless extended later. |
-| MCP | `mcp.*` | `JavaTuningMcpTools` exposes the four tools listed in §16.2. |
+| MCP | `mcp.*` | `JavaTuningMcpTools` exposes four **live JVM** tools; `OfflineMcpTools` exposes five **offline/import** tools (validate, heap chunk submit/finalize, offline advice, optional heap summarize). See repository `README.md` for the full table. |
 
 ### 16.2 MCP tools (actual)
 
 - **`listJavaApps`** — unchanged intent (discovery).
 - **`inspectJvmRuntime`** — structured lightweight snapshot as in §5.2 / §6.2.
-- **`collectMemoryGcEvidence`** — implements **class histogram** when `includeClassHistogram` and **`confirmationToken`** are set. **`includeThreadDump`**: runs **`jcmd Thread.print`**, parses a **`ThreadDumpSummary`** (thread count, counts by `java.lang.Thread.State`, optional deadlock hint lines). Blank or unparseable output yields **`missingData: threadDump`** and warnings.
+- **`collectMemoryGcEvidence`** — implements **class histogram** when `includeClassHistogram` and **`confirmationToken`** are set. **`includeThreadDump`**: runs **`jcmd Thread.print`**, parses a **`ThreadDumpSummary`** (thread count, counts by `java.lang.Thread.State`, optional deadlock hint lines). Blank or unparseable output yields **`missingData: threadDump`** and warnings. **`includeHeapDump`**: after **`GC.heap_dump`**, if the target file exists and heap-summary auto-mode is enabled, **`heapShallowSummary`** is populated via **Shark** (shallow totals only; not MAT dominator analysis).
 - **`generateTuningAdvice`** — runs **`MemoryGcDiagnosisEngine`** on a **new** collection for the PID: default lightweight snapshot, or **histogram-inclusive** when **`collectClassHistogram`** and a non-blank **`confirmationToken`** are set (internally **`collectMemoryGcEvidence`**). Returns **`TuningAdviceReport`** with **`confidenceReasons`** and **`suspectedCodeHotspots`** when histogram + `sourceRoots` are present.
 
 Design §6.3 listed `gcSummary` as an evidence kind; there is **no separate gcSummary artifact** beyond the structured snapshot and histogram—the lightweight snapshot already carries GC counter fields from `jstat`.
@@ -553,6 +553,7 @@ Rough mapping to §7:
 |----------|-----------------|
 | High heap pressure | `HighHeapPressureRule` (heap utilization vs max; falls back to **old-gen %** from `jstat` when heap-used parsing is missing). |
 | Suspected leak | `SuspectedLeakRule` (histogram: dominant **application-relevant** type share; **`byte[]` / `[B`** counted—not treated as opaque “JVM internal”). |
+| Heap dump shallow leaders | `HeapDumpShallowDominanceRule` (requires successful **`heapShallowSummary`** from Shark indexing; dominant non-JDK type shallow share threshold—complements histogram timing). |
 | Allocation churn | `AllocationChurnRule` (high young GC counts/time without extreme heap fill). |
 | GC / heap parameter mismatch | `GcStrategyMismatchRule` (Xms vs Xmx spread). |
 | Insufficient evidence | `EvidenceGapRule` (heap **or** old-gen pressure without histogram; merge pack `missingData`); confidence via `DiagnosisConfidenceEvaluator`. |

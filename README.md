@@ -4,14 +4,38 @@ This example exposes MCP tools for local Java discovery, safe JVM inspection, **
 
 ## What MCP clients should discover
 
-After the server is started over stdio, MCP clients should see these tools:
+After the server is started over stdio, MCP clients should see **nine** tools: four for **live JVM** workflows and five for **offline / imported** bundles.
+
+### Live JVM tools
 
 | Tool | Role |
 |------|------|
 | `listJavaApps` | Discover JVM processes visible to the current user. |
 | `inspectJvmRuntime` | Collect a **lightweight** readonly snapshot (`jcmd` + `jstat`) structured for diagnosis. |
-| `collectMemoryGcEvidence` | Collect **medium-cost** evidence (class histogram; optional thread dump; optional **`GC.heap_dump`** to an absolute `.hprof` path) when `confirmationToken` is supplied for privileged options. Returned pack includes **`heapDumpPath`** when the dump file exists. |
-| `generateTuningAdvice` | Run the **memory/GC diagnosis engine** for the PID and `CodeContextSummary`. Default: lightweight snapshot only; optional **`collectClassHistogram`** + **`confirmationToken`** runs histogram first (same policy as `collectMemoryGcEvidence`). Response includes **`formattedSummary`**: stable Markdown of the full report (`##` / `###`, lists, fenced `text` blocks for evidence). Hosts should **paste it into the message as renderable Markdown**—**not** wrapped in an outer code fence—so structure shows; avoid paraphrasing away **`suspectedCodeHotspots`**. |
+| `collectMemoryGcEvidence` | Collect **medium-cost** evidence (class histogram; optional thread dump; optional **`GC.heap_dump`** to an absolute `.hprof` path) when `confirmationToken` is supplied for privileged options. Returned pack includes **`heapDumpPath`** when the dump file exists. When **`java-tuning-agent.heap-summary.auto-enabled`** is `true` (default) and the `.hprof` file is present, the pack also includes a **Shark-based shallow heap summary** (`heapShallowSummary`) used by the diagnosis engine and appended to `formattedSummary` (see below). |
+| `generateTuningAdvice` | Run the **rule-based memory/GC diagnosis engine** for the PID and `CodeContextSummary`. Default: lightweight snapshot only; optional **`collectClassHistogram`** + **`confirmationToken`** runs histogram first (same policy as `collectMemoryGcEvidence`). Response includes **`formattedSummary`**: stable Markdown of the full report (`##` / `###`, lists, fenced `text` blocks for evidence), **plus** an optional **heap dump shallow summary** section when a dump was collected and indexed. Hosts should **paste it into the message as renderable Markdown**—**not** wrapped in an outer code fence—so structure shows; avoid paraphrasing away **`suspectedCodeHotspots`**. |
+
+### Offline / imported bundle tools
+
+| Tool | Role |
+|------|------|
+| `validateOfflineAnalysisDraft` | Validate an `OfflineBundleDraft` (B1–B6, recommended “absent” flags, degradation). |
+| `submitOfflineHeapDumpChunk` | Upload one Base64 chunk of a large `.hprof` (with `uploadId` / `chunkIndex` / `chunkTotal`). |
+| `finalizeOfflineHeapDump` | Merge chunks, verify SHA-256 and size, return absolute path for `heapDumpAbsolutePath`. |
+| `generateOfflineTuningAdvice` | Assemble `MemoryGcEvidencePack` from the draft and run the same `generateAdviceFromEvidence` path as online. If `heapDumpAbsolutePath` points to an existing file and heap summary auto-mode is on, the server **indexes the dump with Shark** and feeds **`heapShallowSummary`** into rules and `formattedSummary`. |
+| `summarizeOfflineHeapDumpFile` | **Optional** ad-hoc call: return Markdown + structured top shallow-by-class rows for a local `.hprof` without running the full advice pipeline. |
+
+**Diagnosis engine note:** Findings and recommendations are produced by **deterministic Java rules** (`MemoryGcDiagnosisEngine`), including optional **heap shallow dominance** when `heapShallowSummary` is present—not by the LLM. The model’s role is tool orchestration and explanation. Shallow totals are **not** MAT retained-size / dominator analysis.
+
+**Configuration (heap shallow summary):**
+
+| Property | Default | Meaning |
+|----------|---------|--------|
+| `java-tuning-agent.heap-summary.auto-enabled` | `true` | When `true`, automatically run Shark indexing when a `.hprof` path is valid (online after `GC.heap_dump`, or offline draft path). Set `false` to skip indexing (large dumps / CI). |
+| `java-tuning-agent.offline.heap-summary.default-top-classes` | `40` | Max types in the shallow leader table (Markdown + structured entries). |
+| `java-tuning-agent.offline.heap-summary.default-max-output-chars` | `32000` | Max Markdown characters for the summary block. |
+
+You can set these in `application.yml`, environment variables, or JVM system properties using Spring Boot’s relaxed binding (`JAVA_TUNING_AGENT_HEAP_SUMMARY_AUTO_ENABLED=false`, etc.).
 
 ## Memory/GC diagnosis flow
 
@@ -38,7 +62,7 @@ After the server is started over stdio, MCP clients should see these tools:
 - **`nextSteps`**: suggested follow-up evidence or validation.  
 - **`confidence`**: `high` \| `medium` \| `low`.  
 - **`confidenceReasons`**: short explanations for the confidence level.  
-- **`formattedSummary`**: Markdown string with **fixed section order** (`Findings` → `Recommendations` → `Suspected code hotspots` → `Missing data` → `Next steps` → `Confidence`). MCP/LLM clients should **surface this field verbatim** in the chat body as **renderable Markdown** (no outer fence around the whole string—that hides headings and lists). Use an outer code fence only if the user wants a raw copy-paste blob or the host cannot render Markdown. A short preamble (PID, `.hprof` path) above the summary is fine. The structured JSON fields remain for programmatic use.
+- **`formattedSummary`**: Markdown string with **fixed section order** for the rule-based report (`Findings` → `Recommendations` → `Suspected code hotspots` → `Missing data` → `Next steps` → `Confidence`). When a heap dump was **indexed** (Shark), the same string may end with an **extra** `### Heap dump file summary (local, shallow by class)` block (or a short **failed** note if indexing errored). MCP/LLM clients should **surface this field verbatim** in the chat body as **renderable Markdown** (no outer fence around the whole string—that hides headings and lists). Use an outer code fence only if the user wants a raw copy-paste blob or the host cannot render Markdown. A short preamble (PID, `.hprof` path) above the summary is fine. The structured JSON fields remain for programmatic use.
 
 ## `CodeContextSummary`
 
@@ -112,7 +136,7 @@ For user-level configuration, put the same server entry in your user `mcp.json`.
 
 ## Use from Cursor
 
-This repository includes a **project skill** that runs the four MCP tools in sequence (`listJavaApps` → `inspectJvmRuntime` → `collectMemoryGcEvidence` → `generateTuningAdvice`), supports interactive PID disambiguation, and requires explicit user approval before privileged options (histogram, thread dump, heap dump).
+This repository includes a **project skill** that runs the **live** MCP tools in sequence (`listJavaApps` → `inspectJvmRuntime` → `collectMemoryGcEvidence` → `generateTuningAdvice`), supports interactive PID disambiguation, and requires explicit user approval before privileged options (histogram, thread dump, heap dump). For **offline** bundles, the skill documents a separate path using the five offline tools above.
 
 - [`.cursor/skills/java-tuning-agent-workflow/SKILL.md`](.cursor/skills/java-tuning-agent-workflow/SKILL.md) — workflow instructions for the agent  
 - [`.cursor/skills/java-tuning-agent-workflow/reference.md`](.cursor/skills/java-tuning-agent-workflow/reference.md) — JSON argument templates for each tool  
@@ -154,10 +178,8 @@ On Windows, **`java -jar target/java-tuning-agent-*.jar`** keeps that file **loc
 ## Further reading
 
 - Cursor workflow skill: [`.cursor/skills/java-tuning-agent-workflow/SKILL.md`](.cursor/skills/java-tuning-agent-workflow/SKILL.md)  
+- Offline mode requirements: [docs/offline-mode-spec.md](docs/offline-mode-spec.md)  
 - Design: [docs/superpowers/specs/2026-04-11-memory-gc-diagnosis-agent-design.md](docs/superpowers/specs/2026-04-11-memory-gc-diagnosis-agent-design.md)  
-- Implementation plan (task breakdown): [docs/superpowers/plans/2026-04-11-memory-gc-diagnosis-agent.md](docs/superpowers/plans/2026-04-11-memory-gc-diagnosis-agent.md)
-
-
-Join: https://teams.microsoft.com/meet/377640496112745?p=SKf7FnVtYJqZjhsPpy
-Meeting ID: 377 640 496 112 745
-Passcode: 3uW2iT9c
+- Offline design: [docs/superpowers/specs/2026-04-19-offline-mode-design.md](docs/superpowers/specs/2026-04-19-offline-mode-design.md)  
+- Implementation plan (task breakdown): [docs/superpowers/plans/2026-04-11-memory-gc-diagnosis-agent.md](docs/superpowers/plans/2026-04-11-memory-gc-diagnosis-agent.md)  
+- Offline implementation plan: [docs/superpowers/plans/2026-04-19-offline-mode.md](docs/superpowers/plans/2026-04-19-offline-mode.md)

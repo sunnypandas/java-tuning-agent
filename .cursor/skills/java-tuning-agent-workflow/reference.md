@@ -126,3 +126,74 @@ When unknown, use `[]` or `{}` as appropriate; the schema requires all five keys
 **Mirroring step 3:** If you already ran `collectMemoryGcEvidence` with histogram/thread/heap, call `generateTuningAdvice` with the same `collectClassHistogram` / `collectThreadDump` / `includeHeapDump` / `heapDumpOutputPath` / `confirmationToken` values in the same turn after **one** consent (UI multi-select or chat).
 
 **Response shape:** `TuningAdviceReport` includes **`formattedSummary`**: Markdown with fixed section order (`##` / `###`, lists, fenced `text` code blocks for evidence). **Show it in the chat as renderable Markdown** — paste the string into the message body **without** wrapping the whole thing in an outer code fence (that hides formatting). Add a short preamble above if needed. Do not paraphrase away `suspectedCodeHotspots` or other sections.
+
+**Heap dump indexing:** When `includeHeapDump` produced a file and **`java-tuning-agent.heap-summary.auto-enabled`** is `true`, the returned `MemoryGcEvidencePack` includes **`heapShallowSummary`** (Shark shallow-by-class stats). The report’s `formattedSummary` may end with an appended **heap summary** section (or a failure message).
+
+---
+
+## 5. Offline / imported bundle tools
+
+Use when there is **no** local target PID: the user provides exported `jcmd`/`jstat` text, class histogram, thread dump, and/or a **local** `.hprof` path (or uses chunk upload + finalize). **Five** tools: `validateOfflineAnalysisDraft`, `submitOfflineHeapDumpChunk`, `finalizeOfflineHeapDump`, `generateOfflineTuningAdvice`, `summarizeOfflineHeapDumpFile`. **Consent:** same `confirmationToken` rules as online when the draft includes histogram, thread dump, or heap path (non-blank token required).
+
+**5.1 `validateOfflineAnalysisDraft`**
+
+```json
+{
+  "draft": { },
+  "proceedWithMissingRequired": false
+}
+```
+
+`draft` is a full `OfflineBundleDraft` (B1–B6, optional R1–R3 “absent” flags, `heapDumpAbsolutePath`, `backgroundNotes`, etc.). Set `proceedWithMissingRequired: true` only after the user explicitly accepts degraded analysis.
+
+**5.2 `submitOfflineHeapDumpChunk`**
+
+```json
+{
+  "uploadId": "",
+  "chunkIndex": 0,
+  "chunkTotal": 3,
+  "chunkBase64": "<base64 bytes>"
+}
+```
+
+First call: leave `uploadId` empty; reuse the returned `uploadId` for all chunks `0 .. chunkTotal-1`.
+
+**5.3 `finalizeOfflineHeapDump`**
+
+```json
+{
+  "uploadId": "<id from submit>",
+  "expectedSha256Hex": "<lowercase or uppercase hex>",
+  "expectedSizeBytes": 12345678
+}
+```
+
+Write the returned path into `draft.heapDumpAbsolutePath` before `generateOfflineTuningAdvice`.
+
+**5.4 `generateOfflineTuningAdvice`**
+
+```json
+{
+  "codeContextSummary": { },
+  "draft": { },
+  "environment": "prod",
+  "optimizationGoal": "reduce memory growth",
+  "confirmationToken": "user-verbatim-or-canonical-offline-scopes",
+  "proceedWithMissingRequired": false
+}
+```
+
+When `heapDumpAbsolutePath` is a real file and heap auto-summary is on, the server **automatically** runs Shark and includes the result in the same `TuningAdviceReport` as online (findings from rules, not the LLM).
+
+**5.5 `summarizeOfflineHeapDumpFile` (optional)**
+
+```json
+{
+  "heapDumpAbsolutePath": "C:/data/heap.hprof",
+  "topClassLimit": 40,
+  "maxOutputChars": 32000
+}
+```
+
+Use for a **standalone** shallow table / `topByShallowBytes` without running the full offline advice. Omit `topClassLimit` / `maxOutputChars` to use server defaults.

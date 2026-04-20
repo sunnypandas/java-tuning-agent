@@ -88,7 +88,7 @@ public class JavaTuningMcpTools {
 			return workflowService.generateAdviceFromEvidence(pack, codeContextSummary, environment, optimizationGoal);
 		}
 		JvmRuntimeSnapshot snapshot = collector.collect(pid, RuntimeCollectionPolicy.CollectionRequest.safeReadonly());
-		MemoryGcEvidencePack light = new MemoryGcEvidencePack(snapshot, null, null, List.of(), List.of(), null);
+		MemoryGcEvidencePack light = new MemoryGcEvidencePack(snapshot, null, null, List.of(), List.of(), null, null);
 		return workflowService.generateAdviceFromEvidence(light, codeContextSummary, environment, optimizationGoal);
 	}
 

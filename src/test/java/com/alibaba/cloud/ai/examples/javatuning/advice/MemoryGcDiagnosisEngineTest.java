@@ -27,7 +27,7 @@ class MemoryGcDiagnosisEngineTest {
 						null, null, null),
 				new JvmGcSnapshot("G1", 100L, 100L, 0L, 0L, 40.0d), List.of("-XX:+UseG1GC"), "", null, null,
 				new JvmCollectionMetadata(List.of(), 0L, 0L, false), List.of());
-		MemoryGcEvidencePack evidence = new MemoryGcEvidencePack(snapshot, histogram, null, List.of(), List.of(), null);
+		MemoryGcEvidencePack evidence = new MemoryGcEvidencePack(snapshot, histogram, null, List.of(), List.of(), null, null);
 		CodeContextSummary context = CodeContextSummary.withoutSource(List.of(), java.util.Map.of(), List.of());
 
 		TuningAdviceReport report = MemoryGcDiagnosisEngine.firstVersion()
@@ -45,7 +45,7 @@ class MemoryGcDiagnosisEngineTest {
 						null, null, null),
 				new JvmGcSnapshot("G1", 1200L, 0L, 0L, 0L, null), List.of("-XX:+UseG1GC"), "", null, null,
 				new JvmCollectionMetadata(List.of("jcmd 123 GC.heap_info"), 0L, 0L, false), List.of());
-		MemoryGcEvidencePack evidence = new MemoryGcEvidencePack(snapshot, null, null, List.of(), List.of(), null);
+		MemoryGcEvidencePack evidence = new MemoryGcEvidencePack(snapshot, null, null, List.of(), List.of(), null, null);
 		CodeContextSummary context = CodeContextSummary.withoutSource(List.of("spring-boot-starter-web"),
 				java.util.Map.of("server.tomcat.threads.max", "200"), List.of("orders"));
 
@@ -64,7 +64,7 @@ class MemoryGcDiagnosisEngineTest {
 						null, null, null),
 				new JvmGcSnapshot("G1", 200L, 0L, 8L, 0L, 86.22d), List.of("-XX:+UseG1GC"), "", null, null,
 				new JvmCollectionMetadata(List.of(), 0L, 0L, false), List.of());
-		MemoryGcEvidencePack evidence = new MemoryGcEvidencePack(snapshot, null, null, List.of(), List.of(), null);
+		MemoryGcEvidencePack evidence = new MemoryGcEvidencePack(snapshot, null, null, List.of(), List.of(), null, null);
 
 		TuningAdviceReport report = MemoryGcDiagnosisEngine.firstVersion()
 			.diagnose(evidence, CodeContextSummary.withoutSource(List.of(), Map.of(), List.of()), "local", "stabilize-heap");
@@ -87,7 +87,7 @@ class MemoryGcDiagnosisEngineTest {
 				new JvmMemorySnapshot(0L, 0L, 256L * 1024L * 1024L, null, null, null, null, null),
 				new JvmGcSnapshot("G1", 5L, 10L, 0L, 0L, 30.0d), List.of("-XX:+UseG1GC"), "", null, null,
 				new JvmCollectionMetadata(List.of(), 0L, 0L, false), List.of());
-		MemoryGcEvidencePack evidence = new MemoryGcEvidencePack(snapshot, histogram, null, List.of(), List.of(), null);
+		MemoryGcEvidencePack evidence = new MemoryGcEvidencePack(snapshot, histogram, null, List.of(), List.of(), null, null);
 
 		TuningAdviceReport report = MemoryGcDiagnosisEngine.firstVersion()
 			.diagnose(evidence, CodeContextSummary.withoutSource(List.of(), java.util.Map.of(), List.of()), "local",
@@ -105,7 +105,7 @@ class MemoryGcDiagnosisEngineTest {
 				new JvmCollectionMetadata(List.of(), 0L, 0L, false), List.of());
 		ThreadDumpSummary threadDump = new ThreadDumpSummary(2, Map.of("BLOCKED", 2L),
 				List.of("Found one Java-level deadlock:", "\"worker-1\" waiting to lock"));
-		MemoryGcEvidencePack evidence = new MemoryGcEvidencePack(snapshot, null, threadDump, List.of(), List.of(), null);
+		MemoryGcEvidencePack evidence = new MemoryGcEvidencePack(snapshot, null, threadDump, List.of(), List.of(), null, null);
 
 		TuningAdviceReport report = MemoryGcDiagnosisEngine.firstVersion()
 			.diagnose(evidence, CodeContextSummary.withoutSource(List.of(), java.util.Map.of(), List.of()), "local",
@@ -124,7 +124,7 @@ class MemoryGcDiagnosisEngineTest {
 				new JvmGcSnapshot("G1", 1L, 1L, 0L, 0L, null), List.of(), "", null, null,
 				new JvmCollectionMetadata(List.of(), 0L, 0L, false), List.of());
 		ThreadDumpSummary threadDump = new ThreadDumpSummary(20, Map.of("BLOCKED", 5L, "RUNNABLE", 15L), List.of());
-		MemoryGcEvidencePack evidence = new MemoryGcEvidencePack(snapshot, null, threadDump, List.of(), List.of(), null);
+		MemoryGcEvidencePack evidence = new MemoryGcEvidencePack(snapshot, null, threadDump, List.of(), List.of(), null, null);
 
 		TuningAdviceReport report = MemoryGcDiagnosisEngine.firstVersion()
 			.diagnose(evidence, CodeContextSummary.withoutSource(List.of(), java.util.Map.of(), List.of()), "local",
@@ -141,7 +141,7 @@ class MemoryGcDiagnosisEngineTest {
 				new JvmGcSnapshot("G1", 1L, 1L, 0L, 0L, null), List.of(), "", null, null,
 				new JvmCollectionMetadata(List.of(), 0L, 0L, false), List.of());
 		ThreadDumpSummary threadDump = new ThreadDumpSummary(100, Map.of("BLOCKED", 7L, "RUNNABLE", 93L), List.of());
-		MemoryGcEvidencePack evidence = new MemoryGcEvidencePack(snapshot, null, threadDump, List.of(), List.of(), null);
+		MemoryGcEvidencePack evidence = new MemoryGcEvidencePack(snapshot, null, threadDump, List.of(), List.of(), null, null);
 
 		TuningAdviceReport report = MemoryGcDiagnosisEngine.firstVersion()
 			.diagnose(evidence, CodeContextSummary.withoutSource(List.of(), java.util.Map.of(), List.of()), "local",
@@ -160,7 +160,7 @@ class MemoryGcDiagnosisEngineTest {
 				new JvmGcSnapshot("G1", 1L, 1L, 0L, 0L, null), List.of(), "", null, null,
 				new JvmCollectionMetadata(List.of(), 0L, 0L, false), List.of());
 		ThreadDumpSummary threadDump = new ThreadDumpSummary(200, Map.of("BLOCKED", 5L, "RUNNABLE", 195L), List.of());
-		MemoryGcEvidencePack evidence = new MemoryGcEvidencePack(snapshot, null, threadDump, List.of(), List.of(), null);
+		MemoryGcEvidencePack evidence = new MemoryGcEvidencePack(snapshot, null, threadDump, List.of(), List.of(), null, null);
 
 		TuningAdviceReport report = MemoryGcDiagnosisEngine.firstVersion()
 			.diagnose(evidence, CodeContextSummary.withoutSource(List.of(), java.util.Map.of(), List.of()), "local",
@@ -178,7 +178,7 @@ class MemoryGcDiagnosisEngineTest {
 				new JvmCollectionMetadata(List.of(), 0L, 0L, false), List.of());
 		ThreadDumpSummary threadDump = new ThreadDumpSummary(2, Map.of("RUNNABLE", 2L),
 				List.of("Found one Java-level deadlock:"));
-		MemoryGcEvidencePack evidence = new MemoryGcEvidencePack(snapshot, null, threadDump, List.of(), List.of(), null);
+		MemoryGcEvidencePack evidence = new MemoryGcEvidencePack(snapshot, null, threadDump, List.of(), List.of(), null, null);
 
 		TuningAdviceReport report = MemoryGcDiagnosisEngine.firstVersion()
 			.diagnose(evidence, CodeContextSummary.withoutSource(List.of(), java.util.Map.of(), List.of()), "local",

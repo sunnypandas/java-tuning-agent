@@ -18,6 +18,7 @@ import com.alibaba.cloud.ai.examples.javatuning.offline.OfflineAnalysisService;
 import com.alibaba.cloud.ai.examples.javatuning.offline.OfflineDraftValidator;
 import com.alibaba.cloud.ai.examples.javatuning.offline.OfflineEvidenceAssembler;
 import com.alibaba.cloud.ai.examples.javatuning.offline.OfflineJvmSnapshotAssembler;
+import com.alibaba.cloud.ai.examples.javatuning.offline.SharkHeapDumpSummarizer;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.ClassHistogramParser;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.CommandExecutor;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.JvmRuntimeCollector;
@@ -57,8 +58,10 @@ public class JavaTuningAgentConfig {
 	}
 
 	@Bean
-	JvmRuntimeCollector jvmRuntimeCollector(CommandExecutor commandExecutor, RuntimeCollectionPolicy policy) {
-		return new SafeJvmRuntimeCollector(commandExecutor, policy);
+	JvmRuntimeCollector jvmRuntimeCollector(CommandExecutor commandExecutor, RuntimeCollectionPolicy policy,
+			SharkHeapDumpSummarizer sharkHeapDumpSummarizer,
+			@Value("${java-tuning-agent.heap-summary.auto-enabled:true}") boolean autoHeapSummary) {
+		return new SafeJvmRuntimeCollector(commandExecutor, policy, sharkHeapDumpSummarizer, autoHeapSummary);
 	}
 
 	@Bean
@@ -94,8 +97,11 @@ public class JavaTuningAgentConfig {
 	}
 
 	@Bean
-	OfflineEvidenceAssembler offlineEvidenceAssembler(OfflineJvmSnapshotAssembler snapshotAssembler) {
-		return new OfflineEvidenceAssembler(snapshotAssembler, new ClassHistogramParser(), new ThreadDumpParser());
+	OfflineEvidenceAssembler offlineEvidenceAssembler(OfflineJvmSnapshotAssembler snapshotAssembler,
+			SharkHeapDumpSummarizer sharkHeapDumpSummarizer,
+			@Value("${java-tuning-agent.heap-summary.auto-enabled:true}") boolean autoHeapSummary) {
+		return new OfflineEvidenceAssembler(snapshotAssembler, new ClassHistogramParser(), new ThreadDumpParser(),
+				sharkHeapDumpSummarizer, autoHeapSummary);
 	}
 
 	@Bean
@@ -114,6 +120,13 @@ public class JavaTuningAgentConfig {
 	}
 
 	@Bean
+	SharkHeapDumpSummarizer sharkHeapDumpSummarizer(
+			@Value("${java-tuning-agent.offline.heap-summary.default-top-classes:40}") int defaultTopClasses,
+			@Value("${java-tuning-agent.offline.heap-summary.default-max-output-chars:32000}") int defaultMaxOutputChars) {
+		return new SharkHeapDumpSummarizer(defaultTopClasses, defaultMaxOutputChars);
+	}
+
+	@Bean
 	OfflineAnalysisService offlineAnalysisService(OfflineDraftValidator validator,
 			OfflineEvidenceAssembler evidenceAssembler, JavaTuningWorkflowService workflowService) {
 		return new OfflineAnalysisService(validator, evidenceAssembler, workflowService);
@@ -121,8 +134,8 @@ public class JavaTuningAgentConfig {
 
 	@Bean
 	OfflineMcpTools offlineMcpTools(OfflineAnalysisService offlineAnalysisService,
-			HeapDumpChunkRepository heapDumpChunkRepository) {
-		return new OfflineMcpTools(offlineAnalysisService, heapDumpChunkRepository);
+			HeapDumpChunkRepository heapDumpChunkRepository, SharkHeapDumpSummarizer sharkHeapDumpSummarizer) {
+		return new OfflineMcpTools(offlineAnalysisService, heapDumpChunkRepository, sharkHeapDumpSummarizer);
 	}
 
 	@Bean

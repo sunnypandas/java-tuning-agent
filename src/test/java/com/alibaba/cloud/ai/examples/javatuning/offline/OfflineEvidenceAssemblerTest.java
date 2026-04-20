@@ -18,7 +18,7 @@ class OfflineEvidenceAssemblerTest {
 	private final OfflineJvmSnapshotAssembler snapshotAssembler = new OfflineJvmSnapshotAssembler();
 
 	private final OfflineEvidenceAssembler assembler = new OfflineEvidenceAssembler(snapshotAssembler,
-			new ClassHistogramParser(), new ThreadDumpParser());
+			new ClassHistogramParser(), new ThreadDumpParser(), new SharkHeapDumpSummarizer(40, 32000), false);
 
 	@Test
 	void buildsPackWithHistogramThreadDumpAndPaths() {
