@@ -3,6 +3,7 @@ target/
 **/target/
 
 # Temporary hidden directories
+.worktrees/
 .tmp/
 .temp/
 .cache/
