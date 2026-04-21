@@ -2,6 +2,7 @@ package com.alibaba.cloud.ai.examples.javatuning.mcp;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.Arrays;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.tool.ToolCallbackProvider;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -104,9 +105,28 @@ class McpToolSchemaContractTest {
 					assertThat(schema.path("properties").path("maxOutputChars").path("type").asText()).isIn("integer",
 							"number");
 				}
+				case "analyzeOfflineHeapRetention" -> {
+					assertThat(schema.path("properties").path("heapDumpAbsolutePath").path("type").asText())
+						.isEqualTo("string");
+					assertThat(schema.path("properties").path("analysisDepth").path("type").asText())
+						.isEqualTo("string");
+					assertThat(schema.path("properties").path("focusTypes").path("type").asText()).isEqualTo("array");
+					assertThat(schema.path("properties").path("focusPackages").path("type").asText())
+						.isEqualTo("array");
+				}
 				default -> throw new AssertionError("Unexpected tool: " + def.name());
 			}
 		}
+	}
+
+	@Test
+	void analyzeOfflineHeapRetentionShouldExposeExpectedSchema() throws Exception {
+		JsonNode schema = schemaForTool("analyzeOfflineHeapRetention");
+		assertThat(schema.path("type").asText()).isEqualTo("object");
+		assertThat(schema.path("properties").path("heapDumpAbsolutePath").path("type").asText()).isEqualTo("string");
+		assertThat(schema.path("properties").path("analysisDepth").path("type").asText()).isEqualTo("string");
+		assertThat(schema.path("properties").path("focusTypes").path("type").asText()).isEqualTo("array");
+		assertThat(schema.path("properties").path("focusPackages").path("type").asText()).isEqualTo("array");
 	}
 
 	@Test
@@ -151,6 +171,22 @@ class McpToolSchemaContractTest {
 			}
 		}
 		return false;
+	}
+
+	private JsonNode schemaForTool(String toolName) throws Exception {
+		return Arrays.stream(toolCallbackProvider.getToolCallbacks())
+			.map(callback -> callback.getToolDefinition())
+			.filter(def -> toolName.equals(def.name()))
+			.findFirst()
+			.map(def -> {
+				try {
+					return mapper.readTree(def.inputSchema());
+				}
+				catch (Exception e) {
+					throw new RuntimeException(e);
+				}
+			})
+			.orElseThrow(() -> new AssertionError("Missing tool: " + toolName));
 	}
 
 }
