@@ -16,7 +16,7 @@ public final class HeapRetentionMarkdownRenderer {
 		StringBuilder sb = new StringBuilder();
 		sb.append("### Heap retention analysis (local, holder-oriented)\n\n");
 		sb.append(
-				"Shark retention hint output. `reachable subgraph` is approximate, and this is not full dominator retained-size analysis.\n\n");
+				"Shark retention hint output. `reachable subgraph` is a bounded graph-based approximation, and this is not full dominator retained-size analysis.\n\n");
 		if (heapDumpPath != null) {
 			sb.append("**Source:** `").append(heapDumpPath).append("`\n\n");
 		}

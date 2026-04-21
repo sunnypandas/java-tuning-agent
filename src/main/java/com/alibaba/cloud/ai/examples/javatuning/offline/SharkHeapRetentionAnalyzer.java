@@ -39,7 +39,11 @@ public final class SharkHeapRetentionAnalyzer implements HeapRetentionAnalyzer {
 
 	private static final String ENGINE = "shark";
 
-	private static final String PHASE_ONE_NOTE = "Shark path-based retention hint; retainedBytesApprox unavailable in phase 1.";
+	private static final String PHASE_ONE_NOTE = "Shark path-based retention hint with bounded outbound graph sizing; retainedBytesApprox unavailable in phase 1.";
+
+	private static final int HOLDER_TRACE_NODE_LIMIT = 512;
+
+	private static final int REACHABLE_GRAPH_NODE_LIMIT = 256;
 
 	private final int defaultTopObjects;
 
@@ -72,9 +76,10 @@ public final class SharkHeapRetentionAnalyzer implements HeapRetentionAnalyzer {
 			return failure("Not a regular file: " + normalized);
 		}
 
+		List<String> normalizedFocusPackages = normalizeFocusPackages(focusPackages);
 		try (CloseableHeapGraph graph = openGraph(normalized)) {
-			AnalysisIndex index = indexGraph(graph, normalizedFocusTypes(focusTypes), normalizeFocusPackages(focusPackages));
-			List<PathAnalysis> analyses = analyzeCandidates(index, topN, depthLimit(analysisDepth));
+			AnalysisIndex index = indexGraph(graph, normalizedFocusTypes(focusTypes));
+			List<PathAnalysis> analyses = analyzeCandidates(index, topN, depthLimit(analysisDepth), normalizedFocusPackages);
 			HeapRetentionSummary summary = buildSummary(normalized, analyses, topN, maxChars, focusTypes, focusPackages);
 			return new HeapRetentionAnalysisResult(true, ENGINE, summary.warnings(), "", summary, summary.summaryMarkdown());
 		}
@@ -96,7 +101,7 @@ public final class SharkHeapRetentionAnalyzer implements HeapRetentionAnalyzer {
 			warnings.add("No candidate objects matched the requested focus types; returned an empty retention hint summary.");
 		}
 		if (focusPackages != null && !focusPackages.isEmpty()) {
-			warnings.add("focusPackages influences path ranking only in phase 1; it is not a hard filter.");
+			warnings.add("focusPackages prioritizes candidate selection before bounded truncation in phase 1; it is not a hard filter.");
 		}
 
 		List<RetainedTypeSummary> dominantTypes = buildDominantTypes(analyses, topN);
@@ -106,7 +111,7 @@ public final class SharkHeapRetentionAnalyzer implements HeapRetentionAnalyzer {
 
 		HeapRetentionConfidence confidence = new HeapRetentionConfidence(analyses.isEmpty() ? "low" : "medium",
 				List.of("Retained bytes are approximate or unavailable in phase 1.",
-						"reachableSubgraphBytesApprox is a path-based hint, not exact retained size."),
+						"reachableSubgraphBytesApprox is a bounded outbound graph hint, not exact retained size."),
 				List.of("Engine=shark", "Holder chains are representative, not exhaustive.",
 						"focusTypes=" + normalizedFocusTypes(focusTypes)));
 
@@ -117,10 +122,10 @@ public final class SharkHeapRetentionAnalyzer implements HeapRetentionAnalyzer {
 				"");
 	}
 
-	private List<PathAnalysis> analyzeCandidates(AnalysisIndex index, int topN, int depthLimit) {
+	private List<PathAnalysis> analyzeCandidates(AnalysisIndex index, int topN, int depthLimit, List<String> focusPackages) {
 		int candidateLimit = Math.max(topN * 4, topN);
 		List<Candidate> candidates = index.candidates().stream()
-			.sorted(Comparator.comparingLong(Candidate::shallowBytes).reversed().thenComparing(Candidate::typeName))
+			.sorted(candidateComparator(focusPackages))
 			.limit(candidateLimit)
 			.toList();
 
@@ -156,7 +161,7 @@ public final class SharkHeapRetentionAnalyzer implements HeapRetentionAnalyzer {
 			childByOwnerId.put(bestOwner, candidate.objectId());
 		}
 
-		while (!queue.isEmpty() && visited.size() <= 512) {
+		while (!queue.isEmpty() && visited.size() <= HOLDER_TRACE_NODE_LIMIT) {
 			QueueNode node = queue.removeFirst();
 			List<RefEdge> inbound = orderedInbound(index, index.inboundEdges().get(node.objectId()));
 			for (RefEdge edge : inbound) {
@@ -168,7 +173,7 @@ public final class SharkHeapRetentionAnalyzer implements HeapRetentionAnalyzer {
 				bestOwner = edge.ownerId();
 				bestEdge = edge;
 				if (edge.staticField() || index.gcRootKindsByObjectId().containsKey(edge.ownerId())) {
-					return buildTrace(index, candidate, edge.ownerId(), edgeByOwnerId, childByOwnerId);
+					return buildTrace(index, candidate, edge.ownerId(), edgeByOwnerId, childByOwnerId, depthLimit);
 				}
 				if (node.depth() + 1 < depthLimit) {
 					queue.addLast(new QueueNode(edge.ownerId(), node.depth() + 1));
@@ -179,11 +184,11 @@ public final class SharkHeapRetentionAnalyzer implements HeapRetentionAnalyzer {
 		if (bestOwner == null || bestEdge == null) {
 			return null;
 		}
-		return buildTrace(index, candidate, bestOwner, edgeByOwnerId, childByOwnerId);
+		return buildTrace(index, candidate, bestOwner, edgeByOwnerId, childByOwnerId, depthLimit);
 	}
 
 	private PathTrace buildTrace(AnalysisIndex index, Candidate candidate, long holderObjectId, Map<Long, RefEdge> edgeByOwnerId,
-			Map<Long, Long> childByOwnerId) {
+			Map<Long, Long> childByOwnerId, int reachableDepthLimit) {
 		List<RefEdge> chain = new ArrayList<>();
 		long currentOwner = holderObjectId;
 		while (currentOwner != candidate.objectId()) {
@@ -206,14 +211,15 @@ public final class SharkHeapRetentionAnalyzer implements HeapRetentionAnalyzer {
 		String rootKind = chain.get(0).staticField() ? "system-class"
 				: firstOrDefault(index.gcRootKindsByObjectId().get(holderObjectId), "unknown");
 		String exampleFieldPath = buildFieldPath(chain);
+		long reachableSubgraphBytesApprox = estimateReachableSubgraphBytes(index, candidate.objectId(), reachableDepthLimit);
 		List<RetentionChainSegment> segments = new ArrayList<>(chain.size());
 		for (RefEdge edge : chain) {
 			ObjectInfo target = index.objectsById().get(edge.targetId());
 			segments.add(new RetentionChainSegment(edge.ownerType(), edge.referenceKind(), edge.referenceName(),
 					target == null ? "(unknown)" : target.typeName()));
 		}
-		return new PathTrace(holderObjectId, holderType, holderRole, rootKind, exampleFieldPath,
-				List.copyOf(segments), candidate.shallowBytes(), PHASE_ONE_NOTE);
+		return new PathTrace(holderObjectId, holderType, holderRole, rootKind, exampleFieldPath, List.copyOf(segments),
+				reachableSubgraphBytesApprox, PHASE_ONE_NOTE);
 	}
 
 	private static String buildFieldPath(List<RefEdge> chain) {
@@ -259,6 +265,7 @@ public final class SharkHeapRetentionAnalyzer implements HeapRetentionAnalyzer {
 			totalBytes += analysis.approximateBytes();
 			TypeAccumulator accumulator = types.computeIfAbsent(analysis.candidate().typeName(), ignored -> new TypeAccumulator());
 			accumulator.objectCount++;
+			accumulator.reachableBytes += analysis.approximateBytes();
 			accumulator.terminalShallowBytes += analysis.candidate().shallowBytes();
 		}
 		final long trackedBytes = totalBytes;
@@ -267,11 +274,13 @@ public final class SharkHeapRetentionAnalyzer implements HeapRetentionAnalyzer {
 			.map(entry -> {
 				TypeAccumulator accumulator = entry.getValue();
 				double share = trackedBytes <= 0L ? 0.0d
-						: (100.0d * accumulator.terminalShallowBytes / (double) trackedBytes);
+						: (100.0d * accumulator.reachableBytes / (double) trackedBytes);
 				return new RetainedTypeSummary(entry.getKey(), null, accumulator.objectCount, share,
 						accumulator.terminalShallowBytes);
 			})
-			.sorted(Comparator.comparingLong(RetainedTypeSummary::terminalShallowBytes).reversed())
+			.sorted(Comparator.comparingDouble(RetainedTypeSummary::shareOfTrackedRetainedApprox).reversed()
+				.thenComparing(Comparator.comparingLong(RetainedTypeSummary::terminalShallowBytes).reversed())
+				.thenComparing(RetainedTypeSummary::typeName))
 			.limit(topN)
 			.toList();
 	}
@@ -334,9 +343,10 @@ public final class SharkHeapRetentionAnalyzer implements HeapRetentionAnalyzer {
 			.toList();
 	}
 
-	private AnalysisIndex indexGraph(CloseableHeapGraph graph, Set<String> focusTypes, List<String> focusPackages) {
+	private AnalysisIndex indexGraph(CloseableHeapGraph graph, Set<String> focusTypes) {
 		Map<Long, ObjectInfo> objectsById = new HashMap<>();
 		Map<Long, List<RefEdge>> inboundEdges = new HashMap<>();
+		Map<Long, List<Long>> outboundEdges = new HashMap<>();
 		List<Candidate> candidates = new ArrayList<>();
 		Map<Long, List<String>> gcRootKinds = new HashMap<>();
 
@@ -353,8 +363,8 @@ public final class SharkHeapRetentionAnalyzer implements HeapRetentionAnalyzer {
 				Iterator<HeapField> staticFields = heapClass.readStaticFields().iterator();
 				while (staticFields.hasNext()) {
 					HeapField field = staticFields.next();
-					addReference(inboundEdges, heapClass.getObjectId(), heapClass.getName(), "static-field", field.getName(),
-							field.getValue(), true);
+					addReference(inboundEdges, outboundEdges, heapClass.getObjectId(), heapClass.getName(), "static-field",
+							field.getName(), field.getValue(), true);
 				}
 				continue;
 			}
@@ -368,8 +378,8 @@ public final class SharkHeapRetentionAnalyzer implements HeapRetentionAnalyzer {
 				Iterator<HeapField> fields = instance.readFields().iterator();
 				while (fields.hasNext()) {
 					HeapField field = fields.next();
-					addReference(inboundEdges, instance.getObjectId(), instance.getInstanceClassName(), "field", field.getName(),
-							field.getValue(), false);
+					addReference(inboundEdges, outboundEdges, instance.getObjectId(), instance.getInstanceClassName(), "field",
+							field.getName(), field.getValue(), false);
 				}
 				continue;
 			}
@@ -383,8 +393,8 @@ public final class SharkHeapRetentionAnalyzer implements HeapRetentionAnalyzer {
 				Iterator<HeapValue> elements = objectArray.readElements().iterator();
 				int index = 0;
 				while (elements.hasNext()) {
-					addReference(inboundEdges, objectArray.getObjectId(), objectArray.getArrayClassName(), "array-element",
-							Integer.toString(index), elements.next(), false);
+					addReference(inboundEdges, outboundEdges, objectArray.getObjectId(), objectArray.getArrayClassName(),
+							"array-element", Integer.toString(index), elements.next(), false);
 					index++;
 				}
 				continue;
@@ -399,17 +409,19 @@ public final class SharkHeapRetentionAnalyzer implements HeapRetentionAnalyzer {
 			}
 		}
 
-		if (!focusPackages.isEmpty()) {
-			candidates.sort(candidateComparator(focusPackages));
-		}
-		return new AnalysisIndex(objectsById, inboundEdges, gcRootKinds, List.copyOf(candidates));
+		return new AnalysisIndex(objectsById, inboundEdges, outboundEdges, gcRootKinds, List.copyOf(candidates));
 	}
 
 	private static Comparator<Candidate> candidateComparator(List<String> focusPackages) {
+		Comparator<Candidate> bySizeThenName = Comparator.comparingLong(Candidate::shallowBytes)
+			.reversed()
+			.thenComparing(Candidate::typeName);
+		if (focusPackages == null || focusPackages.isEmpty()) {
+			return bySizeThenName;
+		}
 		return Comparator.comparingInt((Candidate candidate) -> packagePreference(candidate.typeName(), focusPackages))
 			.reversed()
-			.thenComparing(Comparator.comparingLong(Candidate::shallowBytes).reversed())
-			.thenComparing(Candidate::typeName);
+			.thenComparing(bySizeThenName);
 	}
 
 	private static void maybeAddCandidate(List<Candidate> candidates, long objectId, String typeName, long shallowBytes,
@@ -428,8 +440,8 @@ public final class SharkHeapRetentionAnalyzer implements HeapRetentionAnalyzer {
 		return normalized.endsWith("[]");
 	}
 
-	private static void addReference(Map<Long, List<RefEdge>> inboundEdges, long ownerId, String ownerType,
-			String referenceKind, String referenceName, HeapValue value, boolean staticField) {
+	private static void addReference(Map<Long, List<RefEdge>> inboundEdges, Map<Long, List<Long>> outboundEdges,
+			long ownerId, String ownerType, String referenceKind, String referenceName, HeapValue value, boolean staticField) {
 		if (value == null || !value.isNonNullReference()) {
 			return;
 		}
@@ -439,6 +451,46 @@ public final class SharkHeapRetentionAnalyzer implements HeapRetentionAnalyzer {
 		}
 		inboundEdges.computeIfAbsent(targetId, ignored -> new ArrayList<>())
 			.add(new RefEdge(ownerId, ownerType, referenceKind, referenceName, targetId, staticField));
+		outboundEdges.computeIfAbsent(ownerId, ignored -> new ArrayList<>()).add(targetId);
+	}
+
+	private static long estimateReachableSubgraphBytes(AnalysisIndex index, long startObjectId, int depthLimit) {
+		record QueueNode(long objectId, int depth) {
+		}
+
+		ArrayDeque<QueueNode> queue = new ArrayDeque<>();
+		Set<Long> visited = new HashSet<>();
+		queue.addLast(new QueueNode(startObjectId, 0));
+		long totalBytes = 0L;
+
+		while (!queue.isEmpty() && visited.size() < REACHABLE_GRAPH_NODE_LIMIT) {
+			QueueNode node = queue.removeFirst();
+			if (!visited.add(node.objectId())) {
+				continue;
+			}
+			ObjectInfo info = index.objectsById().get(node.objectId());
+			if (info != null) {
+				totalBytes = saturatingAdd(totalBytes, Math.max(info.shallowBytes(), 0L));
+			}
+			if (node.depth() >= depthLimit) {
+				continue;
+			}
+			for (Long childObjectId : index.outboundEdges().getOrDefault(node.objectId(), List.of())) {
+				if (!visited.contains(childObjectId)) {
+					queue.addLast(new QueueNode(childObjectId, node.depth() + 1));
+				}
+			}
+		}
+
+		return totalBytes;
+	}
+
+	private static long saturatingAdd(long left, long right) {
+		long sum = left + right;
+		if (((left ^ sum) & (right ^ sum)) < 0) {
+			return Long.MAX_VALUE;
+		}
+		return sum;
 	}
 
 	private static List<RefEdge> orderedInbound(AnalysisIndex index, List<RefEdge> inbound) {
@@ -562,6 +614,7 @@ public final class SharkHeapRetentionAnalyzer implements HeapRetentionAnalyzer {
 	}
 
 	private record AnalysisIndex(Map<Long, ObjectInfo> objectsById, Map<Long, List<RefEdge>> inboundEdges,
+			Map<Long, List<Long>> outboundEdges,
 			Map<Long, List<String>> gcRootKindsByObjectId, List<Candidate> candidates) {
 	}
 
@@ -590,6 +643,8 @@ public final class SharkHeapRetentionAnalyzer implements HeapRetentionAnalyzer {
 	private static final class TypeAccumulator {
 
 		private long objectCount;
+
+		private long reachableBytes;
 
 		private long terminalShallowBytes;
 
