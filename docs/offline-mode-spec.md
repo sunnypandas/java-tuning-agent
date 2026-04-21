@@ -69,6 +69,40 @@
 - 发布与配置上下文（版本、镜像 tag、启动脚本快照）。
 - 业务与负载说明、监控摘要、工单摘要等非文件信息。
 
+### 3.4 OfflineBundleDraft JSON 契约
+
+发布后集成方可能**看不到源码**，因此离线草稿的真实 JSON 结构必须以 **MCP tool description + generated inputSchema** 为唯一真相源；本文与 workflow 文档只负责解释和示例，若有冲突，以 schema 为准。
+
+字段形状约定如下：
+
+- `jvmIdentityText` / `jdkInfoText` / `runtimeSnapshotText`：普通字符串
+- `classHistogram` / `threadDump`：`OfflineArtifactSource` 对象，**不是**普通字符串
+- `heapDumpAbsolutePath`：普通字符串路径
+
+`OfflineArtifactSource` 只能是以下两种形式之一：
+
+```json
+{ "filePath": "C:/diag/b4-class-histogram.txt" }
+```
+
+或：
+
+```json
+{ "inlineText": "Full thread dump Java HotSpot..." }
+```
+
+明确禁止：
+
+```json
+{ "classHistogram": "C:/diag/b4-class-histogram.txt" }
+```
+
+```json
+{ "classHistogram": "top entries include [B ..." }
+```
+
+若本地已存在导出文件，优先使用 `filePath`，不要把大文本直接塞进 `classHistogram` 或 `threadDump` 的裸字符串值。
+
 ---
 
 ## 4. 独立模式与在线模式的边界

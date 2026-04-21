@@ -2,6 +2,7 @@ package com.alibaba.cloud.ai.examples.javatuning.mcp;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.MissingNode;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.tool.ToolCallbackProvider;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -64,7 +65,20 @@ class McpToolSchemaContractTest {
 						.isEqualTo("string");
 				}
 				case "validateOfflineAnalysisDraft" -> {
-					assertThat(schema.path("properties").path("draft").path("type").asText()).isEqualTo("object");
+					JsonNode draft = schema.path("properties").path("draft");
+					assertThat(draft.path("type").asText()).isEqualTo("object");
+					JsonNode classHistogramProperty = draft.path("properties").path("classHistogram");
+					JsonNode threadDumpProperty = draft.path("properties").path("threadDump");
+					JsonNode classHistogram = resolveSchemaNode(draft, classHistogramProperty);
+					JsonNode threadDump = resolveSchemaNode(draft, threadDumpProperty);
+					assertThat(classHistogram.path("type").asText()).isEqualTo("object");
+					assertThat(threadDump.path("type").asText()).isEqualTo("object");
+					assertThat(draft.path("properties").path("heapDumpAbsolutePath").path("type").asText())
+						.isEqualTo("string");
+					assertThat(descriptionOf(classHistogramProperty, classHistogram))
+						.contains("filePath", "inlineText");
+					assertThat(descriptionOf(threadDumpProperty, threadDump))
+						.contains("filePath", "inlineText");
 					assertThat(schema.path("properties").path("proceedWithMissingRequired").path("type").asText())
 						.isEqualTo("boolean");
 				}
@@ -88,6 +102,18 @@ class McpToolSchemaContractTest {
 					assertThat(ctxOff.path("type").asText()).isEqualTo("object");
 					JsonNode draft = schema.path("properties").path("draft");
 					assertThat(draft.path("type").asText()).isEqualTo("object");
+					JsonNode classHistogramProperty = draft.path("properties").path("classHistogram");
+					JsonNode threadDumpProperty = draft.path("properties").path("threadDump");
+					JsonNode classHistogram = resolveSchemaNode(draft, classHistogramProperty);
+					JsonNode threadDump = resolveSchemaNode(draft, threadDumpProperty);
+					assertThat(classHistogram.path("type").asText()).isEqualTo("object");
+					assertThat(threadDump.path("type").asText()).isEqualTo("object");
+					assertThat(draft.path("properties").path("heapDumpAbsolutePath").path("type").asText())
+						.isEqualTo("string");
+					assertThat(descriptionOf(classHistogramProperty, classHistogram))
+						.contains("filePath", "inlineText");
+					assertThat(descriptionOf(threadDumpProperty, threadDump))
+						.contains("filePath", "inlineText");
 					assertThat(schema.path("properties").path("environment").path("type").asText()).isEqualTo("string");
 					assertThat(schema.path("properties").path("optimizationGoal").path("type").asText())
 						.isEqualTo("string");
@@ -127,6 +153,23 @@ class McpToolSchemaContractTest {
 		}
 	}
 
+	@Test
+	void offlineDraftToolsShouldDescribeArtifactSourceFieldsWithoutSourceAccess() {
+		for (var callback : toolCallbackProvider.getToolCallbacks()) {
+			var def = callback.getToolDefinition();
+			if (!"validateOfflineAnalysisDraft".equals(def.name())
+					&& !"generateOfflineTuningAdvice".equals(def.name())) {
+				continue;
+			}
+			assertThat(def.description())
+				.as("description for %s should explain artifact field shapes", def.name())
+				.contains("filePath")
+				.contains("inlineText")
+				.containsIgnoringCase("bare string")
+				.contains("heapDumpAbsolutePath");
+		}
+	}
+
 	private static boolean schemaContainsDescription(JsonNode node, String substring) {
 		if (node == null || node.isMissingNode()) {
 			return false;
@@ -151,6 +194,37 @@ class McpToolSchemaContractTest {
 			}
 		}
 		return false;
+	}
+
+	private static JsonNode resolveSchemaNode(JsonNode root, JsonNode node) {
+		JsonNode current = node;
+		while (current != null) {
+			if (current.has("$ref")) {
+				String ref = current.path("$ref").asText();
+				assertThat(ref).startsWith("#/");
+				current = followRef(root, ref.substring(2));
+				continue;
+			}
+			if (current.has("allOf") && current.path("allOf").size() == 1) {
+				current = current.path("allOf").get(0);
+				continue;
+			}
+			break;
+		}
+		return current == null ? MissingNode.getInstance() : current;
+	}
+
+	private static JsonNode followRef(JsonNode root, String pointer) {
+		JsonNode current = root;
+		for (String segment : pointer.split("/")) {
+			current = current.path(segment);
+		}
+		return current;
+	}
+
+	private static String descriptionOf(JsonNode originalNode, JsonNode resolvedNode) {
+		String original = originalNode.path("description").asText();
+		return original.isBlank() ? resolvedNode.path("description").asText() : original;
 	}
 
 }

@@ -146,6 +146,40 @@ Use when there is **no** local target PID: the user provides exported `jcmd`/`js
 
 `draft` is a full `OfflineBundleDraft` (B1–B6, optional R1–R3 “absent” flags, `heapDumpAbsolutePath`, `backgroundNotes`, etc.). Set `proceedWithMissingRequired: true` only after the user explicitly accepts degraded analysis.
 
+**OfflineBundleDraft field shapes that agents must not guess:**
+
+- `jvmIdentityText`, `jdkInfoText`, `runtimeSnapshotText`: plain strings
+- `classHistogram`, `threadDump`: `OfflineArtifactSource` objects, not bare strings
+- `heapDumpAbsolutePath`: plain string path
+
+**OfflineArtifactSource shape:**
+
+```json
+{ "filePath": "C:/diag/b4-class-histogram.txt" }
+```
+
+or
+
+```json
+{ "inlineText": " num     #instances   #bytes  class name..." }
+```
+
+**Do not pass a bare string to `OfflineArtifactSource` fields.**
+
+Wrong:
+
+```json
+{ "classHistogram": "C:/diag/b4-class-histogram.txt" }
+```
+
+Wrong:
+
+```json
+{ "classHistogram": "top entries include [B ..." }
+```
+
+Prefer `filePath` when the exported file already exists locally.
+
 **5.2 `submitOfflineHeapDumpChunk`**
 
 ```json

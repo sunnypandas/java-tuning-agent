@@ -27,6 +27,13 @@ Use when the user analyzes **production-exported** files (histogram, thread dump
 
 **Draft:** Build an `OfflineBundleDraft` JSON in chat (authoritative copy lives in the conversation). Fixed order for gathering input: B1 JVM 标识 → B2 JDK 信息 → B3 运行时快照文本 → B4 类直方图（文件路径或粘贴）→ B5 线程 dump → B6 堆转储路径或分块上传结果.
 
+**Schema-first rule:** For offline bundle JSON shape, treat the MCP tool description and generated `inputSchema` as the source of truth. Do **not** infer nested field shapes from prose alone or from memory.
+
+**Artifact-source rule:** `classHistogram` and `threadDump` are **not** bare strings. They must be `OfflineArtifactSource` objects:
+`{"filePath":"C:/diag/b4-class-histogram.txt"}` or `{"inlineText":"full text..."}`.
+When a local file already exists, prefer `filePath` over `inlineText`.
+`heapDumpAbsolutePath` is different: it is a plain string path, not an `OfflineArtifactSource`.
+
 **Recommended R1–R3 (GC log, app log, repeated samples):** For **each** item, the host must force a **binary choice** — supply `gcLogPathOrText` / `appLogPathOrText` / `repeatedSamplesPathOrText`, **or** set the matching `explicitlyNoGcLog` / `explicitlyNoAppLog` / `explicitlyNoRepeatedSamples` flag. If the user leaves an item neither filled nor explicitly absent, the server does **not** auto-flag it as missing; avoiding that silent gap is the agent’s responsibility.
 
 若必选缺失，调用 `validateOfflineAnalysisDraft(draft, proceedWithMissingRequired=false)` 获取 `missingRequired` 与中文 `nextPromptZh`；用户确认降级时改 `proceedWithMissingRequired=true`。

@@ -106,6 +106,20 @@
 
 ## 4. 文件 → 领域模型映射（技术风险点）
 
+### 4.0 Schema-first contract for no-source integrators
+
+发布后调用方可能只能看到 **MCP tool description** 与导出的 **`inputSchema`**，看不到仓库源码。因此 `OfflineBundleDraft` 的真实 JSON 形状必须由 schema 明确定义，而不能依赖调用方“根据文档 prose 猜嵌套对象结构”。
+
+需要固化的契约：
+
+- `jvmIdentityText` / `jdkInfoText` / `runtimeSnapshotText` 为普通字符串
+- `classHistogram` / `threadDump` 为 `OfflineArtifactSource`
+- `OfflineArtifactSource` 只能传 `{ "filePath": "..." }` 或 `{ "inlineText": "..." }`
+- `heapDumpAbsolutePath` 为普通字符串路径
+- 对 `classHistogram` / `threadDump` 传 bare string 视为契约错误，并返回可操作报错
+
+文档层只做解释和示例；若 `workflow/reference/spec` 与 `inputSchema` 冲突，以 schema 为准。为了把这一点变成回归约束，应在 schema contract test 中断言离线工具描述明确提到 `filePath`、`inlineText`、`heapDumpAbsolutePath` 和 “bare string is not allowed”。
+
 | 输入 | 目标 | 策略 |
 |------|------|------|
 | jcmd/jstat 纯文本导出 | `JvmRuntimeSnapshot` | **优先**：复用/扩展现有 parser（如 `GcHeapInfoParser`、`SafeJvmRuntimeCollector` 输出的结构若可捕获则直填）。**否则**：最小化 snapshot（pid 来自元数据、version/flags 用正则或子集解析）+ `warnings` 标明「快照为部分解析」。 |
