@@ -9,7 +9,7 @@ public record SuspectedHolderSummary(
 		@JsonPropertyDescription("Normalized role of the holder such as collection, map, or thread-local.") String holderRole,
 		@JsonPropertyDescription("Approximate retained bytes when a retained-style engine can justify the value; null otherwise.") Long retainedBytesApprox,
 		@JsonPropertyDescription("Approximate size of the reachable subgraph; not equivalent to retained size.") long reachableSubgraphBytesApprox,
-		@JsonPropertyDescription("Approximate object count in the reachable subgraph.") long retainedObjectCountApprox,
+		@JsonPropertyDescription("Approximate object count retained by this holder row.") long retainedObjectCountApprox,
 		@JsonPropertyDescription("Example field path showing how the holder reaches the retained objects.") String exampleFieldPath,
 		@JsonPropertyDescription("Example target type reached by the holder.") String exampleTargetType,
 		@JsonPropertyDescription("Additional notes or caveats for the holder row.") String notes) {
