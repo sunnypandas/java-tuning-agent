@@ -3,6 +3,7 @@ package com.alibaba.cloud.ai.examples.javatuning.mcp;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.MissingNode;
+import java.util.Arrays;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.tool.ToolCallbackProvider;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -130,6 +131,22 @@ class McpToolSchemaContractTest {
 					assertThat(schema.path("properties").path("maxOutputChars").path("type").asText()).isIn("integer",
 							"number");
 				}
+				case "analyzeOfflineHeapRetention" -> {
+					assertThat(schema.path("properties").path("heapDumpAbsolutePath").path("type").asText())
+						.isEqualTo("string");
+					assertThat(schema.path("properties").path("topObjectLimit").path("type").asText()).isIn("integer",
+							"number");
+					assertThat(schema.path("properties").path("maxOutputChars").path("type").asText()).isIn("integer",
+							"number");
+					assertThat(schema.path("properties").path("analysisDepth").path("type").asText())
+						.isEqualTo("string");
+					assertThat(schema.path("properties").path("focusTypes").path("type").asText()).isEqualTo("array");
+					assertThat(schema.path("properties").path("focusPackages").path("type").asText())
+						.isEqualTo("array");
+					assertThat(def.description()).containsIgnoringCase("retention")
+						.contains("reachableSubgraphBytesApprox")
+						.containsIgnoringCase("shallow");
+				}
 				default -> throw new AssertionError("Unexpected tool: " + def.name());
 			}
 		}
@@ -168,6 +185,12 @@ class McpToolSchemaContractTest {
 				.containsIgnoringCase("bare string")
 				.contains("heapDumpAbsolutePath");
 		}
+	}
+
+	@Test
+	void analyzeOfflineHeapRetentionShouldBeRegistered() {
+		assertThat(Arrays.stream(toolCallbackProvider.getToolCallbacks()).map(callback -> callback.getToolDefinition())
+			.map(def -> def.name())).contains("analyzeOfflineHeapRetention");
 	}
 
 	private static boolean schemaContainsDescription(JsonNode node, String substring) {

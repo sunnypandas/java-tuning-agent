@@ -8,7 +8,7 @@
 | 文档 | 内容 |
 |------|------|
 | **本文** | 产品需求：必选/推荐/背景、向导与降级、分块与「本次没有」、验收草案。 |
-| [设计稿 `docs/superpowers/specs/2026-04-19-offline-mode-design.md`](superpowers/specs/2026-04-19-offline-mode-design.md) | 实现设计：工程上下文、**方案对比**（A/B/C）、推荐架构（无状态草稿 + 分块上传 + 终局分析）、文件→`MemoryGcEvidencePack` 映射风险、测试方向。 |
+| [设计稿 `docs/superpowers/specs/2026-04-19-offline-mode-design.md`](superpowers/specs/2026-04-19-offline-mode-design.md) | 实现设计：工程上下文、**方案对比**（A/B/C）、推荐架构（无状态草稿 + 分块上传 + 终局分析）、phase-1 的浅层摘要/retention 工具拆分、与 `MemoryGcEvidencePack` 的对接边界、测试方向。 |
 | [实现计划 `docs/superpowers/plans/2026-04-19-offline-mode.md`](superpowers/plans/2026-04-19-offline-mode.md) | 分任务实现步骤、文件职责表、TDD 任务分解、与 spec 的覆盖对照。 |
 
 ---
@@ -118,7 +118,7 @@
 
 ## 5. 新增工具与 Consent
 
-- 离线分析通过**新增专用工具**（当前共 **五个**：`validateOfflineAnalysisDraft`、`submitOfflineHeapDumpChunk`、`finalizeOfflineHeapDump`、`generateOfflineTuningAdvice`、`summarizeOfflineHeapDumpFile`）实现输入收集与分析触发，**不替换**现有 `listJavaApps` / `inspectJvmRuntime` / `collectMemoryGcEvidence` / `generateTuningAdvice` 的语义。
+- 离线分析通过**新增专用工具**（当前共 **六个**：`validateOfflineAnalysisDraft`、`submitOfflineHeapDumpChunk`、`finalizeOfflineHeapDump`、`generateOfflineTuningAdvice`、`summarizeOfflineHeapDumpFile`、`analyzeOfflineHeapRetention`）实现输入收集与分析触发，**不替换**现有 `listJavaApps` / `inspectJvmRuntime` / `collectMemoryGcEvidence` / `generateTuningAdvice` 的语义。
 - **Consent 语义与线上一致**：继续使用同一套 `confirmationToken`（及 heap 路径等既有规则中与授权相关的字段）表达用户同意；离线场景下应对齐为「用户确认使用本批导入材料进行相应分析」，**不**另起一套审批模型，以免调用方混乱。
 
 ### 5.1 堆转储（`.hprof`）自动浅层摘要（Shark）
@@ -126,9 +126,16 @@
 - **产品目标**：当草稿或采集结果提供**已落地且可读**的 `.hprof` 路径时，分析端应**自动**对该文件做**有界**的浅层按类统计（LeakCanary **Shark**），将结构化结果写入证据包并参与规则诊断与报告，而不是仅把路径当作字符串提示。
 - **不作为**：原始二进制不送入 LLM；浅层统计**不是** Eclipse MAT 的 retained-size / dominator 分析。
 - **默认行为**：服务端默认开启自动索引（配置项 `java-tuning-agent.heap-summary.auto-enabled=true`）。关闭后仍保留 `heapDumpPath` / `heapDumpAbsolutePath` 字符串，但不填充 `heapShallowSummary`、不追加摘要 Markdown。
-- **可选工具**：`summarizeOfflineHeapDumpFile` 仍可用于**单独**拉取某路径的摘要（Markdown + `topByShallowBytes` 等），无需完整离线草稿。
+- **可选工具**：`summarizeOfflineHeapDumpFile` 仍可用于**单独**拉取某路径的摘要（Markdown + `topByShallowBytes` 等），无需完整离线草稿；该工具在 phase 1 **只提供 shallow-by-class 视角**，不返回 holder、引用链或 retained-style 结论。
 
 证据模型字段与引擎规则见 [`docs/superpowers/specs/2026-04-19-offline-mode-design.md`](superpowers/specs/2026-04-19-offline-mode-design.md) §1.1 / §4 更新说明。
+
+### 5.2 堆保留关系分析（phase 1 独立工具）
+
+- `analyzeOfflineHeapRetention` 面向 **holder、代表性引用链、GC root hints**，用于回答「是谁在持有对象」而非「哪些类型浅层字节最大」。
+- 该工具可返回 `retainedBytesApprox` 等 **retained-style 近似值**；当分析器无法给出可辩护的 retained 语义时，`retainedBytesApprox` 可为空。
+- `reachableSubgraphBytesApprox` 仅表示**有界可达子图大小近似值**，用于 phase 1 排序与提示；**不是** exact retained size。
+- **phase 1 边界**：该能力当前以**独立 MCP 工具**交付；现有 `generateOfflineTuningAdvice` / `MemoryGcEvidencePack` 路径继续只自动消费浅层摘要，shared `MemoryGcEvidencePack` 集成延后到 retention 契约稳定后再做。
 
 ---
 
@@ -183,6 +190,7 @@
 
 - **推荐项 R1–R3：** 服务端仅在草稿中 **`explicitlyNoGcLog` / `explicitlyNoAppLog` / `explicitlyNoRepeatedSamples` 为 true** 时，向 `missingData` 写入「本次没有」类说明。若用户**既未填写内容也未勾选「本次没有」**，MCP 层**不会**自动生成「推荐项缺失」条目；**宿主向导（Agent 对话 UI）应对每个推荐项强制二选一：提供路径或粘贴，或显式「本次没有」**，以免静默遗漏。
 - **草稿中的扩展字段：** `gcLogPathOrText`、`appLogPathOrText`、`repeatedSamplesPathOrText`、`backgroundNotes` 已保留在 `OfflineBundleDraft` 中，**首版不传入** `MemoryGcEvidencePack` 或现有诊断规则；GC/应用日志内容暂不参与引擎自动推理，后续如需应单独开需求。
+- **retention 结果接入：** phase 1 中 `analyzeOfflineHeapRetention` 的输出**不会**自动写回 `MemoryGcEvidencePack`、`generateOfflineTuningAdvice` 或现有 advice 规则；如需统一证据包消费，后续需单独收敛字段与契约。
 - **回退编辑：** 无服务端会话与草稿版本历史；用户通过在同一会话内**重发完整草稿 JSON** 实现回退或改某一步，与设计「无状态方案 C」一致。
 - **文案语言：** 校验接口的 `nextPromptZh` 为中文；写入 `missingData` 的部分技术短句当前为英文，与 `formattedSummary` 中英混排可并存，后续可统一为中文键名。
 
@@ -192,7 +200,7 @@
 
 - 分块的**默认块大小**、超时与错误码约定（首版实现已采用 SHA-256 + 调用方提供总长度；块大小由宿主决定）。
 
-**MCP 工具 JSON 同步：** 运行 `mvn -q package`（确保未设置 `mcp.schema.export.skip=true`）会在 `target/mcp-tool-schemas.json` 生成全部工具的 `inputSchema`（当前共 **九个**工具：四个在线 + 五个离线）；将条目同步到 Cursor 工程内 `mcps/user-java-tuning-agent/tools/`（与现有 schema export 流程一致）。
+**MCP 工具 JSON 同步：** 运行 `mvn -q package`（确保未设置 `mcp.schema.export.skip=true`）会在 `target/mcp-tool-schemas.json` 生成全部工具的 `inputSchema`（当前共 **十个**工具：四个在线 + 六个离线）；将条目同步到 Cursor 工程内 `mcps/user-java-tuning-agent/tools/`（与现有 schema export 流程一致）。
 
 ---
 
@@ -206,3 +214,4 @@
 | 2026-04-19 | 待定项更新：工具名与 advice 对接已落地；补充 MCP schema 同步说明。 |
 | 2026-04-19 | 新增 §8.1 实现边界与已知局限（评审后固化）。 |
 | 2026-04-19 | 新增 §5.1：`.hprof` 自动 Shark 浅层摘要、配置项说明、九个 MCP 工具与 schema 同步文案更新。 |
+| 2026-04-22 | 同步 phase-1 工具拆分：`summarizeOfflineHeapDumpFile` 保持 shallow-only，新增 `analyzeOfflineHeapRetention` 的 holder 语义与近似指标说明，并将 shared `MemoryGcEvidencePack` 集成标记为后续阶段。 |
