@@ -14,10 +14,12 @@ import com.alibaba.cloud.ai.examples.javatuning.discovery.ProcessDisplayNameReso
 import com.alibaba.cloud.ai.examples.javatuning.mcp.JavaTuningMcpTools;
 import com.alibaba.cloud.ai.examples.javatuning.mcp.OfflineMcpTools;
 import com.alibaba.cloud.ai.examples.javatuning.offline.HeapDumpChunkRepository;
+import com.alibaba.cloud.ai.examples.javatuning.offline.HeapRetentionAnalyzer;
 import com.alibaba.cloud.ai.examples.javatuning.offline.OfflineAnalysisService;
 import com.alibaba.cloud.ai.examples.javatuning.offline.OfflineDraftValidator;
 import com.alibaba.cloud.ai.examples.javatuning.offline.OfflineEvidenceAssembler;
 import com.alibaba.cloud.ai.examples.javatuning.offline.OfflineJvmSnapshotAssembler;
+import com.alibaba.cloud.ai.examples.javatuning.offline.SharkHeapRetentionAnalyzer;
 import com.alibaba.cloud.ai.examples.javatuning.offline.SharkHeapDumpSummarizer;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.ClassHistogramParser;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.CommandExecutor;
@@ -127,6 +129,13 @@ public class JavaTuningAgentConfig {
 	}
 
 	@Bean
+	HeapRetentionAnalyzer heapRetentionAnalyzer(
+			@Value("${java-tuning-agent.offline.heap-retention.default-top-objects:20}") int defaultTopObjects,
+			@Value("${java-tuning-agent.offline.heap-retention.default-max-output-chars:16000}") int defaultMaxOutputChars) {
+		return new SharkHeapRetentionAnalyzer(defaultTopObjects, defaultMaxOutputChars);
+	}
+
+	@Bean
 	OfflineAnalysisService offlineAnalysisService(OfflineDraftValidator validator,
 			OfflineEvidenceAssembler evidenceAssembler, JavaTuningWorkflowService workflowService) {
 		return new OfflineAnalysisService(validator, evidenceAssembler, workflowService);
@@ -134,8 +143,10 @@ public class JavaTuningAgentConfig {
 
 	@Bean
 	OfflineMcpTools offlineMcpTools(OfflineAnalysisService offlineAnalysisService,
-			HeapDumpChunkRepository heapDumpChunkRepository, SharkHeapDumpSummarizer sharkHeapDumpSummarizer) {
-		return new OfflineMcpTools(offlineAnalysisService, heapDumpChunkRepository, sharkHeapDumpSummarizer);
+			HeapDumpChunkRepository heapDumpChunkRepository, SharkHeapDumpSummarizer sharkHeapDumpSummarizer,
+			HeapRetentionAnalyzer heapRetentionAnalyzer) {
+		return new OfflineMcpTools(offlineAnalysisService, heapDumpChunkRepository, sharkHeapDumpSummarizer,
+				heapRetentionAnalyzer);
 	}
 
 	@Bean

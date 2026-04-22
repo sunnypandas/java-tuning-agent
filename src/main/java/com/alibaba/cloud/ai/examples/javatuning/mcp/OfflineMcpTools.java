@@ -2,16 +2,19 @@ package com.alibaba.cloud.ai.examples.javatuning.mcp;
 
 import java.nio.file.Path;
 import java.util.Base64;
+import java.util.List;
 
 import com.alibaba.cloud.ai.examples.javatuning.advice.CodeContextSummary;
 import com.alibaba.cloud.ai.examples.javatuning.advice.TuningAdviceReport;
 import com.alibaba.cloud.ai.examples.javatuning.offline.HeapDumpChunkRepository;
 import com.alibaba.cloud.ai.examples.javatuning.offline.HeapDumpChunkSubmissionResult;
 import com.alibaba.cloud.ai.examples.javatuning.offline.HeapDumpFileSummaryResult;
+import com.alibaba.cloud.ai.examples.javatuning.offline.HeapRetentionAnalyzer;
 import com.alibaba.cloud.ai.examples.javatuning.offline.OfflineAnalysisService;
 import com.alibaba.cloud.ai.examples.javatuning.offline.OfflineBundleDraft;
 import com.alibaba.cloud.ai.examples.javatuning.offline.OfflineDraftValidationResult;
 import com.alibaba.cloud.ai.examples.javatuning.offline.SharkHeapDumpSummarizer;
+import com.alibaba.cloud.ai.examples.javatuning.runtime.HeapRetentionAnalysisResult;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 
@@ -26,11 +29,15 @@ public class OfflineMcpTools {
 
 	private final SharkHeapDumpSummarizer heapDumpSummarizer;
 
+	private final HeapRetentionAnalyzer heapRetentionAnalyzer;
+
 	public OfflineMcpTools(OfflineAnalysisService offlineAnalysisService,
-			HeapDumpChunkRepository heapDumpChunkRepository, SharkHeapDumpSummarizer heapDumpSummarizer) {
+			HeapDumpChunkRepository heapDumpChunkRepository, SharkHeapDumpSummarizer heapDumpSummarizer,
+			HeapRetentionAnalyzer heapRetentionAnalyzer) {
 		this.offlineAnalysisService = offlineAnalysisService;
 		this.heapDumpChunkRepository = heapDumpChunkRepository;
 		this.heapDumpSummarizer = heapDumpSummarizer;
+		this.heapRetentionAnalyzer = heapRetentionAnalyzer;
 	}
 
 	@Tool(description = """
@@ -106,6 +113,25 @@ public class OfflineMcpTools {
 				? null
 				: Path.of(heapDumpAbsolutePath.trim());
 		return HeapDumpFileSummaryResult.from(heapDumpSummarizer.summarize(path, topClassLimit, maxOutputChars));
+	}
+
+	@Tool(description = """
+			Offline mode: analyze an existing local .hprof for retention-oriented evidence and return structured JSON plus Markdown.
+			This tool focuses on suspected holders, representative reference chains, and GC-root hints; it is separate from summarizeOfflineHeapDumpFile, which only provides a shallow-by-class summary.
+			retainedBytesApprox is populated only when the analyzer can defend that retained-style interpretation; otherwise it may be null and reachableSubgraphBytesApprox is only an approximate ranking hint.
+			""")
+	public HeapRetentionAnalysisResult analyzeOfflineHeapRetention(
+			@ToolParam(description = "Absolute path to an existing .hprof file on the host.") String heapDumpAbsolutePath,
+			@ToolParam(description = "Maximum number of holder / chain rows to include in the retention result.") Integer topObjectLimit,
+			@ToolParam(description = "Maximum Markdown characters to return in the retention summary.") Integer maxOutputChars,
+			@ToolParam(description = "Analysis depth hint: fast, balanced, or deep.") String analysisDepth,
+			@ToolParam(description = "Optional terminal types to prioritize, such as byte[] or java.lang.String[].") List<String> focusTypes,
+			@ToolParam(description = "Optional business package prefixes used to prioritize candidates before bounded truncation; not a hard filter.") List<String> focusPackages) {
+		Path path = heapDumpAbsolutePath == null || heapDumpAbsolutePath.isBlank()
+				? null
+				: Path.of(heapDumpAbsolutePath.trim());
+		return heapRetentionAnalyzer.analyze(path, topObjectLimit, maxOutputChars, analysisDepth, focusTypes,
+				focusPackages);
 	}
 
 }

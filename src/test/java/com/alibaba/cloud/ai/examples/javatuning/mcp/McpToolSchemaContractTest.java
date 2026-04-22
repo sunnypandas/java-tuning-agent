@@ -108,11 +108,18 @@ class McpToolSchemaContractTest {
 				case "analyzeOfflineHeapRetention" -> {
 					assertThat(schema.path("properties").path("heapDumpAbsolutePath").path("type").asText())
 						.isEqualTo("string");
+					assertThat(schema.path("properties").path("topObjectLimit").path("type").asText()).isIn("integer",
+							"number");
+					assertThat(schema.path("properties").path("maxOutputChars").path("type").asText()).isIn("integer",
+							"number");
 					assertThat(schema.path("properties").path("analysisDepth").path("type").asText())
 						.isEqualTo("string");
 					assertThat(schema.path("properties").path("focusTypes").path("type").asText()).isEqualTo("array");
 					assertThat(schema.path("properties").path("focusPackages").path("type").asText())
 						.isEqualTo("array");
+					assertThat(def.description()).containsIgnoringCase("retention")
+						.contains("reachableSubgraphBytesApprox")
+						.containsIgnoringCase("shallow");
 				}
 				default -> throw new AssertionError("Unexpected tool: " + def.name());
 			}
