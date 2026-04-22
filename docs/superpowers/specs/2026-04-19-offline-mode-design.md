@@ -17,7 +17,7 @@
 
 ### 1.2 离线模式要解决的问题
 
-在生产导出的文件已落地到分析机（或粘贴文本）的前提下，将**手工产物**映射为上述 **`MemoryGcEvidencePack`（或可诊断的等价物）**，并复用同一套诊断与 `TuningAdviceReportFormatter`，避免两条报告逻辑分叉。
+在生产导出的文件已落地到分析机（或粘贴文本）的前提下，将**手工产物**映射为现有 advice 可消费的 **`MemoryGcEvidencePack`**，并在 heap dump 场景下为更深的 holder/链路分析保留**独立 retention 结果模型**。也就是说：离线 advice 首版继续复用既有诊断与 `TuningAdviceReportFormatter`，而 retention phase 1 以独立 MCP 工具交付，shared `MemoryGcEvidencePack` 集成延后到契约稳定后处理。
 
 ---
 
@@ -61,11 +61,12 @@
    专门处理 `.hprof`：`uploadId`、`chunkIndex`、`chunkTotal`、`chunkBase64` 或文件片段、`algorithm`（如 SHA-256）、`finalize`。服务端拼临时文件并通过哈希校验；失败则返回可重试的该步错误。
 
 3. **分析工具**  
-   在草稿完整度满足「用户选择继续」策略后，将解析结果组装为 `MemoryGcEvidencePack`（无法结构化部分放入 `missingData`/`warnings`），调用 **`generateAdviceFromEvidence`**；`confirmationToken` 政策与线上特权采集**同一套字段语义**。
+   在草稿完整度满足「用户选择继续」策略后，`generateOfflineTuningAdvice` 将解析结果组装为 `MemoryGcEvidencePack`（无法结构化部分放入 `missingData`/`warnings`），调用 **`generateAdviceFromEvidence`**；`confirmationToken` 政策与线上特权采集**同一套字段语义**。  
+   对 `.hprof` 的 holder-oriented 深入分析则由独立的 `analyzeOfflineHeapRetention` 返回 `HeapRetentionAnalysisResult`；phase 1 **不**把 retention payload 直接写回 `MemoryGcEvidencePack`。
 
 | 优点 | 缺点 |
 |------|------|
-| 与现有 `MemoryGcEvidencePack` / 诊断引擎对齐 | 需实现文本→`JvmRuntimeSnapshot` 的**解析或降级填充**（见 §4） |
+| 现有 advice 流程仍与 `MemoryGcEvidencePack` / 诊断引擎对齐，retention 能力可独立演进 | 需同时维护 pack 路径与 retention 结果模型的边界（见 §4） |
 | 分块与校验集中在服务端 | 工具数量 >1，需维护 JSON schema 与契约测试 |
 | MCP 无状态，易测试 | Agent 侧要维护草稿对象（可由技能模板化） |
 
@@ -86,12 +87,15 @@
 │  - validateDraft / stepResult  （可二合一）                     │
 │  - appendHeapChunk / finalizeHeap  （可二合一）                 │
 │  - generateOfflineTuningAdvice （或等价终局工具）                │
+│  - summarizeOfflineHeapDumpFile （Shark shallow-only）          │
+│  - analyzeOfflineHeapRetention （holder-oriented）              │
 └──────────────────────────┬──────────────────────────────────┘
                            │
 ┌──────────────────────────▼──────────────────────────────────┐
 │ Java 核心（现有 + 扩展）                                       │
 │  - OfflineArtifactParser → 部分填充 JvmRuntimeSnapshot 等       │
 │  - MemoryGcEvidencePack 构造                                   │
+│  - HeapRetentionAnalyzer / HeapRetentionSummary                │
 │  - JavaTuningWorkflowService.generateAdviceFromEvidence        │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -111,9 +115,14 @@
 | jcmd/jstat 纯文本导出 | `JvmRuntimeSnapshot` | **优先**：复用/扩展现有 parser（如 `GcHeapInfoParser`、`SafeJvmRuntimeCollector` 输出的结构若可捕获则直填）。**否则**：最小化 snapshot（pid 来自元数据、version/flags 用正则或子集解析）+ `warnings` 标明「快照为部分解析」。 |
 | 类直方图文本 | `ClassHistogramSummary` | 复用现有直方图解析路径（与 `HistogramClassNames` 等一致）。 |
 | 线程 dump 文本 | `ThreadDumpSummary` | 复用 `ThreadDumpParser`。 |
-| `.hprof` 路径 | `heapDumpPath` + **自动** `heapShallowSummary`（可关） | 存**绝对路径**字符串；在自动摘要开启且文件存在时，用 **Shark** 建索引并生成**浅层**按类合计（`HeapShallowClassEntry` 列表、总浅层字节、有界 Markdown）。**不**替代 MAT 的 dominator/retained 分析；失败时 `errorMessage` 非空并写入 `warnings`。规则层可消费 `heapShallowSummary`（如 `HeapDumpShallowDominanceRule`）。 |
+| `.hprof` 路径 | `heapDumpPath` + **自动** `heapShallowSummary`（advice 路径，可关）；`HeapRetentionAnalysisResult`（独立 retention 工具） | 存**绝对路径**字符串；在自动摘要开启且文件存在时，用 **Shark** 建索引并生成**浅层**按类合计（`HeapShallowClassEntry` 列表、总浅层字节、有界 Markdown）。`summarizeOfflineHeapDumpFile` 继续只暴露该 shallow 视角。更深的 holder / 引用链 / GC root hints 由 `analyzeOfflineHeapRetention` 独立返回；phase 1 的 `reachableSubgraphBytesApprox` 只是有界可达子图近似值，**不**等同于 exact retained size。 |
 
 **降级**：任一解析失败不阻断「用户选择继续」；写入 `warnings` / `missingData`，并由 `DiagnosisConfidenceEvaluator` 反映置信度。
+
+**phase 1 工具拆分说明**：
+
+- phase 1 新增**独立** retention-analysis MCP 工具与共享 retention 结果模型，避免改变现有 `summarizeOfflineHeapDumpFile` 的 shallow-only 语义。
+- shared `MemoryGcEvidencePack` 集成延后到 retention 契约稳定后；当前在线/离线 advice 继续只自动消费 `heapShallowSummary`。
 
 ---
 
@@ -157,3 +166,4 @@
 |------|------|
 | 2026-04-19 | 初稿：brainstorming  Retrofit — 方案 A/B/C、推荐无状态草稿 + 分块工具、映射表、与 spec 分工。 |
 | 2026-04-19 | 更新 §1.1 / §4：`.hprof` 自动 Shark 浅层摘要字段 `heapShallowSummary`、可配置 `heap-summary.auto-enabled`、与规则/报告关系。 |
+| 2026-04-22 | 同步 retention phase-1 边界：`summarizeOfflineHeapDumpFile` 保持 shallow-only，新增独立 `analyzeOfflineHeapRetention`，并明确 shared `MemoryGcEvidencePack` 集成后置。 |

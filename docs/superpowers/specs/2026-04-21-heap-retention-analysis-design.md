@@ -1,7 +1,7 @@
 # Heap Retention Analysis Design
 
 **Date:** 2026-04-21  
-**Status:** Draft for review  
+**Status:** Draft synced with phase-1 implementation; shared evidence-pack integration remains deferred  
 **Audience:** implementers of `java-tuning-agent` offline and shared heap-analysis capabilities
 
 ---
@@ -75,6 +75,7 @@ The new retention path is a separate capability:
 - holder-oriented
 - closer to retained / dominator semantics
 - allowed to degrade when deep analysis is incomplete
+- shipped in phase 1 as an independent MCP tool rather than an automatic extension of the advice pack
 
 ### 3.2 Architecture choice
 
@@ -92,7 +93,7 @@ This keeps the current investment in Shark while creating room for more faithful
 
 ### 4.1 Top-level model
 
-Introduce a shared heap-analysis evidence object that can be reused by offline analysis first and by common evidence packs later.
+Introduce a shared heap-analysis evidence object that can be reused by offline analysis first and by common evidence packs later. In phase 1, this shape is implemented as the payload of `analyzeOfflineHeapRetention`; direct embedding into `MemoryGcEvidencePack` is deferred.
 
 Suggested top-level shape:
 
@@ -274,6 +275,8 @@ The design must distinguish byte metrics with different semantics.
 
 These are the safest first-version metrics.
 
+`reachableSubgraphBytesApprox` is still not exact retained size. It is a bounded approximation of bytes reachable from the analyzed holder / chain candidate.
+
 ### 6.2 Conditional metric
 
 - `retainedBytesApprox`
@@ -428,6 +431,7 @@ Phase 1:
 - tool exists independently
 - offline flows can call it explicitly
 - reports can render it explicitly
+- `summarizeOfflineHeapDumpFile` remains shallow-by-class only
 
 Phase 2:
 
@@ -523,3 +527,14 @@ Adopt the layered design:
 - evolve toward common evidence-pack integration after the retention contract stabilizes
 
 This gives the project a path from "what is large" to "who is retaining it" without breaking current behavior or blurring evidence semantics.
+
+---
+
+## 13. Phase 1 implementation status
+
+- Tool name is finalized as `analyzeOfflineHeapRetention`.
+- `summarizeOfflineHeapDumpFile` remains shallow-by-class only; it does not return holders, reference chains, or retained-style claims.
+- The shipped engine is a Shark-backed holder/path analysis that returns suspected holders, representative chains, and GC-root hints.
+- `retainedBytesApprox` may be `null` in phase 1 when the analyzer cannot defend a retained-style interpretation.
+- `reachableSubgraphBytesApprox` is a bounded ranking hint, not exact retained size.
+- Shared `MemoryGcEvidencePack` / advice-flow integration is deferred; current offline advice still auto-consumes only the shallow summary path.

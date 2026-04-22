@@ -23,7 +23,7 @@ class SharkHeapRetentionAnalyzerTest {
 
 		var result = analyzer.analyze(heap, 10, 12000, "balanced", List.of("byte[]"), List.of());
 
-		assertThat(result.analysisSucceeded()).isTrue();
+		assertThat(result.analysisSucceeded()).as(result.errorMessage()).isTrue();
 		assertThat(result.retentionSummary().analysisSucceeded()).isTrue();
 		assertThat(result.retentionSummary().suspectedHolders())
 			.extracting(SuspectedHolderSummary::holderRole)
@@ -45,7 +45,7 @@ class SharkHeapRetentionAnalyzerTest {
 
 		var result = analyzer.analyze(heap, 10, 260, "balanced", List.of("byte[]"), List.of());
 
-		assertThat(result.analysisSucceeded()).isTrue();
+		assertThat(result.analysisSucceeded()).as(result.errorMessage()).isTrue();
 		assertThat(result.summaryMarkdown().length()).isLessThanOrEqualTo(260);
 		assertThat(result.summaryMarkdown()).contains("retention hint");
 		assertThat(result.summaryMarkdown()).contains("reachable subgraph");
@@ -72,8 +72,8 @@ class SharkHeapRetentionAnalyzerTest {
 		var withFocusPackages = analyzer.analyze(heap, 2, 12000, "balanced", focusTypes,
 				List.of("com.alibaba.cloud.ai.examples.javatuning.offline"));
 
-		assertThat(withoutFocusPackages.analysisSucceeded()).isTrue();
-		assertThat(withFocusPackages.analysisSucceeded()).isTrue();
+		assertThat(withoutFocusPackages.analysisSucceeded()).as(withoutFocusPackages.errorMessage()).isTrue();
+		assertThat(withFocusPackages.analysisSucceeded()).as(withFocusPackages.errorMessage()).isTrue();
 		assertThat(withoutFocusPackages.retentionSummary().dominantRetainedTypes())
 			.extracting(type -> type.typeName())
 			.doesNotContain(preferredType);
@@ -95,8 +95,8 @@ class SharkHeapRetentionAnalyzerTest {
 		var broadFirst = analyzer.analyze(heap, 1, 12000, "balanced", focusTypes, List.of(broadPackage, preferredPrefix));
 		var specificFirst = analyzer.analyze(heap, 1, 12000, "balanced", focusTypes, List.of(preferredPrefix, broadPackage));
 
-		assertThat(broadFirst.analysisSucceeded()).isTrue();
-		assertThat(specificFirst.analysisSucceeded()).isTrue();
+		assertThat(broadFirst.analysisSucceeded()).as(broadFirst.errorMessage()).isTrue();
+		assertThat(specificFirst.analysisSucceeded()).as(specificFirst.errorMessage()).isTrue();
 		assertThat(broadFirst.retentionSummary().retentionChains())
 			.extracting(RetentionChainSummary::terminalType)
 			.doesNotContain(preferredType);
@@ -114,7 +114,7 @@ class SharkHeapRetentionAnalyzerTest {
 
 		var result = analyzer.analyze(heap, 8, 12000, "balanced", List.of(preferredType, secondaryType), List.of());
 
-		assertThat(result.analysisSucceeded()).isTrue();
+		assertThat(result.analysisSucceeded()).as(result.errorMessage()).isTrue();
 		long totalReachableBytes = result.retentionSummary().retentionChains()
 			.stream()
 			.mapToLong(RetentionChainSummary::reachableSubgraphBytesApprox)
@@ -146,7 +146,7 @@ class SharkHeapRetentionAnalyzerTest {
 
 		var result = analyzer.analyze(heap, 2, 12000, "balanced", List.of(preferredType), List.of());
 
-		assertThat(result.analysisSucceeded()).isTrue();
+		assertThat(result.analysisSucceeded()).as(result.errorMessage()).isTrue();
 		assertThat(result.retentionSummary().retentionChains())
 			.anySatisfy(chain -> {
 				assertThat(chain.terminalType()).isEqualTo(preferredType);

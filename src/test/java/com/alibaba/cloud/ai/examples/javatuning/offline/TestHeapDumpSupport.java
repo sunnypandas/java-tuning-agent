@@ -1,14 +1,13 @@
 package com.alibaba.cloud.ai.examples.javatuning.offline;
 
-import java.lang.management.ManagementFactory;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-
-import com.sun.management.HotSpotDiagnosticMXBean;
+import java.util.Locale;
+import java.util.concurrent.TimeUnit;
 
 final class TestHeapDumpSupport {
-
-	private static Object retainedGraph;
 
 	private static final int FOREIGN_ARRAY_COUNT = 8;
 
@@ -27,17 +26,30 @@ final class TestHeapDumpSupport {
 
 	static Path dumpStaticRetainedBytesHeap(Path dir) throws Exception {
 		Files.createDirectories(dir);
-		retainedGraph = new RetainedGraph(new RetainedBucket("alpha", new byte[256 * 1024]),
-				new RetainedBucket("beta", new byte[192 * 1024]));
-
-		Path heap = dir.resolve("retained-bytes-" + System.nanoTime() + ".hprof");
-		HotSpotDiagnosticMXBean bean = ManagementFactory.getPlatformMXBean(HotSpotDiagnosticMXBean.class);
-		bean.dumpHeap(heap.toString(), true);
+		Path heap = Files.createTempFile("retained-bytes-", ".hprof");
+		Files.deleteIfExists(heap);
+		heap.toFile().deleteOnExit();
+		runDumpFixtureProcess("retained-bytes", heap);
+		awaitDumpReady(heap);
 		return heap;
 	}
 
 	static Path dumpFocusPackagePreferenceHeap(Path dir) throws Exception {
 		Files.createDirectories(dir);
+		Path heap = Files.createTempFile("focus-packages-", ".hprof");
+		Files.deleteIfExists(heap);
+		heap.toFile().deleteOnExit();
+		runDumpFixtureProcess("focus-packages", heap);
+		awaitDumpReady(heap);
+		return heap;
+	}
+
+	static Object createRetainedBytesFixture() {
+		return new RetainedGraph(new RetainedBucket("alpha", new byte[256 * 1024]),
+				new RetainedBucket("beta", new byte[192 * 1024]));
+	}
+
+	static Object createFocusPackageFixture() {
 		String[][] foreignArrays = new String[FOREIGN_ARRAY_COUNT][];
 		for (int index = 0; index < FOREIGN_ARRAY_COUNT; index++) {
 			foreignArrays[index] = new String[FOREIGN_ARRAY_LENGTH];
@@ -51,12 +63,77 @@ final class TestHeapDumpSupport {
 			preferredArray[index] = new PreferredNode("preferred-" + index, new byte[64 * 1024],
 					new PreferredLeaf(new byte[32 * 1024]));
 		}
-		retainedGraph = new PackagePreferenceGraph(foreignArrays, secondaryArrays, preferredArray);
+		return new PackagePreferenceGraph(foreignArrays, secondaryArrays, preferredArray);
+	}
 
-		Path heap = dir.resolve("focus-packages-" + System.nanoTime() + ".hprof");
-		HotSpotDiagnosticMXBean bean = ManagementFactory.getPlatformMXBean(HotSpotDiagnosticMXBean.class);
-		bean.dumpHeap(heap.toString(), true);
-		return heap;
+	private static void runDumpFixtureProcess(String scenario, Path heap) throws Exception {
+		ProcessBuilder processBuilder = new ProcessBuilder(javaExecutable(), "-cp", System.getProperty("java.class.path"),
+				HeapDumpFixtureProcessMain.class.getName(), scenario, heap.toAbsolutePath().toString());
+		processBuilder.redirectErrorStream(true);
+		Process process = processBuilder.start();
+		String output = readProcessOutput(process);
+		if (!process.waitFor(90L, TimeUnit.SECONDS)) {
+			process.destroyForcibly();
+			throw new IllegalStateException("Timed out creating fixture heap dump for scenario " + scenario);
+		}
+		if (process.exitValue() != 0) {
+			throw new IllegalStateException(
+					"Fixture heap dump process failed for scenario " + scenario + ": " + output.trim());
+		}
+	}
+
+	private static String readProcessOutput(Process process) throws IOException {
+		try (var input = process.getInputStream()) {
+			return new String(input.readAllBytes(), StandardCharsets.UTF_8);
+		}
+	}
+
+	private static void awaitDumpReady(Path heap) throws Exception {
+		long deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(20L);
+		long previousSize = -1L;
+		int stableChecks = 0;
+
+		while (System.nanoTime() < deadlineNanos) {
+			if (!Files.isRegularFile(heap)) {
+				Thread.sleep(50L);
+				continue;
+			}
+
+			long currentSize = Files.size(heap);
+			if (currentSize > 0L && currentSize == previousSize) {
+				stableChecks++;
+			}
+			else {
+				stableChecks = 0;
+			}
+			previousSize = currentSize;
+
+			if (stableChecks >= 2 && canOpenForRead(heap)) {
+				return;
+			}
+			Thread.sleep(50L);
+		}
+
+		throw new IllegalStateException("Heap dump did not become ready in time: " + heap);
+	}
+
+	private static boolean canOpenForRead(Path heap) {
+		try (var ignored = Files.newInputStream(heap)) {
+			return true;
+		}
+		catch (Exception ignored) {
+			return false;
+		}
+	}
+
+	private static String javaExecutable() {
+		String javaHome = System.getProperty("java.home");
+		String executable = isWindows() ? "java.exe" : "java";
+		return Path.of(javaHome, "bin", executable).toString();
+	}
+
+	private static boolean isWindows() {
+		return System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");
 	}
 
 	static String preferredNodeArrayTypeName() {
