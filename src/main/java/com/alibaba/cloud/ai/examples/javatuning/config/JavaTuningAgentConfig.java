@@ -14,6 +14,7 @@ import com.alibaba.cloud.ai.examples.javatuning.discovery.ProcessDisplayNameReso
 import com.alibaba.cloud.ai.examples.javatuning.mcp.JavaTuningMcpTools;
 import com.alibaba.cloud.ai.examples.javatuning.mcp.OfflineMcpTools;
 import com.alibaba.cloud.ai.examples.javatuning.offline.HeapDumpChunkRepository;
+import com.alibaba.cloud.ai.examples.javatuning.offline.HeapRetentionAnalysisOrchestrator;
 import com.alibaba.cloud.ai.examples.javatuning.offline.HeapRetentionAnalyzer;
 import com.alibaba.cloud.ai.examples.javatuning.offline.OfflineAnalysisService;
 import com.alibaba.cloud.ai.examples.javatuning.offline.OfflineDraftValidator;
@@ -21,6 +22,8 @@ import com.alibaba.cloud.ai.examples.javatuning.offline.OfflineEvidenceAssembler
 import com.alibaba.cloud.ai.examples.javatuning.offline.OfflineJvmSnapshotAssembler;
 import com.alibaba.cloud.ai.examples.javatuning.offline.SharkHeapRetentionAnalyzer;
 import com.alibaba.cloud.ai.examples.javatuning.offline.SharkHeapDumpSummarizer;
+import com.alibaba.cloud.ai.examples.javatuning.runtime.HeapRetentionAnalysisResult;
+import com.alibaba.cloud.ai.examples.javatuning.runtime.HeapRetentionSummary;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.ClassHistogramParser;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.CommandExecutor;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.JvmRuntimeCollector;
@@ -31,8 +34,10 @@ import com.alibaba.cloud.ai.examples.javatuning.runtime.ThreadDumpParser;
 import org.springframework.ai.tool.ToolCallbackProvider;
 import org.springframework.ai.tool.method.MethodToolCallbackProvider;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Primary;
 
 @Configuration
 public class JavaTuningAgentConfig {
@@ -129,10 +134,29 @@ public class JavaTuningAgentConfig {
 	}
 
 	@Bean
-	HeapRetentionAnalyzer heapRetentionAnalyzer(
+	SharkHeapRetentionAnalyzer sharkHeapRetentionAnalyzer(
 			@Value("${java-tuning-agent.offline.heap-retention.default-top-objects:20}") int defaultTopObjects,
 			@Value("${java-tuning-agent.offline.heap-retention.default-max-output-chars:16000}") int defaultMaxOutputChars) {
 		return new SharkHeapRetentionAnalyzer(defaultTopObjects, defaultMaxOutputChars);
+	}
+
+	@Bean
+	HeapRetentionAnalyzer dominatorStyleHeapRetentionAnalyzer(
+			@Value("${java-tuning-agent.offline.heap-retention.default-top-objects:20}") int defaultTopObjects,
+			@Value("${java-tuning-agent.offline.heap-retention.default-max-output-chars:16000}") int defaultMaxOutputChars) {
+		return (heapDumpPath, topObjectLimit, maxOutputChars, analysisDepth, focusTypes, focusPackages) -> {
+			HeapRetentionSummary summary = HeapRetentionSummary.empty();
+			return new HeapRetentionAnalysisResult(false, "dominator-style", List.of(),
+					"Dominator-style analysis is not yet available in this phase.", summary, "");
+		};
+	}
+
+	@Bean
+	@Primary
+	HeapRetentionAnalyzer heapRetentionAnalyzer(
+			HeapRetentionAnalyzer sharkHeapRetentionAnalyzer,
+			@Qualifier("dominatorStyleHeapRetentionAnalyzer") HeapRetentionAnalyzer dominatorStyleHeapRetentionAnalyzer) {
+		return new HeapRetentionAnalysisOrchestrator(sharkHeapRetentionAnalyzer, dominatorStyleHeapRetentionAnalyzer);
 	}
 
 	@Bean
