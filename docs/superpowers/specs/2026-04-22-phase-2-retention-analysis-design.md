@@ -1,7 +1,7 @@
 # Phase 2 Retention Analysis Design
 
-**Date:** 2026-04-22  
-**Status:** Proposed and approved for planning  
+**Date:** 2026-04-22
+**Status:** Implemented in `retention-phase-2`
 **Audience:** implementers of `java-tuning-agent` offline heap analysis and advice integration
 
 ---
@@ -378,8 +378,20 @@ This keeps phase-1 defaults stable, improves deep-analysis capability, and moves
 
 ---
 
-## 16. Revision History
+## 16. Implementation Status
+
+- Orchestrated deep routing landed through `HeapRetentionAnalysisOrchestrator`.
+- The dominator-style analyzer is deep-only; `fast` and `balanced` preserve Shark-only phase-1 behavior.
+- Offline advice can reuse retention evidence when callers explicitly pass `analysisDepth=deep`.
+- `MemoryGcEvidencePack` carries optional `HeapRetentionAnalysisResult` evidence for report rules and Markdown.
+- Deep fallback remains visible through `engine`, warnings, confidence reasons, and conservative report wording.
+- Default shallow heap summary behavior remains unchanged.
+
+---
+
+## 17. Revision History
 
 | Date | Change |
 |------|--------|
 | 2026-04-22 | Initial phase-2 design after phase-1 merge: dual-engine orchestration, deep-only heavyweight trigger, and bounded advice integration. |
+| 2026-04-23 | Marked phase-2 implementation status after orchestration, deep analyzer, offline advice reuse, and report integration landed. |

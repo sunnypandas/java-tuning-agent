@@ -215,3 +215,12 @@
 | 2026-04-19 | 新增 §8.1 实现边界与已知局限（评审后固化）。 |
 | 2026-04-19 | 新增 §5.1：`.hprof` 自动 Shark 浅层摘要、配置项说明、九个 MCP 工具与 schema 同步文案更新。 |
 | 2026-04-22 | 同步 phase-1 工具拆分：`summarizeOfflineHeapDumpFile` 保持 shallow-only，新增 `analyzeOfflineHeapRetention` 的 holder 语义与近似指标说明，并将 shared `MemoryGcEvidencePack` 集成标记为后续阶段。 |
+
+## Phase 2 Deep Retention Update
+
+- `summarizeOfflineHeapDumpFile` remains a shallow-by-class heap summary tool. It does not return holder chains, GC-root hints, or retained-style conclusions.
+- `analyzeOfflineHeapRetention(..., analysisDepth=deep, ...)` now attempts the shared deep retention orchestrator. The heavy retained-style path is opt-in; `fast` and `balanced` keep the phase-1 Shark-only behavior.
+- `generateOfflineTuningAdvice(..., analysisDepth=deep)` reuses the same retention orchestration and attaches successful retention evidence to `MemoryGcEvidencePack` for advice findings and report Markdown.
+- Deep analysis can degrade to Shark fallback. When that happens, the result must disclose the fallback through `engine`, warnings, confidence reasons, and Markdown, and retained-size wording must remain conservative.
+
+Revision note 2026-04-23: phase 2 keeps default shallow behavior unchanged while allowing explicit deep offline advice to reuse holder-oriented retention evidence.
