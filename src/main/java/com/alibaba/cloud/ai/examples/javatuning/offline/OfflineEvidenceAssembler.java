@@ -9,6 +9,7 @@ import java.util.List;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.ClassHistogramParser;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.ClassHistogramSummary;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.HeapDumpShallowSummary;
+import com.alibaba.cloud.ai.examples.javatuning.runtime.HeapRetentionAnalysisResult;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.MemoryGcEvidencePack;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.ThreadDumpParser;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.ThreadDumpSummary;
@@ -56,6 +57,10 @@ public class OfflineEvidenceAssembler {
 
 		return new MemoryGcEvidencePack(snapshot, classHistogram, threadDump, List.copyOf(missingData),
 				List.copyOf(warnings), heapDumpPath, heapShallowSummary);
+	}
+
+	public MemoryGcEvidencePack build(OfflineBundleDraft draft, HeapRetentionAnalysisResult heapRetentionAnalysis) {
+		return build(draft).withHeapRetentionAnalysis(heapRetentionAnalysis);
 	}
 
 	private HeapDumpShallowSummary summarizeHeapDumpIfEligible(String heapDumpAbsolutePath, List<String> warnings) {

@@ -28,6 +28,7 @@ public final class HeapDumpFixtureProcessMain {
 		retainedGraph = switch (scenario) {
 			case "retained-bytes" -> TestHeapDumpSupport.createRetainedBytesFixture();
 			case "focus-packages" -> TestHeapDumpSupport.createFocusPackageFixture();
+			case "dominating-static-owner" -> TestHeapDumpSupport.createDominatingStaticOwnerFixture();
 			default -> throw new IllegalArgumentException("Unknown scenario: " + scenario);
 		};
 

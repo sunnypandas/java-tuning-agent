@@ -118,6 +118,8 @@ class McpToolSchemaContractTest {
 					assertThat(schema.path("properties").path("environment").path("type").asText()).isEqualTo("string");
 					assertThat(schema.path("properties").path("optimizationGoal").path("type").asText())
 						.isEqualTo("string");
+					assertThat(schema.path("properties").path("analysisDepth").path("type").asText())
+						.isEqualTo("string");
 					assertThat(schema.path("properties").path("confirmationToken").path("type").asText())
 						.isEqualTo("string");
 					assertThat(schema.path("properties").path("proceedWithMissingRequired").path("type").asText())

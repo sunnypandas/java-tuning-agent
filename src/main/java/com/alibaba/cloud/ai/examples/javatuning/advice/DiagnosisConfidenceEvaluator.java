@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import com.alibaba.cloud.ai.examples.javatuning.runtime.MemoryGcEvidencePack;
+import com.alibaba.cloud.ai.examples.javatuning.runtime.HeapRetentionAnalysisResult;
 
 public final class DiagnosisConfidenceEvaluator {
 
@@ -46,9 +47,30 @@ public final class DiagnosisConfidenceEvaluator {
 					.errorMessage());
 		}
 
+		HeapRetentionAnalysisResult retention = evidence.heapRetentionAnalysis();
+		boolean retentionSucceeded = retention != null && retention.analysisSucceeded();
+		boolean strongerRetainedStyleSignal = retentionSucceeded && "dominator-style".equalsIgnoreCase(retention.engine())
+				&& retention.warnings().isEmpty();
+		if (retentionSucceeded) {
+			if (strongerRetainedStyleSignal) {
+				reasons.add(
+						"Heap retention analysis succeeded with holder-oriented retained-style approximation evidence and holder hints");
+			}
+			else {
+				reasons.add("Heap retention analysis succeeded with holder-oriented retained-style approximation evidence from "
+						+ retention.engine());
+			}
+			if (!retention.warnings().isEmpty()) {
+				reasons.add("Retention analysis caveats: " + retentionWarnings(retention.warnings()));
+			}
+		}
+
 		boolean leak = scratch.findings()
 			.stream()
 			.anyMatch(f -> "Suspected retained-object leak".equals(f.title()));
+		boolean retentionFinding = scratch.findings()
+			.stream()
+			.anyMatch(f -> HeapRetentionInsightsRule.FINDING_TITLE.equals(f.title()));
 		boolean heap = scratch.findings().stream().anyMatch(f -> "High heap pressure".equals(f.title()));
 		boolean deadlock = scratch.findings()
 			.stream()
@@ -62,6 +84,10 @@ public final class DiagnosisConfidenceEvaluator {
 		else if (leak && evidence.classHistogram() != null && !evidence.classHistogram().entries().isEmpty()) {
 			confidence = "high";
 			reasons.add("Dominant histogram types support a retention hypothesis");
+		}
+		else if (retentionFinding) {
+			confidence = retentionSucceeded ? "medium" : "low";
+			reasons.add("Retention evidence exists as a holder-oriented retained-style approximation, not MAT-exact retained size");
 		}
 		else if (heap) {
 			boolean histo = evidence.classHistogram() != null && !evidence.classHistogram().entries().isEmpty();
@@ -81,5 +107,12 @@ public final class DiagnosisConfidenceEvaluator {
 			reasons.add("Heuristic rules produced findings without histogram-backed retention proof");
 		}
 		return new ConfidenceResult(confidence, List.copyOf(reasons));
+	}
+
+	private static String retentionWarnings(List<String> warnings) {
+		if (warnings.size() <= 2) {
+			return String.join(" | ", warnings);
+		}
+		return String.join(" | ", warnings.subList(0, 2)) + " (+" + (warnings.size() - 2) + " more warnings)";
 	}
 }

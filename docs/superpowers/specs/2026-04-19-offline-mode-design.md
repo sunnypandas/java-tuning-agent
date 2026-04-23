@@ -181,3 +181,11 @@
 | 2026-04-19 | 初稿：brainstorming  Retrofit — 方案 A/B/C、推荐无状态草稿 + 分块工具、映射表、与 spec 分工。 |
 | 2026-04-19 | 更新 §1.1 / §4：`.hprof` 自动 Shark 浅层摘要字段 `heapShallowSummary`、可配置 `heap-summary.auto-enabled`、与规则/报告关系。 |
 | 2026-04-22 | 同步 retention phase-1 边界：`summarizeOfflineHeapDumpFile` 保持 shallow-only，新增独立 `analyzeOfflineHeapRetention`，并明确 shared `MemoryGcEvidencePack` 集成后置。 |
+
+## Phase 2 Integration Update
+
+- `MemoryGcEvidencePack` now carries optional `HeapRetentionAnalysisResult` evidence, but only explicit `analysisDepth=deep` offline advice requests populate it.
+- Default offline advice remains lightweight: a heap path still auto-adds `heapShallowSummary` only, and `summarizeOfflineHeapDumpFile` remains shallow-only.
+- Both `analyzeOfflineHeapRetention` and deep offline advice route through the shared retention orchestrator so fallback warnings and confidence limits stay consistent.
+
+Revision note 2026-04-23: phase 2 adds bounded retention evidence integration for explicit deep requests; ordinary offline advice continues to consume only shallow heap summaries automatically.

@@ -1,11 +1,14 @@
 package com.alibaba.cloud.ai.examples.javatuning.offline;
 
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 import com.alibaba.cloud.ai.examples.javatuning.advice.CodeContextSummary;
 import com.alibaba.cloud.ai.examples.javatuning.advice.TuningAdviceReport;
 import com.alibaba.cloud.ai.examples.javatuning.agent.JavaTuningWorkflowService;
+import com.alibaba.cloud.ai.examples.javatuning.runtime.HeapRetentionAnalysisResult;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.MemoryGcEvidencePack;
 
 /**
@@ -17,12 +20,15 @@ public class OfflineAnalysisService {
 
 	private final OfflineEvidenceAssembler evidenceAssembler;
 
+	private final HeapRetentionAnalyzer heapRetentionAnalyzer;
+
 	private final JavaTuningWorkflowService workflowService;
 
 	public OfflineAnalysisService(OfflineDraftValidator validator, OfflineEvidenceAssembler evidenceAssembler,
-			JavaTuningWorkflowService workflowService) {
+			HeapRetentionAnalyzer heapRetentionAnalyzer, JavaTuningWorkflowService workflowService) {
 		this.validator = validator;
 		this.evidenceAssembler = evidenceAssembler;
+		this.heapRetentionAnalyzer = heapRetentionAnalyzer;
 		this.workflowService = workflowService;
 	}
 
@@ -31,7 +37,7 @@ public class OfflineAnalysisService {
 	}
 
 	public TuningAdviceReport generateOfflineAdvice(OfflineBundleDraft draft, CodeContextSummary codeContextSummary,
-			String environment, String optimizationGoal, String confirmationToken,
+			String environment, String optimizationGoal, String analysisDepth, String confirmationToken,
 			boolean proceedWithMissingRequired) {
 		OfflineDraftValidationResult validation = validator.validate(draft, proceedWithMissingRequired);
 		if (!validation.allowedToProceed()) {
@@ -42,12 +48,39 @@ public class OfflineAnalysisService {
 			throw new IllegalArgumentException(
 					"使用导入的类直方图、线程栈或堆转储进行分析需要非空的 confirmationToken（与在线模式特权采集相同语义）。");
 		}
+		CodeContextSummary ctx = codeContextSummary == null ? CodeContextSummary.empty() : codeContextSummary;
 		MemoryGcEvidencePack base = evidenceAssembler.build(draft);
 		List<String> missing = new ArrayList<>(base.missingData());
+		List<String> warnings = new ArrayList<>(base.warnings());
 		appendRecommendedAbsenceNotes(draft, missing);
+		HeapRetentionAnalysisResult heapRetentionAnalysis = null;
+		String normalizedDepth = normalizeAnalysisDepth(analysisDepth);
+		String heapDumpPath = base.heapDumpPath();
+		if ("deep".equals(normalizedDepth)) {
+			if (heapDumpPath == null || heapDumpPath.isBlank()) {
+				missing.add("heapRetentionAnalysis");
+				warnings.add(
+						"Deep offline advice requested but heapDumpAbsolutePath is blank; retention evidence was skipped.");
+			}
+			else {
+				HeapRetentionAnalysisResult retention = heapRetentionAnalyzer.analyze(Path.of(heapDumpPath.trim()), null,
+						null, "deep", List.of(), ctx.candidatePackages());
+				warnings.addAll(retention.warnings());
+				if (retention.analysisSucceeded()) {
+					heapRetentionAnalysis = retention;
+				}
+				else {
+					missing.add("heapRetentionAnalysis");
+					String failureMessage = retention.errorMessage().isBlank()
+							? "Deep retention analysis failed without an error message."
+							: "Deep retention analysis failed: " + retention.errorMessage();
+					warnings.add(failureMessage);
+				}
+			}
+		}
 		MemoryGcEvidencePack pack = new MemoryGcEvidencePack(base.snapshot(), base.classHistogram(), base.threadDump(),
-				missing, base.warnings(), base.heapDumpPath(), base.heapShallowSummary());
-		return workflowService.generateAdviceFromEvidence(pack, codeContextSummary, environment, optimizationGoal);
+				missing, warnings, heapDumpPath, base.heapShallowSummary(), heapRetentionAnalysis);
+		return workflowService.generateAdviceFromEvidence(pack, ctx, environment, optimizationGoal);
 	}
 
 	private static boolean offlinePrivilegedConsentOk(OfflineBundleDraft draft, String confirmationToken) {
@@ -59,6 +92,13 @@ public class OfflineAnalysisService {
 			return true;
 		}
 		return confirmationToken != null && !confirmationToken.isBlank();
+	}
+
+	private static String normalizeAnalysisDepth(String analysisDepth) {
+		if (analysisDepth == null || analysisDepth.isBlank()) {
+			return "balanced";
+		}
+		return analysisDepth.trim().toLowerCase(Locale.ROOT);
 	}
 
 	private static void appendRecommendedAbsenceNotes(OfflineBundleDraft draft, List<String> missing) {
