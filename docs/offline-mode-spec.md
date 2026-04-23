@@ -224,3 +224,5 @@
 - Deep analysis can degrade to Shark fallback. When that happens, the result must disclose the fallback through `engine`, warnings, confidence reasons, and Markdown, and retained-size wording must remain conservative.
 
 Revision note 2026-04-23: phase 2 keeps default shallow behavior unchanged while allowing explicit deep offline advice to reuse holder-oriented retention evidence.
+
+Public surface sync note 2026-04-24: the server now exposes **11** tools total: **5** live tools (`listJavaApps`, `inspectJvmRuntime`, `inspectJvmRuntimeRepeated`, `collectMemoryGcEvidence`, `generateTuningAdvice`) and **6** offline tools (`validateOfflineAnalysisDraft`, `submitOfflineHeapDumpChunk`, `finalizeOfflineHeapDump`, `generateOfflineTuningAdvice`, `summarizeOfflineHeapDumpFile`, `analyzeOfflineHeapRetention`). For retention-specific offline work, `analyzeOfflineHeapRetention` accepts `heapDumpAbsolutePath`, `analysisDepth`, `focusTypes`, `focusPackages`, `topObjectLimit`, and `maxOutputChars`.
