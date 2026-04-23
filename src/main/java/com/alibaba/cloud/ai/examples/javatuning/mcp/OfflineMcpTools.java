@@ -88,6 +88,7 @@ public class OfflineMcpTools {
 			离线模式：从导入材料生成与在线模式相同结构的 TuningAdviceReport（含 formattedSummary）。
 			需先通过校验或声明降级（proceedWithMissingRequired）。
 			若草稿包含类直方图、线程栈或堆路径，须提供非空 confirmationToken（与 collectMemoryGcEvidence / generateTuningAdvice 特权语义一致）。
+			analysisDepth 可为空；为空时按 balanced 处理，只有 deep 会在存在 heapDumpAbsolutePath 时附加 retention 证据。
 			草稿字段形状以 MCP inputSchema 为准：classHistogram/threadDump 为 OfflineArtifactSource 对象，只能传 {"filePath":"..."} 或 {"inlineText":"..."}，不得传 bare string；
 			heapDumpAbsolutePath 为普通字符串路径。若本地文件已存在，优先使用 filePath。
 			当 heapDumpAbsolutePath 指向已存在的 .hprof 时，服务端自动用 Shark 做浅层按类索引，并参与规则诊断与报告（见 java-tuning-agent.heap-summary.auto-enabled）。""")
@@ -96,13 +97,15 @@ public class OfflineMcpTools {
 			@ToolParam(description = "完整 OfflineBundleDraft。关键字段：classHistogram/threadDump 必须是 {\"filePath\":\"...\"} 或 {\"inlineText\":\"...\"}；不要给这两个字段传 bare string。heapDumpAbsolutePath 才是普通字符串路径。") OfflineBundleDraft draft,
 			@ToolParam(description = "环境标签，如 prod / local。") String environment,
 			@ToolParam(description = "优化目标描述。") String optimizationGoal,
+			@ToolParam(description = "堆分析深度：fast / balanced / deep。为空时按 balanced 处理；只有 deep 会尝试附加 retention 证据。") String analysisDepth,
 			@ToolParam(description = "用户同意使用导入的诊断材料时的 token；无直方图/线程/堆时可空。") String confirmationToken,
 			@ToolParam(description = "必选缺失时是否仍生成（降级）。") boolean proceedWithMissingRequired) {
 		environment = environment == null ? "" : environment;
 		optimizationGoal = optimizationGoal == null ? "" : optimizationGoal;
+		analysisDepth = analysisDepth == null ? "" : analysisDepth;
 		confirmationToken = confirmationToken == null ? "" : confirmationToken;
 		CodeContextSummary ctx = codeContextSummary == null ? CodeContextSummary.empty() : codeContextSummary;
-		return offlineAnalysisService.generateOfflineAdvice(draft, ctx, environment, optimizationGoal,
+		return offlineAnalysisService.generateOfflineAdvice(draft, ctx, environment, optimizationGoal, analysisDepth,
 				confirmationToken, proceedWithMissingRequired);
 	}
 

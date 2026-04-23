@@ -158,8 +158,9 @@ public class JavaTuningAgentConfig {
 
 	@Bean
 	OfflineAnalysisService offlineAnalysisService(OfflineDraftValidator validator,
-			OfflineEvidenceAssembler evidenceAssembler, JavaTuningWorkflowService workflowService) {
-		return new OfflineAnalysisService(validator, evidenceAssembler, workflowService);
+			OfflineEvidenceAssembler evidenceAssembler, HeapRetentionAnalyzer heapRetentionAnalyzer,
+			JavaTuningWorkflowService workflowService) {
+		return new OfflineAnalysisService(validator, evidenceAssembler, heapRetentionAnalyzer, workflowService);
 	}
 
 	@Bean
