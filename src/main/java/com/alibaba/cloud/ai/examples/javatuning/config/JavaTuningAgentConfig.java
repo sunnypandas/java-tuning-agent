@@ -50,8 +50,10 @@ public class JavaTuningAgentConfig {
 
 	@Bean
 	CommandExecutor commandExecutor(
-			@Value("${java-tuning-agent.command-whitelist:jps,jcmd,jstat}") List<String> commandWhitelist) {
-		return new SystemCommandExecutor(commandWhitelist);
+			@Value("${java-tuning-agent.command-whitelist:jps,jcmd,jstat}") List<String> commandWhitelist,
+			@Value("${java-tuning-agent.command.default-timeout-ms:15000}") long defaultTimeoutMs,
+			@Value("${java-tuning-agent.command.default-max-output-bytes:8388608}") int defaultMaxOutputBytes) {
+		return new SystemCommandExecutor(commandWhitelist, defaultTimeoutMs, defaultMaxOutputBytes);
 	}
 
 	@Bean
