@@ -54,6 +54,7 @@ public class JavaTuningWorkflowService {
 				base.missingData(), base.nextSteps(), base.confidence(), base.confidenceReasons(), "");
 		String summary = TuningAdviceReportFormatter.toMarkdown(merged);
 		summary = appendHeapShallowSectionIfAny(evidence, summary);
+		summary = appendHeapRetentionSectionIfAny(evidence, summary);
 		return new TuningAdviceReport(merged.findings(), merged.recommendations(), merged.suspectedCodeHotspots(),
 				merged.missingData(), merged.nextSteps(), merged.confidence(), merged.confidenceReasons(), summary);
 	}
@@ -70,5 +71,12 @@ public class JavaTuningWorkflowService {
 			return summary;
 		}
 		return summary + "\n\n" + evidence.heapShallowSummary().summaryMarkdown();
+	}
+
+	private static String appendHeapRetentionSectionIfAny(MemoryGcEvidencePack evidence, String summary) {
+		if (evidence.heapRetentionAnalysis() == null || evidence.heapRetentionAnalysis().summaryMarkdown().isBlank()) {
+			return summary;
+		}
+		return summary + "\n\n" + evidence.heapRetentionAnalysis().summaryMarkdown().trim();
 	}
 }

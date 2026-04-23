@@ -19,8 +19,8 @@ public final class MemoryGcDiagnosisEngine {
 	public static MemoryGcDiagnosisEngine firstVersion() {
 		return new MemoryGcDiagnosisEngine(
 				List.of(new HighHeapPressureRule(), new SuspectedLeakRule(), new HeapDumpShallowDominanceRule(),
-						new ThreadDumpInsightsRule(), new AllocationChurnRule(), new GcStrategyMismatchRule(),
-						new EvidenceGapRule()),
+						new HeapRetentionInsightsRule(), new ThreadDumpInsightsRule(), new AllocationChurnRule(),
+						new GcStrategyMismatchRule(), new EvidenceGapRule()),
 				new DiagnosisConfidenceEvaluator());
 	}
 

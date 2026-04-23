@@ -5,11 +5,15 @@ import java.util.Map;
 
 import com.alibaba.cloud.ai.examples.javatuning.runtime.ClassHistogramParser;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.ClassHistogramSummary;
+import com.alibaba.cloud.ai.examples.javatuning.runtime.HeapRetentionAnalysisResult;
+import com.alibaba.cloud.ai.examples.javatuning.runtime.HeapRetentionConfidence;
+import com.alibaba.cloud.ai.examples.javatuning.runtime.HeapRetentionSummary;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.JvmCollectionMetadata;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.JvmGcSnapshot;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.JvmMemorySnapshot;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.JvmRuntimeSnapshot;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.MemoryGcEvidencePack;
+import com.alibaba.cloud.ai.examples.javatuning.runtime.SuspectedHolderSummary;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.ThreadDumpSummary;
 import org.junit.jupiter.api.Test;
 
@@ -36,6 +40,35 @@ class MemoryGcDiagnosisEngineTest {
 		assertThat(report.findings()).extracting(TuningFinding::title).contains("Suspected retained-object leak");
 		assertThat(report.confidence()).isEqualTo("high");
 		assertThat(report.confidenceReasons()).isNotEmpty();
+	}
+
+	@Test
+	void shouldReportRetentionEvidenceFromHeapRetentionAnalysis() {
+		HeapRetentionAnalysisResult retention = new HeapRetentionAnalysisResult(true, "dominator-style", List.of(), "",
+				new HeapRetentionSummary(List.of(),
+						List.of(new SuspectedHolderSummary("com.example.CacheHolder", "static-field-owner", 24_000_000L,
+								24_000_000L, 3L, "com.example.CacheHolder.INSTANCE", "java.util.Map",
+								"static holder")),
+						List.of(), List.of(),
+						new HeapRetentionConfidence("medium", List.of("retained bytes are approximate"),
+								List.of("Engine=dominator-style")),
+						"### Heap retention analysis\n\nEngine=dominator-style", true, List.of(), ""),
+				"### Heap retention analysis\n\nEngine=dominator-style");
+		JvmRuntimeSnapshot snapshot = new JvmRuntimeSnapshot(99L,
+				new JvmMemorySnapshot(1L, 1L, 1L, null, null, null, null, null),
+				new JvmGcSnapshot("G1", 1L, 1L, 0L, 0L, null), List.of(), "", null, null,
+				new JvmCollectionMetadata(List.of(), 0L, 0L, false), List.of());
+		MemoryGcEvidencePack evidence = new MemoryGcEvidencePack(snapshot, null, null, List.of(), List.of(), null, null,
+				retention);
+
+		TuningAdviceReport report = MemoryGcDiagnosisEngine.firstVersion()
+			.diagnose(evidence, CodeContextSummary.empty(), "local", "diagnose-memory");
+
+		assertThat(report.findings()).extracting(TuningFinding::title)
+			.contains(HeapRetentionInsightsRule.FINDING_TITLE);
+		assertThat(report.confidenceReasons())
+			.anyMatch(r -> r.contains("holder-oriented retained-style approximation evidence"));
+		assertThat(report.confidence()).isEqualTo("medium");
 	}
 
 	@Test
