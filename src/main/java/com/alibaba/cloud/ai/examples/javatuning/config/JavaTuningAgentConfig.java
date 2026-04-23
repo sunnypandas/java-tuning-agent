@@ -28,6 +28,7 @@ import com.alibaba.cloud.ai.examples.javatuning.runtime.HeapRetentionSummary;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.ClassHistogramParser;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.CommandExecutor;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.JvmRuntimeCollector;
+import com.alibaba.cloud.ai.examples.javatuning.runtime.RepeatedSamplingProperties;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.RuntimeCollectionPolicy;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.SafeJvmRuntimeCollector;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.SystemCommandExecutor;
@@ -70,8 +71,13 @@ public class JavaTuningAgentConfig {
 	@Bean
 	JvmRuntimeCollector jvmRuntimeCollector(CommandExecutor commandExecutor, RuntimeCollectionPolicy policy,
 			SharkHeapDumpSummarizer sharkHeapDumpSummarizer,
-			@Value("${java-tuning-agent.heap-summary.auto-enabled:true}") boolean autoHeapSummary) {
-		return new SafeJvmRuntimeCollector(commandExecutor, policy, sharkHeapDumpSummarizer, autoHeapSummary);
+			@Value("${java-tuning-agent.heap-summary.auto-enabled:true}") boolean autoHeapSummary,
+			@Value("${java-tuning-agent.sampling.default-sample-count:3}") int defaultSampleCount,
+			@Value("${java-tuning-agent.sampling.default-interval-ms:10000}") long defaultIntervalMs,
+			@Value("${java-tuning-agent.sampling.max-sample-count:20}") int maxSampleCount,
+			@Value("${java-tuning-agent.sampling.max-total-duration-ms:300000}") long maxTotalDurationMs) {
+		return new SafeJvmRuntimeCollector(commandExecutor, policy, sharkHeapDumpSummarizer, autoHeapSummary,
+				new RepeatedSamplingProperties(defaultSampleCount, defaultIntervalMs, maxSampleCount, maxTotalDurationMs));
 	}
 
 	@Bean

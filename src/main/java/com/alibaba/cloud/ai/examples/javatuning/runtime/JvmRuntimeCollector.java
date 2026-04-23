@@ -8,4 +8,8 @@ public interface JvmRuntimeCollector {
 		throw new UnsupportedOperationException(
 				"Upgraded memory/GC evidence collection is not supported by this collector implementation");
 	}
+
+	default RepeatedSamplingResult collectRepeated(RepeatedSamplingRequest request) {
+		throw new UnsupportedOperationException("Repeated sampling is not supported by this collector implementation");
+	}
 }
