@@ -13,6 +13,8 @@ import com.alibaba.cloud.ai.examples.javatuning.runtime.JvmGcSnapshot;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.JvmMemorySnapshot;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.JvmRuntimeSnapshot;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.MemoryGcEvidencePack;
+import com.alibaba.cloud.ai.examples.javatuning.runtime.RepeatedRuntimeSample;
+import com.alibaba.cloud.ai.examples.javatuning.runtime.RepeatedSamplingResult;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.SuspectedHolderSummary;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.ThreadDumpSummary;
 import org.junit.jupiter.api.Test;
@@ -87,6 +89,19 @@ class MemoryGcDiagnosisEngineTest {
 
 		assertThat(report.findings()).extracting(TuningFinding::title).contains("High heap pressure");
 		assertThat(report.recommendations()).extracting(TuningRecommendation::category).contains("jvm-gc");
+	}
+
+	@Test
+	void shouldIncludeTrendFindingsFromRepeatedSamples() {
+		MemoryGcEvidencePack evidence = stableBaseEvidence().withRepeatedSamplingResult(risingHeapSamples());
+
+		TuningAdviceReport report = MemoryGcDiagnosisEngine.firstVersion()
+			.diagnose(evidence, CodeContextSummary.empty(), "local", "diagnose memory growth");
+
+		assertThat(report.findings()).extracting(TuningFinding::title)
+			.contains(RepeatedSamplingTrendRule.RISING_HEAP_TITLE);
+		assertThat(report.confidenceReasons())
+			.anyMatch(reason -> reason.contains("Repeated runtime samples present"));
 	}
 
 	@Test
@@ -220,4 +235,30 @@ class MemoryGcDiagnosisEngineTest {
 		assertThat(report.findings()).extracting(TuningFinding::title)
 			.doesNotContain(ThreadDumpInsightsRule.DEADLOCK_FINDING_TITLE);
 	}
+
+	private static MemoryGcEvidencePack stableBaseEvidence() {
+		JvmRuntimeSnapshot snapshot = new JvmRuntimeSnapshot(500L,
+				new JvmMemorySnapshot(128L * 1024L * 1024L, 512L * 1024L * 1024L, 512L * 1024L * 1024L, null, null,
+						null, null, null),
+				new JvmGcSnapshot("G1", 10L, 100L, 0L, 0L, 35.0d), List.of("-XX:+UseG1GC"), "", 20L, 1_000L,
+				new JvmCollectionMetadata(List.of(), 0L, 0L, false), List.of());
+		return new MemoryGcEvidencePack(snapshot, null, null, List.of(), List.of(), null, null);
+	}
+
+	private static RepeatedSamplingResult risingHeapSamples() {
+		return new RepeatedSamplingResult(500L,
+				List.of(repeatedSample(0L, 100L, 40.0d, 10L, 100L, 0L, 0L, 20L, 1_000L),
+						repeatedSample(10_000L, 170L, 55.0d, 12L, 120L, 0L, 0L, 22L, 1_003L),
+						repeatedSample(20_000L, 260L, 72.0d, 14L, 140L, 0L, 0L, 23L, 1_005L)),
+				List.of(), List.of(), 1_000_000L, 20_000L);
+	}
+
+	private static RepeatedRuntimeSample repeatedSample(long atOffsetMs, long heapUsedMb, double oldPct, long ygc,
+			long ygctMs, long fgc, long fgctMs, Long threads, Long classes) {
+		return new RepeatedRuntimeSample(1_000_000L + atOffsetMs,
+				new JvmMemorySnapshot(heapUsedMb * 1024L * 1024L, 512L * 1024L * 1024L, 512L * 1024L * 1024L, null,
+						null, null, null, null),
+				new JvmGcSnapshot("G1", ygc, ygctMs, fgc, fgctMs, oldPct), threads, classes, List.of());
+	}
+
 }

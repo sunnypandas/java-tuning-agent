@@ -32,6 +32,12 @@ public final class DiagnosisConfidenceEvaluator {
 		else {
 			reasons.add("No local source roots: code hotspots rely on class names only");
 		}
+		if (evidence.repeatedSamplingResult() != null && !evidence.repeatedSamplingResult().samples().isEmpty()) {
+			reasons.add("Repeated runtime samples present: trend-aware rules were applied");
+		}
+		if (evidence.repeatedSamplingResult() != null && evidence.repeatedSamplingResult().samples().size() < 2) {
+			reasons.add("Repeated sampling had fewer than two successful samples; trend confidence is limited");
+		}
 		if (!evidence.missingData().isEmpty()) {
 			reasons.add("Collection reported missing fragments: " + String.join(", ", evidence.missingData()));
 		}
