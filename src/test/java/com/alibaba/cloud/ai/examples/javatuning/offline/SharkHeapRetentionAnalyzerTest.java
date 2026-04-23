@@ -24,10 +24,13 @@ class SharkHeapRetentionAnalyzerTest {
 		var result = analyzer.analyze(heap, 10, 12000, "balanced", List.of("byte[]"), List.of());
 
 		assertThat(result.analysisSucceeded()).as(result.errorMessage()).isTrue();
+		assertThat(result.engine()).isEqualTo("shark");
 		assertThat(result.retentionSummary().analysisSucceeded()).isTrue();
 		assertThat(result.retentionSummary().suspectedHolders())
-			.extracting(SuspectedHolderSummary::holderRole)
-			.contains("static-field-owner");
+			.anySatisfy(holder -> {
+				assertThat(holder.holderRole()).isEqualTo("static-field-owner");
+				assertThat(holder.retainedBytesApprox()).isNull();
+			});
 		assertThat(result.retentionSummary().retentionChains())
 			.anySatisfy(chain -> assertThat(chain.terminalType()).isEqualTo("byte[]"));
 		assertThat(result.retentionSummary().confidenceAndLimits().limitations())

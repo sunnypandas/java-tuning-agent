@@ -16,6 +16,7 @@ import com.alibaba.cloud.ai.examples.javatuning.mcp.OfflineMcpTools;
 import com.alibaba.cloud.ai.examples.javatuning.offline.HeapDumpChunkRepository;
 import com.alibaba.cloud.ai.examples.javatuning.offline.HeapRetentionAnalysisOrchestrator;
 import com.alibaba.cloud.ai.examples.javatuning.offline.HeapRetentionAnalyzer;
+import com.alibaba.cloud.ai.examples.javatuning.offline.DominatorStyleHeapRetentionAnalyzer;
 import com.alibaba.cloud.ai.examples.javatuning.offline.OfflineAnalysisService;
 import com.alibaba.cloud.ai.examples.javatuning.offline.OfflineDraftValidator;
 import com.alibaba.cloud.ai.examples.javatuning.offline.OfflineEvidenceAssembler;
@@ -141,14 +142,10 @@ public class JavaTuningAgentConfig {
 	}
 
 	@Bean
-	HeapRetentionAnalyzer dominatorStyleHeapRetentionAnalyzer(
+	DominatorStyleHeapRetentionAnalyzer dominatorStyleHeapRetentionAnalyzer(
 			@Value("${java-tuning-agent.offline.heap-retention.default-top-objects:20}") int defaultTopObjects,
 			@Value("${java-tuning-agent.offline.heap-retention.default-max-output-chars:16000}") int defaultMaxOutputChars) {
-		return (heapDumpPath, topObjectLimit, maxOutputChars, analysisDepth, focusTypes, focusPackages) -> {
-			HeapRetentionSummary summary = HeapRetentionSummary.empty();
-			return new HeapRetentionAnalysisResult(false, "dominator-style", List.of(),
-					"Dominator-style analysis is not yet available in this phase.", summary, "");
-		};
+		return new DominatorStyleHeapRetentionAnalyzer(defaultTopObjects, defaultMaxOutputChars);
 	}
 
 	@Bean
