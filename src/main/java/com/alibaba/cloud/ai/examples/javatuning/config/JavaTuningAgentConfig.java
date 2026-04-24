@@ -27,6 +27,7 @@ import com.alibaba.cloud.ai.examples.javatuning.runtime.HeapRetentionAnalysisRes
 import com.alibaba.cloud.ai.examples.javatuning.runtime.HeapRetentionSummary;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.ClassHistogramParser;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.CommandExecutor;
+import com.alibaba.cloud.ai.examples.javatuning.runtime.JfrRecordingProperties;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.JvmRuntimeCollector;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.RepeatedSamplingProperties;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.RuntimeCollectionPolicy;
@@ -75,9 +76,19 @@ public class JavaTuningAgentConfig {
 			@Value("${java-tuning-agent.sampling.default-sample-count:3}") int defaultSampleCount,
 			@Value("${java-tuning-agent.sampling.default-interval-ms:10000}") long defaultIntervalMs,
 			@Value("${java-tuning-agent.sampling.max-sample-count:20}") int maxSampleCount,
-			@Value("${java-tuning-agent.sampling.max-total-duration-ms:300000}") long maxTotalDurationMs) {
+			@Value("${java-tuning-agent.sampling.max-total-duration-ms:300000}") long maxTotalDurationMs,
+			@Value("${java-tuning-agent.jfr.default-duration-seconds:30}") int defaultJfrDurationSeconds,
+			@Value("${java-tuning-agent.jfr.min-duration-seconds:5}") int minJfrDurationSeconds,
+			@Value("${java-tuning-agent.jfr.max-duration-seconds:300}") int maxJfrDurationSeconds,
+			@Value("${java-tuning-agent.jfr.completion-grace-ms:10000}") long jfrCompletionGraceMs,
+			@Value("${java-tuning-agent.jfr.default-max-summary-events:200000}") int defaultJfrMaxSummaryEvents,
+			@Value("${java-tuning-agent.jfr.top-limit:10}") int jfrTopLimit) {
+		JfrRecordingProperties jfrProperties = new JfrRecordingProperties(defaultJfrDurationSeconds,
+				minJfrDurationSeconds, maxJfrDurationSeconds, jfrCompletionGraceMs, defaultJfrMaxSummaryEvents,
+				jfrTopLimit);
 		return new SafeJvmRuntimeCollector(commandExecutor, policy, sharkHeapDumpSummarizer, autoHeapSummary,
-				new RepeatedSamplingProperties(defaultSampleCount, defaultIntervalMs, maxSampleCount, maxTotalDurationMs));
+				new RepeatedSamplingProperties(defaultSampleCount, defaultIntervalMs, maxSampleCount, maxTotalDurationMs),
+				jfrProperties);
 	}
 
 	@Bean
