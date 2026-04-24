@@ -11,4 +11,9 @@ public interface CommandExecutor {
 	 */
 	String run(List<String> command);
 
+	default CommandExecutionResult execute(List<String> command, CommandExecutionOptions options) {
+		throw new UnsupportedOperationException(
+				"CommandExecutor.execute(List, CommandExecutionOptions) requires an implementation that can honor options");
+	}
+
 }

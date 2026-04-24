@@ -17,6 +17,15 @@ java-tuning-agent:
     - jps
     - jcmd
     - jstat
+  command:
+    default-timeout-ms: 15000
+    default-max-output-bytes: 8388608
+    privileged-max-output-bytes: 67108864
+  sampling:
+    default-sample-count: 3
+    default-interval-ms: 10000
+    max-sample-count: 20
+    max-total-duration-ms: 300000
   # When true (default via code), index .hprof with Shark after GC.heap_dump or when offline draft path exists.
   heap-summary:
     auto-enabled: true

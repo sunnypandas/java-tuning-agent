@@ -4,7 +4,7 @@ This example exposes MCP tools for local Java discovery, safe JVM inspection, **
 
 ## What MCP clients should discover
 
-After the server is started over stdio, MCP clients should see **nine** tools: four for **live JVM** workflows and five for **offline / imported** bundles.
+After the server is started over stdio, MCP clients should see **11** tools: five for **live JVM** workflows and six for **offline / imported** bundles.
 
 ### Live JVM tools
 
@@ -12,6 +12,7 @@ After the server is started over stdio, MCP clients should see **nine** tools: f
 |------|------|
 | `listJavaApps` | Discover JVM processes visible to the current user. |
 | `inspectJvmRuntime` | Collect a **lightweight** readonly snapshot (`jcmd` + `jstat`) structured for diagnosis. |
+| `inspectJvmRuntimeRepeated` | Collect repeated safe read-only snapshots for short trend analysis (`sampleCount`, `intervalMillis`, optional `includeThreadCount` / `includeClassCount`). |
 | `collectMemoryGcEvidence` | Collect **medium-cost** evidence (class histogram; optional thread dump; optional **`GC.heap_dump`** to an absolute `.hprof` path) when `confirmationToken` is supplied for privileged options. Returned pack includes **`heapDumpPath`** when the dump file exists. When **`java-tuning-agent.heap-summary.auto-enabled`** is `true` (default) and the `.hprof` file is present, the pack also includes a **Shark-based shallow heap summary** (`heapShallowSummary`) used by the diagnosis engine and appended to `formattedSummary` (see below). |
 | `generateTuningAdvice` | Run the **rule-based memory/GC diagnosis engine** for the PID and `CodeContextSummary`. Default: lightweight snapshot only; optional **`collectClassHistogram`** + **`confirmationToken`** runs histogram first (same policy as `collectMemoryGcEvidence`). Response includes **`formattedSummary`**: stable Markdown of the full report (`##` / `###`, lists, fenced `text` blocks for evidence), **plus** an optional **heap dump shallow summary** section when a dump was collected and indexed. Hosts should **paste it into the message as renderable Markdown**—**not** wrapped in an outer code fence—so structure shows; avoid paraphrasing away **`suspectedCodeHotspots`**. |
 
@@ -24,6 +25,7 @@ After the server is started over stdio, MCP clients should see **nine** tools: f
 | `finalizeOfflineHeapDump` | Merge chunks, verify SHA-256 and size, return absolute path for `heapDumpAbsolutePath`. |
 | `generateOfflineTuningAdvice` | Assemble `MemoryGcEvidencePack` from the draft and run the same `generateAdviceFromEvidence` path as online. If `heapDumpAbsolutePath` points to an existing file and heap summary auto-mode is on, the server **indexes the dump with Shark** and feeds **`heapShallowSummary`** into rules and `formattedSummary`. |
 | `summarizeOfflineHeapDumpFile` | **Optional** ad-hoc call: return Markdown + structured top shallow-by-class rows for a local `.hprof` without running the full advice pipeline. |
+| `analyzeOfflineHeapRetention` | Analyze an existing `.hprof` for holder-oriented retention evidence; `analysisDepth=deep` attempts retained-style analysis and falls back honestly. |
 
 **Diagnosis engine note:** Findings and recommendations are produced by **deterministic Java rules** (`MemoryGcDiagnosisEngine`), including optional **heap shallow dominance** when `heapShallowSummary` is present—not by the LLM. The model’s role is tool orchestration and explanation. Shallow totals are **not** MAT retained-size / dominator analysis.
 
@@ -34,6 +36,17 @@ After the server is started over stdio, MCP clients should see **nine** tools: f
 | `java-tuning-agent.heap-summary.auto-enabled` | `true` | When `true`, automatically run Shark indexing when a `.hprof` path is valid (online after `GC.heap_dump`, or offline draft path). Set `false` to skip indexing (large dumps / CI). |
 | `java-tuning-agent.offline.heap-summary.default-top-classes` | `40` | Max types in the shallow leader table (Markdown + structured entries). |
 | `java-tuning-agent.offline.heap-summary.default-max-output-chars` | `32000` | Max Markdown characters for the summary block. |
+
+**Configuration (command + sampling):**
+
+| Property | Default | Meaning |
+|----------|---------|--------|
+| `java-tuning-agent.command.default-timeout-ms` | `15000` | Default timeout for bounded `jcmd` / `jstat` execution. |
+| `java-tuning-agent.command.default-max-output-bytes` | `8388608` | Default output cap for safe command execution. |
+| `java-tuning-agent.sampling.default-sample-count` | `3` | Default `sampleCount` for `inspectJvmRuntimeRepeated`. |
+| `java-tuning-agent.sampling.default-interval-ms` | `10000` | Default `intervalMillis` between repeated safe-readonly samples. |
+| `java-tuning-agent.sampling.max-sample-count` | `20` | Upper bound for repeated-sampling request size. |
+| `java-tuning-agent.sampling.max-total-duration-ms` | `300000` | Upper bound for the total repeated-sampling window. |
 
 You can set these in `application.yml`, environment variables, or JVM system properties using Spring Boot’s relaxed binding (`JAVA_TUNING_AGENT_HEAP_SUMMARY_AUTO_ENABLED=false`, etc.).
 
@@ -136,7 +149,7 @@ For user-level configuration, put the same server entry in your user `mcp.json`.
 
 ## Use from Cursor
 
-This repository includes a **project skill** that runs the **live** MCP tools in sequence (`listJavaApps` → `inspectJvmRuntime` → `collectMemoryGcEvidence` → `generateTuningAdvice`), supports interactive PID disambiguation, and requires explicit user approval before privileged options (histogram, thread dump, heap dump). For **offline** bundles, the skill documents a separate path using the five offline tools above.
+This repository includes a **project skill** that runs the **live** MCP tools in sequence (`listJavaApps` → `inspectJvmRuntime` → optional `inspectJvmRuntimeRepeated` → `collectMemoryGcEvidence` → `generateTuningAdvice`), supports interactive PID disambiguation, and requires explicit user approval before privileged options (histogram, thread dump, heap dump). For **offline** bundles, the skill documents a separate path using all six offline tools, including `analyzeOfflineHeapRetention`.
 
 - [`.cursor/skills/java-tuning-agent-workflow/SKILL.md`](.cursor/skills/java-tuning-agent-workflow/SKILL.md) — workflow instructions for the agent  
 - [`.cursor/skills/java-tuning-agent-workflow/reference.md`](.cursor/skills/java-tuning-agent-workflow/reference.md) — JSON argument templates for each tool  
@@ -151,8 +164,9 @@ Separately, register the `java-tuning-agent` MCP server in Cursor MCP settings (
 1. Start or register the server using one of the methods above.
 2. Call `listJavaApps`.
 3. Pick a PID and call `inspectJvmRuntime`.
-4. Call `generateTuningAdvice` with a `CodeContextSummary` and flags: lightweight defaults, or `collectClassHistogram: true` plus `confirmationToken` for histogram-backed findings and hotspots (`sourceRoots` recommended).
-5. Optionally call `collectMemoryGcEvidence` alone if you only need the raw evidence pack.
+4. Optionally call `inspectJvmRuntimeRepeated` with `sampleCount` and `intervalMillis` when you need short trend evidence.
+5. Call `generateTuningAdvice` with a `CodeContextSummary` and flags: lightweight defaults, or `collectClassHistogram: true` plus `confirmationToken` for histogram-backed findings and hotspots (`sourceRoots` recommended).
+6. Optionally call `collectMemoryGcEvidence` alone if you only need the raw evidence pack, or `analyzeOfflineHeapRetention` later on a local `heapDumpAbsolutePath` with `analysisDepth`.
 
 ## Troubleshooting
 

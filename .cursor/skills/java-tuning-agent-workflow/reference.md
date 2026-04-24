@@ -16,6 +16,23 @@ Arguments: empty object `{}`.
 
 `pid` must appear in the latest `listJavaApps` result.
 
+## 2b. `inspectJvmRuntimeRepeated`
+
+```json
+{
+  "request": {
+    "pid": 12345,
+    "sampleCount": 3,
+    "intervalMillis": 10000,
+    "includeThreadCount": true,
+    "includeClassCount": true,
+    "confirmationToken": ""
+  }
+}
+```
+
+This safe read-only P0 repeated mode does not require `confirmationToken`.
+
 ## 3. `collectMemoryGcEvidence`
 
 Wrapper key is **`request`**. All inner fields are required by schema; use `false` / `""` when not using a privileged option.
@@ -133,7 +150,7 @@ When unknown, use `[]` or `{}` as appropriate; the schema requires all five keys
 
 ## 5. Offline / imported bundle tools
 
-Use when there is **no** local target PID: the user provides exported `jcmd`/`jstat` text, class histogram, thread dump, and/or a **local** `.hprof` path (or uses chunk upload + finalize). **Five** tools: `validateOfflineAnalysisDraft`, `submitOfflineHeapDumpChunk`, `finalizeOfflineHeapDump`, `generateOfflineTuningAdvice`, `summarizeOfflineHeapDumpFile`. **Consent:** same `confirmationToken` rules as online when the draft includes histogram, thread dump, or heap path (non-blank token required).
+Use when there is **no** local target PID: the user provides exported `jcmd`/`jstat` text, class histogram, thread dump, and/or a **local** `.hprof` path (or uses chunk upload + finalize). **Six** tools: `validateOfflineAnalysisDraft`, `submitOfflineHeapDumpChunk`, `finalizeOfflineHeapDump`, `generateOfflineTuningAdvice`, `summarizeOfflineHeapDumpFile`, and `analyzeOfflineHeapRetention`. **Consent:** same `confirmationToken` rules as online when the draft includes histogram, thread dump, or heap path (non-blank token required).
 
 **5.1 `validateOfflineAnalysisDraft`**
 
@@ -231,3 +248,18 @@ When `heapDumpAbsolutePath` is a real file and heap auto-summary is on, the serv
 ```
 
 Use for a **standalone** shallow table / `topByShallowBytes` without running the full offline advice. Omit `topClassLimit` / `maxOutputChars` to use server defaults.
+
+**5.6 `analyzeOfflineHeapRetention`**
+
+```json
+{
+  "heapDumpAbsolutePath": "C:/data/heap.hprof",
+  "topObjectLimit": 20,
+  "maxOutputChars": 16000,
+  "analysisDepth": "deep",
+  "focusTypes": [],
+  "focusPackages": []
+}
+```
+
+Use this when you need holder-oriented retention evidence instead of only shallow-by-class output. `analysisDepth` may be `shallow` or `deep`; deep mode attempts a retained-style analysis and falls back honestly if the dump cannot support it.

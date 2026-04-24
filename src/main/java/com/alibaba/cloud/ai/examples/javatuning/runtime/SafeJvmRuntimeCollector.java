@@ -2,7 +2,9 @@ package com.alibaba.cloud.ai.examples.javatuning.runtime;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.function.LongConsumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -41,12 +43,32 @@ public class SafeJvmRuntimeCollector implements JvmRuntimeCollector {
 
 	private final boolean autoHeapSummary;
 
+	private final RepeatedSamplingProperties repeatedSamplingProperties;
+
+	private final LongConsumer sleeper;
+
 	public SafeJvmRuntimeCollector(CommandExecutor executor, RuntimeCollectionPolicy policy,
 			SharkHeapDumpSummarizer heapDumpSummarizer, boolean autoHeapSummary) {
+		this(executor, policy, heapDumpSummarizer, autoHeapSummary, RepeatedSamplingProperties.defaults(),
+				SafeJvmRuntimeCollector::sleepUnchecked);
+	}
+
+	public SafeJvmRuntimeCollector(CommandExecutor executor, RuntimeCollectionPolicy policy,
+			SharkHeapDumpSummarizer heapDumpSummarizer, boolean autoHeapSummary,
+			RepeatedSamplingProperties repeatedSamplingProperties) {
+		this(executor, policy, heapDumpSummarizer, autoHeapSummary, repeatedSamplingProperties,
+				SafeJvmRuntimeCollector::sleepUnchecked);
+	}
+
+	SafeJvmRuntimeCollector(CommandExecutor executor, RuntimeCollectionPolicy policy,
+			SharkHeapDumpSummarizer heapDumpSummarizer, boolean autoHeapSummary,
+			RepeatedSamplingProperties repeatedSamplingProperties, LongConsumer sleeper) {
 		this.executor = executor;
 		this.policy = policy;
 		this.heapDumpSummarizer = heapDumpSummarizer;
 		this.autoHeapSummary = autoHeapSummary;
+		this.repeatedSamplingProperties = repeatedSamplingProperties;
+		this.sleeper = sleeper;
 	}
 
 	@Override
@@ -184,6 +206,36 @@ public class SafeJvmRuntimeCollector implements JvmRuntimeCollector {
 				List.copyOf(warnings), heapDumpPathResult, heapShallowSummary);
 	}
 
+	@Override
+	public RepeatedSamplingResult collectRepeated(RepeatedSamplingRequest request) {
+		RepeatedSamplingRequest normalized = request.normalized(repeatedSamplingProperties);
+		long startedAt = System.currentTimeMillis();
+		List<RepeatedRuntimeSample> samples = new ArrayList<>();
+		List<String> warnings = new ArrayList<>();
+		List<String> missingData = new ArrayList<>();
+		for (int index = 0; index < normalized.sampleCount(); index++) {
+			if (index > 0) {
+				sleeper.accept(normalized.intervalMillis());
+			}
+			try {
+				JvmRuntimeSnapshot snapshot = collect(normalized.pid(), RuntimeCollectionPolicy.CollectionRequest.safeReadonly());
+				samples.add(new RepeatedRuntimeSample(System.currentTimeMillis(), snapshot.memory(), snapshot.gc(),
+						normalized.includeThreadCount() ? snapshot.threadCount() : null,
+						normalized.includeClassCount() ? snapshot.loadedClassCount() : null, snapshot.warnings()));
+			}
+			catch (RuntimeException ex) {
+				missingData.add("sample[" + index + "]");
+				warnings.add("Repeated sample " + (index + 1) + " failed: " + ex.getMessage());
+			}
+		}
+		if (samples.size() < 2) {
+			missingData.add("repeatedTrendAnalysis");
+			warnings.add("Fewer than two repeated samples succeeded; trend analysis is unavailable.");
+		}
+		return new RepeatedSamplingResult(normalized.pid(), samples, warnings, missingData, startedAt,
+				Math.max(0L, System.currentTimeMillis() - startedAt));
+	}
+
 	private List<String> vmFlagsCommand(String pidValue) {
 		return List.of(JCMD, pidValue, "VM.flags");
 	}
@@ -266,6 +318,16 @@ public class SafeJvmRuntimeCollector implements JvmRuntimeCollector {
 			case "g" -> parsed * 1024L * 1024L * 1024L;
 			default -> parsed;
 		};
+	}
+
+	private static void sleepUnchecked(long millis) {
+		try {
+			Thread.sleep(millis);
+		}
+		catch (InterruptedException ex) {
+			Thread.currentThread().interrupt();
+			throw new IllegalStateException("Interrupted while waiting for repeated JVM sample interval", ex);
+		}
 	}
 
 }

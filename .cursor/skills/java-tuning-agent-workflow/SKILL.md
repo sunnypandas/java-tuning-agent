@@ -2,15 +2,15 @@
 name: java-tuning-agent-workflow
 description: >-
   Runs the java-tuning-agent MCP pipeline in order: listJavaApps → inspectJvmRuntime →
-  mandatory step-3 scope gate (AskQuestion or prior chat) → collectMemoryGcEvidence →
-  generateTuningAdvice. No silent quick pass: user must choose quick-only or privileged scopes.
+  optional inspectJvmRuntimeRepeated → mandatory step-3 scope gate (AskQuestion or prior chat) →
+  collectMemoryGcEvidence → generateTuningAdvice. No silent quick pass: user must choose quick-only or privileged scopes.
   PID disambiguation, canonical confirmation tokens, formattedSummary as Markdown (no outer fence).
   Triggers:
   JVM tuning, GC pause or footprint goals, memory leak diagnosis, heap pressure, local Java
   process analysis, jcmd/jstat/MCP tools user-java-tuning-agent or java-tuning-agent.
   中文场景：JVM调优、内存、堆、GC、垃圾回收、内存泄漏、Full GC、Java进程、结合源码诊断。
   Also when the user names an app or provides a source path for deeper CodeContextSummary.
-  Offline / imported bundle: validateOfflineAnalysisDraft → optional submitOfflineHeapDumpChunk + finalizeOfflineHeapDump → generateOfflineTuningAdvice; optional summarizeOfflineHeapDumpFile (see [Offline mode](#offline-mode-imported-bundle)).
+  Offline / imported bundle: validateOfflineAnalysisDraft → optional submitOfflineHeapDumpChunk + finalizeOfflineHeapDump → generateOfflineTuningAdvice; optional summarizeOfflineHeapDumpFile and analyzeOfflineHeapRetention (see [Offline mode](#offline-mode-imported-bundle)).
 ---
 
 # Java tuning agent — end-to-end MCP workflow
@@ -54,6 +54,7 @@ Execute **in this order**, carrying forward the chosen `pid` and any evidence in
 |------|------|--------|
 | 1 | `listJavaApps` | Discover local JVMs and metadata (`pid`, `displayName`, `mainClassOrJar`, `commandLine`, hints). |
 | 2 | `inspectJvmRuntime` | Safe read-only metrics/snapshot for the selected `pid` (`jcmd` / `jstat` only). |
+| 2b | `inspectJvmRuntimeRepeated` | Optional repeated safe-readonly branch for trend questions (`sampleCount`, `intervalMillis`, optional thread/class counts). |
 | 3 | `collectMemoryGcEvidence` | Optional **medium-cost** evidence (class histogram, thread dump, heap dump). **Never call until [Mandatory step-3 scope gate](#mandatory-step-3-scope-gate-no-silent-quick-pass) is satisfied.** |
 | 4 | `generateTuningAdvice` | Structured tuning advice; may reuse runtime data and optional **code context**. |
 

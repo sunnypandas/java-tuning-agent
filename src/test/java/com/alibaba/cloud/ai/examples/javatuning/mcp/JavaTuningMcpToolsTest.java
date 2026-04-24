@@ -15,6 +15,8 @@ import com.alibaba.cloud.ai.examples.javatuning.runtime.JvmRuntimeCollector;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.JvmRuntimeSnapshot;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.MemoryGcEvidencePack;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.MemoryGcEvidenceRequest;
+import com.alibaba.cloud.ai.examples.javatuning.runtime.RepeatedSamplingRequest;
+import com.alibaba.cloud.ai.examples.javatuning.runtime.RepeatedSamplingResult;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.RuntimeCollectionPolicy;
 import org.junit.jupiter.api.Test;
 
@@ -102,6 +104,18 @@ class JavaTuningMcpToolsTest {
 		assertThatThrownBy(() -> tools.generateTuningAdvice(ctx, 1L, "e", "g", true, false, false, "", "   "))
 				.isInstanceOf(IllegalArgumentException.class)
 				.hasMessageContaining("confirmationToken");
+	}
+
+	@Test
+	void shouldDelegateRepeatedRuntimeInspectionToCollector() {
+		JvmRuntimeCollector collector = mock(JvmRuntimeCollector.class);
+		RepeatedSamplingRequest request = new RepeatedSamplingRequest(123L, 3, 500L, true, true, "");
+		RepeatedSamplingResult result = new RepeatedSamplingResult(123L, List.of(), List.of(), List.of(), 1L, 0L);
+		given(collector.collectRepeated(request)).willReturn(result);
+		JavaTuningMcpTools tools = new JavaTuningMcpTools(mock(JavaProcessDiscoveryService.class), collector,
+				mock(JavaTuningWorkflowService.class));
+
+		assertThat(tools.inspectJvmRuntimeRepeated(request)).isSameAs(result);
 	}
 
 	@Test

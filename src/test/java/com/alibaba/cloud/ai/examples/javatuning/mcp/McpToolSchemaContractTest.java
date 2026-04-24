@@ -36,6 +36,19 @@ class McpToolSchemaContractTest {
 				case "listJavaApps" -> assertThat(schema.path("properties").fieldNames()).toIterable().isEmpty();
 				case "inspectJvmRuntime" -> assertThat(schema.path("properties").path("pid").path("type").asText())
 					.isIn("integer", "number");
+				case "inspectJvmRuntimeRepeated" -> {
+					JsonNode request = schema.path("properties").path("request");
+					assertThat(request.path("type").asText()).isEqualTo("object");
+					assertThat(request.path("properties").path("pid").path("type").asText()).isIn("integer", "number");
+					assertThat(request.path("properties").path("sampleCount").path("type").asText())
+						.isIn("integer", "number");
+					assertThat(request.path("properties").path("intervalMillis").path("type").asText())
+						.isIn("integer", "number");
+					assertThat(request.path("properties").path("includeThreadCount").path("type").asText())
+						.isEqualTo("boolean");
+					assertThat(request.path("properties").path("includeClassCount").path("type").asText())
+						.isEqualTo("boolean");
+				}
 				case "collectMemoryGcEvidence" -> {
 					JsonNode req = schema.path("properties").path("request");
 					assertThat(req.path("type").asText()).isEqualTo("object");
@@ -193,6 +206,12 @@ class McpToolSchemaContractTest {
 	void analyzeOfflineHeapRetentionShouldBeRegistered() {
 		assertThat(Arrays.stream(toolCallbackProvider.getToolCallbacks()).map(callback -> callback.getToolDefinition())
 			.map(def -> def.name())).contains("analyzeOfflineHeapRetention");
+	}
+
+	@Test
+	void inspectJvmRuntimeRepeatedShouldBeRegistered() {
+		assertThat(Arrays.stream(toolCallbackProvider.getToolCallbacks()).map(callback -> callback.getToolDefinition())
+			.map(def -> def.name())).contains("inspectJvmRuntimeRepeated");
 	}
 
 	private static boolean schemaContainsDescription(JsonNode node, String substring) {

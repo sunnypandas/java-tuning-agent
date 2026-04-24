@@ -11,6 +11,8 @@ import com.alibaba.cloud.ai.examples.javatuning.runtime.JvmRuntimeCollector;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.JvmRuntimeSnapshot;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.MemoryGcEvidencePack;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.MemoryGcEvidenceRequest;
+import com.alibaba.cloud.ai.examples.javatuning.runtime.RepeatedSamplingRequest;
+import com.alibaba.cloud.ai.examples.javatuning.runtime.RepeatedSamplingResult;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.RuntimeCollectionPolicy;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
@@ -43,6 +45,15 @@ public class JavaTuningMcpTools {
 	public JvmRuntimeSnapshot inspectJvmRuntime(
 			@ToolParam(description = "Target JVM process id (decimal); must match a pid from listJavaApps.") long pid) {
 		return collector.collect(pid, RuntimeCollectionPolicy.CollectionRequest.safeReadonly());
+	}
+
+	@Tool(description = """
+			Collect repeated safe read-only JVM runtime samples for a PID using bounded jcmd/jstat commands. \
+			This P0 repeated mode does not collect class histograms, thread dumps, heap dumps, or JFR, and does not require confirmationToken. \
+			Example arguments JSON: {"request":{"pid":12345,"sampleCount":3,"intervalMillis":10000,"includeThreadCount":true,"includeClassCount":true,"confirmationToken":""}}""")
+	public RepeatedSamplingResult inspectJvmRuntimeRepeated(
+			@ToolParam(description = "RepeatedSamplingRequest JSON: pid, sampleCount, intervalMillis, includeThreadCount, includeClassCount.") RepeatedSamplingRequest request) {
+		return collector.collectRepeated(request);
 	}
 
 	@Tool(description = """
