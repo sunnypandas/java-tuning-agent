@@ -2,7 +2,7 @@
 name: java-tuning-agent-workflow
 description: >-
   Runs the java-tuning-agent MCP pipeline in order: listJavaApps → inspectJvmRuntime →
-  optional inspectJvmRuntimeRepeated → mandatory step-3 scope gate (AskQuestion or prior chat) →
+  optional inspectJvmRuntimeRepeated → optional recordJvmFlightRecording → mandatory step-3 scope gate (AskQuestion or prior chat) →
   collectMemoryGcEvidence → generateTuningAdvice. No silent quick pass: user must choose quick-only or privileged scopes.
   PID disambiguation, canonical confirmation tokens, formattedSummary as Markdown (no outer fence).
   Triggers:
@@ -46,7 +46,7 @@ When a local file already exists, prefer `filePath` over `inlineText`.
 
 **Output:** Prefer rendering `formattedSummary` like the online pipeline (no outer Markdown fence). Expect the optional **heap dump summary** subsection at the end when a dump was indexed successfully, or a short **failed** heading if indexing errored.
 
-## Default pipeline (four tools in order)
+## Default pipeline (four tools in order, plus optional JFR profiling)
 
 Execute **in this order**, carrying forward the chosen `pid` and any evidence into the final step:
 
@@ -55,6 +55,7 @@ Execute **in this order**, carrying forward the chosen `pid` and any evidence in
 | 1 | `listJavaApps` | Discover local JVMs and metadata (`pid`, `displayName`, `mainClassOrJar`, `commandLine`, hints). |
 | 2 | `inspectJvmRuntime` | Safe read-only metrics/snapshot for the selected `pid` (`jcmd` / `jstat` only). |
 | 2b | `inspectJvmRuntimeRepeated` | Optional repeated safe-readonly branch for trend questions (`sampleCount`, `intervalMillis`, optional thread/class counts). |
+| 2c | `recordJvmFlightRecording` | Optional short JFR profiling branch. Requires explicit approval, `durationSeconds`, `settings`, an absolute `jfrOutputPath`, `maxSummaryEvents`, and `confirmationToken`. |
 | 3 | `collectMemoryGcEvidence` | Optional **medium-cost** evidence (class histogram, thread dump, heap dump). **Never call until [Mandatory step-3 scope gate](#mandatory-step-3-scope-gate-no-silent-quick-pass) is satisfied.** |
 | 4 | `generateTuningAdvice` | Structured tuning advice; may reuse runtime data and optional **code context**. |
 
@@ -66,6 +67,7 @@ Treat the workflow as **phases**. Completing an earlier phase is required before
 |-------|---------|-------------------|
 | **P1 — Discovery** | `listJavaApps`; resolve target `pid` | Ambiguous PID → numbered list, **wait** for user choice |
 | **P2 — Safe snapshot** | `inspectJvmRuntime(pid)` | Never batch with P3 tools before the step-3 gate when the host supports **AskQuestion** |
+| **P2c — Short profiling** | Optional `recordJvmFlightRecording` | Only after explicit user approval and agreed `jfrOutputPath` |
 | **P3 — Scope gate** | User chooses step-3 evidence scope | See [Mandatory step-3 scope gate](#mandatory-step-3-scope-gate-no-silent-quick-pass) |
 | **P3b — Evidence** | `collectMemoryGcEvidence` with flags matching the gate outcome | — |
 | **P4 — Advice** | `generateTuningAdvice` mirroring P3b privileged flags + token | If `optimizationGoal` is unknown and not inferable in one short phrase, **ask once** before P4 |
@@ -129,6 +131,12 @@ The agent **must not** choose step-3 scope on the user’s behalf. **“Quick pa
 - **Required user interaction:** Before any `includeClassHistogram`, `includeThreadDump`, or `includeHeapDump` is `true`, the user must **explicitly consent** via **either** [Structured UI approval](#structured-ui-approval-preferred) **or** a clear chat reply. The MCP API still requires a **non-blank** `confirmationToken` string — use the [Canonical UI token](#canonical-ui-token-format) when consent came from multi-select; otherwise you may copy the user’s **exact** approval phrase as the token.
 - **Heap dump:** `includeHeapDump: true` requires an **absolute** `heapDumpOutputPath` ending in `.hprof`; agree the path with the user first, unless they defer to the [Default heap dump path](#default-heap-dump-path) below.
 - **Snapshot-only (quick pass):** After the user **explicitly chooses** snapshot-only via the [step-3 gate](#mandatory-step-3-scope-gate-no-silent-quick-pass), call step 3 with **all** `include*` flags **`false`**, `heapDumpOutputPath` `""`, and `confirmationToken` `""` (still pass the full `request` object per schema), then step 4 lightweight. The agent **must not** pick this path without that explicit choice.
+
+### `recordJvmFlightRecording` (optional step 2c)
+
+Use `recordJvmFlightRecording` only after explicit user approval. Ask for an absolute `jfrOutputPath` ending in `.jfr`, a short `durationSeconds` window, and whether the user wants `profile` or `default` settings. Do not request this tool for default lightweight inspection.
+
+Required request fields are `pid`, `durationSeconds`, `settings`, `jfrOutputPath`, `maxSummaryEvents`, and `confirmationToken`. The file must not already exist. Inspect result fields `jfrPath`, `fileSizeBytes`, `summary.eventCounts`, `summary.gcSummary`, `summary.allocationSummary`, `summary.threadSummary`, `summary.executionSampleSummary`, `warnings`, and `missingData`.
 
 ### Structured UI approval (preferred)
 
@@ -203,6 +211,7 @@ Copy and track in the reply:
 [ ] 1. listJavaApps
 [ ] 2. Target pid agreed (interactive if needed)
 [ ] 3. inspectJvmRuntime(pid)
+[ ] 3a. Optional recordJvmFlightRecording — only with explicit approval and absolute jfrOutputPath
 [ ] 3b. Step-3 scope gate: AskQuestion (or chat) — user chose snapshot-only and/or privileged scopes; no silent quick pass
 [ ] 4. collectMemoryGcEvidence — flags match gate; token/path if privileged
 [ ] 5. generateTuningAdvice — codeContextSummary + goals; collect* flags mirror `collectMemoryGcEvidence` (same turn, same consent)

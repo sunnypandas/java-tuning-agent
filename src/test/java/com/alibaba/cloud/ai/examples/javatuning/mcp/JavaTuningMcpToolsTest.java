@@ -13,6 +13,8 @@ import com.alibaba.cloud.ai.examples.javatuning.runtime.JvmGcSnapshot;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.JvmMemorySnapshot;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.JvmRuntimeCollector;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.JvmRuntimeSnapshot;
+import com.alibaba.cloud.ai.examples.javatuning.runtime.JfrRecordingRequest;
+import com.alibaba.cloud.ai.examples.javatuning.runtime.JfrRecordingResult;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.MemoryGcEvidencePack;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.MemoryGcEvidenceRequest;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.RepeatedSamplingRequest;
@@ -116,6 +118,20 @@ class JavaTuningMcpToolsTest {
 				mock(JavaTuningWorkflowService.class));
 
 		assertThat(tools.inspectJvmRuntimeRepeated(request)).isSameAs(result);
+	}
+
+	@Test
+	void shouldDelegateJfrRecordingToCollector() {
+		JvmRuntimeCollector collector = mock(JvmRuntimeCollector.class);
+		JfrRecordingRequest request = new JfrRecordingRequest(123L, 30, "profile", "C:/tmp/app.jfr", 200_000,
+				"approved");
+		JfrRecordingResult result = new JfrRecordingResult(123L, "C:/tmp/app.jfr", 10L, 1L, 2L, List.of(), null,
+				List.of(), List.of());
+		given(collector.recordJfr(request)).willReturn(result);
+		JavaTuningMcpTools tools = new JavaTuningMcpTools(mock(JavaProcessDiscoveryService.class), collector,
+				mock(JavaTuningWorkflowService.class));
+
+		assertThat(tools.recordJvmFlightRecording(request)).isSameAs(result);
 	}
 
 	@Test

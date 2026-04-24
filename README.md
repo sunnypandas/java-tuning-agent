@@ -4,7 +4,7 @@ This example exposes MCP tools for local Java discovery, safe JVM inspection, **
 
 ## What MCP clients should discover
 
-After the server is started over stdio, MCP clients should see **11** tools: five for **live JVM** workflows and six for **offline / imported** bundles.
+After the server is started over stdio, MCP clients should see **12** tools: six for **live JVM** workflows and six for **offline / imported** bundles.
 
 ### Live JVM tools
 
@@ -13,6 +13,7 @@ After the server is started over stdio, MCP clients should see **11** tools: fiv
 | `listJavaApps` | Discover JVM processes visible to the current user. |
 | `inspectJvmRuntime` | Collect a **lightweight** readonly snapshot (`jcmd` + `jstat`) structured for diagnosis. |
 | `inspectJvmRuntimeRepeated` | Collect repeated safe read-only snapshots for short trend analysis (`sampleCount`, `intervalMillis`, optional `includeThreadCount` / `includeClassCount`). |
+| `recordJvmFlightRecording` | Record one short Java Flight Recorder session for a PID and return the `.jfr` path plus a bounded summary of GC, allocation, thread/lock, and execution sample events. Requires `confirmationToken` and an absolute `jfrOutputPath`. |
 | `collectMemoryGcEvidence` | Collect **medium-cost** evidence (class histogram; optional thread dump; optional **`GC.heap_dump`** to an absolute `.hprof` path) when `confirmationToken` is supplied for privileged options. Returned pack includes **`heapDumpPath`** when the dump file exists. When **`java-tuning-agent.heap-summary.auto-enabled`** is `true` (default) and the `.hprof` file is present, the pack also includes a **Shark-based shallow heap summary** (`heapShallowSummary`) used by the diagnosis engine and appended to `formattedSummary` (see below). |
 | `generateTuningAdvice` | Run the **rule-based memory/GC diagnosis engine** for the PID and `CodeContextSummary`. Default: lightweight snapshot only; optional **`collectClassHistogram`** + **`confirmationToken`** runs histogram first (same policy as `collectMemoryGcEvidence`). Response includes **`formattedSummary`**: stable Markdown of the full report (`##` / `###`, lists, fenced `text` blocks for evidence), **plus** an optional **heap dump shallow summary** section when a dump was collected and indexed. Hosts should **paste it into the message as renderable Markdown**—**not** wrapped in an outer code fence—so structure shows; avoid paraphrasing away **`suspectedCodeHotspots`**. |
 
@@ -48,6 +49,17 @@ After the server is started over stdio, MCP clients should see **11** tools: fiv
 | `java-tuning-agent.sampling.max-sample-count` | `20` | Upper bound for repeated-sampling request size. |
 | `java-tuning-agent.sampling.max-total-duration-ms` | `300000` | Upper bound for the total repeated-sampling window. |
 
+**Configuration (JFR short recording):**
+
+| Property | Default | Meaning |
+|----------|---------|--------|
+| `java-tuning-agent.jfr.default-duration-seconds` | `30` | Default `durationSeconds` for `recordJvmFlightRecording`. |
+| `java-tuning-agent.jfr.min-duration-seconds` | `5` | Minimum recording duration. |
+| `java-tuning-agent.jfr.max-duration-seconds` | `300` | Maximum recording duration. |
+| `java-tuning-agent.jfr.completion-grace-ms` | `10000` | Grace period for the `.jfr` file to appear and stabilize. |
+| `java-tuning-agent.jfr.default-max-summary-events` | `200000` | Default `maxSummaryEvents` parser cap. |
+| `java-tuning-agent.jfr.top-limit` | `10` | Top-list size for parsed JFR summaries. |
+
 You can set these in `application.yml`, environment variables, or JVM system properties using Spring Boot’s relaxed binding (`JAVA_TUNING_AGENT_HEAP_SUMMARY_AUTO_ENABLED=false`, etc.).
 
 ## Memory/GC diagnosis flow
@@ -65,6 +77,21 @@ You can set these in `application.yml`, environment variables, or JVM system pro
 4. **Java API:** **`TuningAdviceRequest`** with optional **`classHistogramHint`** still works via **`JavaTuningWorkflowService.generateAdvice`** (no extra `jcmd` when you already have a histogram). See [docs/superpowers/specs/2026-04-11-memory-gc-diagnosis-agent-design.md](docs/superpowers/specs/2026-04-11-memory-gc-diagnosis-agent-design.md) §16.
 
 5. **Source-aware hotspots:** Populate **`CodeContextSummary.sourceRoots`** (e.g. `compat/memory-leak-demo` or `.../src/main/java`). With a histogram in the same diagnosis request, **`suspectedCodeHotspot`** entries may include **`fileHint`** paths to matching `.java` files.
+
+## JFR short profiling flow
+
+Use `recordJvmFlightRecording` when a lightweight snapshot or repeated `jstat` samples show that you need profiling evidence rather than another heap artifact.
+
+Required fields:
+
+- `pid`: target JVM from `listJavaApps`
+- `durationSeconds`: bounded recording window, typically 30
+- `settings`: `profile` for more profiling signal or `default` for lower overhead
+- `jfrOutputPath`: absolute path ending in `.jfr`; the file must not already exist
+- `maxSummaryEvents`: parser event cap, typically `200000`
+- `confirmationToken`: non-blank approval token
+
+The tool runs one bounded `jcmd JFR.start ... duration=<Ns> filename=<path>` recording. It does not expose public `JFR.stop` lifecycle management, does not overwrite existing recordings, and does not feed JFR findings into `generateTuningAdvice` yet.
 
 ## Structured report (`TuningAdviceReport`)
 
@@ -88,7 +115,7 @@ You can set these in `application.yml`, environment variables, or JVM system pro
 
 - Default commands are limited to `jps`, `jcmd`, and `jstat` (see configuration below).
 - The runtime collector uses readonly diagnostics such as `jcmd VM.flags`, `jcmd GC.heap_info`, and `jstat -gcutil`.
-- **Privileged diagnostics** (class histogram, thread dump, heap dump via **`GC.heap_dump`**, JFR) require a non-blank **`confirmationToken`**; heap dump also requires a non-blank absolute **`heapDumpOutputPath`**. Otherwise collection fails fast with `IllegalArgumentException`.
+- **Privileged diagnostics** (class histogram, thread dump, heap dump via **`GC.heap_dump`**, JFR short recording) require a non-blank **`confirmationToken`**. Heap dump also requires a non-blank absolute **`heapDumpOutputPath`**; JFR requires a non-blank absolute **`jfrOutputPath`** ending in `.jfr`. Otherwise collection fails fast with `IllegalArgumentException`.
 - The example is intended for local development or controlled readonly inspection of JVM processes visible to the current user.
 - **Thread dump:** requesting `includeThreadDump` may still yield a warning in the evidence pack until full collection is implemented; histogram collection is the supported upgrade path today.
 
@@ -149,7 +176,7 @@ For user-level configuration, put the same server entry in your user `mcp.json`.
 
 ## Use from Cursor
 
-This repository includes a **project skill** that runs the **live** MCP tools in sequence (`listJavaApps` → `inspectJvmRuntime` → optional `inspectJvmRuntimeRepeated` → `collectMemoryGcEvidence` → `generateTuningAdvice`), supports interactive PID disambiguation, and requires explicit user approval before privileged options (histogram, thread dump, heap dump). For **offline** bundles, the skill documents a separate path using all six offline tools, including `analyzeOfflineHeapRetention`.
+This repository includes a **project skill** that runs the **live** MCP tools in sequence (`listJavaApps` → `inspectJvmRuntime` → optional `inspectJvmRuntimeRepeated` → optional `recordJvmFlightRecording` → `collectMemoryGcEvidence` → `generateTuningAdvice`), supports interactive PID disambiguation, and requires explicit user approval before privileged options (histogram, thread dump, heap dump, JFR). For **offline** bundles, the skill documents a separate path using all six offline tools, including `analyzeOfflineHeapRetention`.
 
 - [`.cursor/skills/java-tuning-agent-workflow/SKILL.md`](.cursor/skills/java-tuning-agent-workflow/SKILL.md) — workflow instructions for the agent  
 - [`.cursor/skills/java-tuning-agent-workflow/reference.md`](.cursor/skills/java-tuning-agent-workflow/reference.md) — JSON argument templates for each tool  
@@ -165,8 +192,9 @@ Separately, register the `java-tuning-agent` MCP server in Cursor MCP settings (
 2. Call `listJavaApps`.
 3. Pick a PID and call `inspectJvmRuntime`.
 4. Optionally call `inspectJvmRuntimeRepeated` with `sampleCount` and `intervalMillis` when you need short trend evidence.
-5. Call `generateTuningAdvice` with a `CodeContextSummary` and flags: lightweight defaults, or `collectClassHistogram: true` plus `confirmationToken` for histogram-backed findings and hotspots (`sourceRoots` recommended).
-6. Optionally call `collectMemoryGcEvidence` alone if you only need the raw evidence pack, or `analyzeOfflineHeapRetention` later on a local `heapDumpAbsolutePath` with `analysisDepth`.
+5. Optionally call `recordJvmFlightRecording` with `durationSeconds`, `settings`, an absolute `jfrOutputPath`, `maxSummaryEvents`, and `confirmationToken` when you need short profiling evidence.
+6. Call `generateTuningAdvice` with a `CodeContextSummary` and flags: lightweight defaults, or `collectClassHistogram: true` plus `confirmationToken` for histogram-backed findings and hotspots (`sourceRoots` recommended).
+7. Optionally call `collectMemoryGcEvidence` alone if you only need the raw evidence pack, or `analyzeOfflineHeapRetention` later on a local `heapDumpAbsolutePath` with `analysisDepth`.
 
 ## Troubleshooting
 

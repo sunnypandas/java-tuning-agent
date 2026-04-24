@@ -12,4 +12,8 @@ public interface JvmRuntimeCollector {
 	default RepeatedSamplingResult collectRepeated(RepeatedSamplingRequest request) {
 		throw new UnsupportedOperationException("Repeated sampling is not supported by this collector implementation");
 	}
+
+	default JfrRecordingResult recordJfr(JfrRecordingRequest request) {
+		throw new UnsupportedOperationException("JFR recording is not supported by this collector implementation");
+	}
 }

@@ -45,6 +45,10 @@ public class SafeJvmRuntimeCollector implements JvmRuntimeCollector {
 
 	private final RepeatedSamplingProperties repeatedSamplingProperties;
 
+	private final JfrRecordingProperties jfrRecordingProperties;
+
+	private final JfrSummaryParserAdapter jfrSummaryParser;
+
 	private final LongConsumer sleeper;
 
 	public SafeJvmRuntimeCollector(CommandExecutor executor, RuntimeCollectionPolicy policy,
@@ -60,14 +64,32 @@ public class SafeJvmRuntimeCollector implements JvmRuntimeCollector {
 				SafeJvmRuntimeCollector::sleepUnchecked);
 	}
 
+	public SafeJvmRuntimeCollector(CommandExecutor executor, RuntimeCollectionPolicy policy,
+			SharkHeapDumpSummarizer heapDumpSummarizer, boolean autoHeapSummary,
+			RepeatedSamplingProperties repeatedSamplingProperties, JfrRecordingProperties jfrRecordingProperties) {
+		this(executor, policy, heapDumpSummarizer, autoHeapSummary, repeatedSamplingProperties, jfrRecordingProperties,
+				new JfrSummaryParser(jfrRecordingProperties.topLimit()), SafeJvmRuntimeCollector::sleepUnchecked);
+	}
+
 	SafeJvmRuntimeCollector(CommandExecutor executor, RuntimeCollectionPolicy policy,
 			SharkHeapDumpSummarizer heapDumpSummarizer, boolean autoHeapSummary,
 			RepeatedSamplingProperties repeatedSamplingProperties, LongConsumer sleeper) {
+		this(executor, policy, heapDumpSummarizer, autoHeapSummary, repeatedSamplingProperties,
+				JfrRecordingProperties.defaults(), new JfrSummaryParser(JfrRecordingProperties.defaults().topLimit()),
+				sleeper);
+	}
+
+	SafeJvmRuntimeCollector(CommandExecutor executor, RuntimeCollectionPolicy policy,
+			SharkHeapDumpSummarizer heapDumpSummarizer, boolean autoHeapSummary,
+			RepeatedSamplingProperties repeatedSamplingProperties, JfrRecordingProperties jfrRecordingProperties,
+			JfrSummaryParserAdapter jfrSummaryParser, LongConsumer sleeper) {
 		this.executor = executor;
 		this.policy = policy;
 		this.heapDumpSummarizer = heapDumpSummarizer;
 		this.autoHeapSummary = autoHeapSummary;
 		this.repeatedSamplingProperties = repeatedSamplingProperties;
+		this.jfrRecordingProperties = jfrRecordingProperties;
+		this.jfrSummaryParser = jfrSummaryParser;
 		this.sleeper = sleeper;
 	}
 
@@ -236,6 +258,64 @@ public class SafeJvmRuntimeCollector implements JvmRuntimeCollector {
 				Math.max(0L, System.currentTimeMillis() - startedAt));
 	}
 
+	@Override
+	public JfrRecordingResult recordJfr(JfrRecordingRequest request) {
+		long startedAt = System.currentTimeMillis();
+		JfrRecordingRequest normalized = request.normalized(jfrRecordingProperties);
+		String pidValue = Long.toString(normalized.pid());
+		Path output = Path.of(normalized.jfrOutputPath()).toAbsolutePath().normalize();
+		List<String> commandsRun = new ArrayList<>();
+		List<String> warnings = new ArrayList<>();
+		List<String> missingData = new ArrayList<>();
+
+		List<String> supportCommand = jfrHelpCommand(pidValue);
+		commandsRun.add(String.join(" ", supportCommand));
+		CommandExecutionResult support = executor.execute(supportCommand, new CommandExecutionOptions(15_000L, 1024 * 1024));
+		if (!support.succeeded() || support.output() == null || !support.output().contains("JFR.start")) {
+			missingData.add("jfrSupport");
+			missingData.add("jfrRecording");
+			warnings.add("JFR.start is not available on target JVM: "
+					+ firstNonBlank(support.failureMessage(), support.output(), "no help output"));
+			return jfrResult(normalized.pid(), null, 0L, startedAt, commandsRun, null, warnings, missingData);
+		}
+
+		String recordingName = "java-tuning-agent-" + normalized.pid() + "-" + startedAt;
+		List<String> recordCommand = jfrStartCommand(pidValue, recordingName, normalized.settings(),
+				normalized.durationSeconds(), output.toString());
+		commandsRun.add(String.join(" ", recordCommand));
+		long timeoutMs = normalized.durationSeconds() * 1000L + jfrRecordingProperties.completionGraceMs();
+		CommandExecutionResult record = executor.execute(recordCommand, new CommandExecutionOptions(timeoutMs, 1024 * 1024));
+		if (!record.succeeded()) {
+			missingData.add("jfrRecording");
+			missingData.add("jfrFile");
+			missingData.add("jfrSummary");
+			warnings.add("Unable to start JFR recording " + recordingName + ": "
+					+ firstNonBlank(record.failureMessage(), record.output(), "unknown failure"));
+			return jfrResult(normalized.pid(), null, 0L, startedAt, commandsRun, null, warnings, missingData);
+		}
+
+		if (!waitForStableFile(output, jfrRecordingProperties.completionGraceMs())) {
+			missingData.add("jfrFile");
+			missingData.add("jfrSummary");
+			warnings.add("JFR recording command finished but file was not found at " + output);
+			return jfrResult(normalized.pid(), null, 0L, startedAt, commandsRun, null, warnings, missingData);
+		}
+
+		long fileSize = safeSize(output);
+		try {
+			JfrSummary summary = jfrSummaryParser.parse(output, normalized.maxSummaryEvents());
+			warnings.addAll(summary.parserWarnings());
+			return jfrResult(normalized.pid(), output.toString(), fileSize, startedAt, commandsRun, summary, warnings,
+					missingData);
+		}
+		catch (RuntimeException ex) {
+			missingData.add("jfrSummary");
+			warnings.add("Unable to parse JFR recording: " + ex.getMessage());
+			return jfrResult(normalized.pid(), output.toString(), fileSize, startedAt, commandsRun, null, warnings,
+					missingData);
+		}
+	}
+
 	private List<String> vmFlagsCommand(String pidValue) {
 		return List.of(JCMD, pidValue, "VM.flags");
 	}
@@ -270,6 +350,55 @@ public class SafeJvmRuntimeCollector implements JvmRuntimeCollector {
 
 	private List<String> heapDumpCommand(String pidValue, String absolutePath) {
 		return List.of(JCMD, pidValue, "GC.heap_dump", absolutePath);
+	}
+
+	private List<String> jfrHelpCommand(String pidValue) {
+		return List.of(JCMD, pidValue, "help", "JFR.start");
+	}
+
+	private List<String> jfrStartCommand(String pidValue, String name, String settings, int durationSeconds,
+			String absolutePath) {
+		return List.of(JCMD, pidValue, "JFR.start", "name=" + name, "settings=" + settings,
+				"duration=" + durationSeconds + "s", "filename=" + absolutePath, "disk=true");
+	}
+
+	private boolean waitForStableFile(Path output, long graceMs) {
+		long deadline = System.currentTimeMillis() + Math.max(0L, graceMs);
+		long previousSize = -1L;
+		while (System.currentTimeMillis() <= deadline) {
+			long size = safeSize(output);
+			if (size > 0L && size == previousSize) {
+				return true;
+			}
+			previousSize = size;
+			sleeper.accept(100L);
+		}
+		return safeSize(output) > 0L;
+	}
+
+	private long safeSize(Path output) {
+		try {
+			return Files.isRegularFile(output) ? Files.size(output) : 0L;
+		}
+		catch (Exception ex) {
+			return 0L;
+		}
+	}
+
+	private JfrRecordingResult jfrResult(long pid, String path, long fileSizeBytes, long startedAtEpochMs,
+			List<String> commandsRun, JfrSummary summary, List<String> warnings, List<String> missingData) {
+		return new JfrRecordingResult(pid, path, fileSizeBytes, startedAtEpochMs,
+				Math.max(0L, System.currentTimeMillis() - startedAtEpochMs), commandsRun, summary, warnings,
+				missingData);
+	}
+
+	private static String firstNonBlank(String... values) {
+		for (String value : values) {
+			if (value != null && !value.isBlank()) {
+				return value.trim();
+			}
+		}
+		return "";
 	}
 
 	private Long parseFlagSize(String flags, Pattern pattern) {
@@ -328,6 +457,9 @@ public class SafeJvmRuntimeCollector implements JvmRuntimeCollector {
 			Thread.currentThread().interrupt();
 			throw new IllegalStateException("Interrupted while waiting for repeated JVM sample interval", ex);
 		}
+	}
+
+	static void sleepUncheckedForTests(long millis) {
 	}
 
 }

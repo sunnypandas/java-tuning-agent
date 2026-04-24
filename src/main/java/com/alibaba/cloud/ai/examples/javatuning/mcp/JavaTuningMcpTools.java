@@ -7,6 +7,8 @@ import com.alibaba.cloud.ai.examples.javatuning.advice.TuningAdviceReport;
 import com.alibaba.cloud.ai.examples.javatuning.agent.JavaTuningWorkflowService;
 import com.alibaba.cloud.ai.examples.javatuning.discovery.JavaApplicationDescriptor;
 import com.alibaba.cloud.ai.examples.javatuning.discovery.JavaProcessDiscoveryService;
+import com.alibaba.cloud.ai.examples.javatuning.runtime.JfrRecordingRequest;
+import com.alibaba.cloud.ai.examples.javatuning.runtime.JfrRecordingResult;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.JvmRuntimeCollector;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.JvmRuntimeSnapshot;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.MemoryGcEvidencePack;
@@ -54,6 +56,15 @@ public class JavaTuningMcpTools {
 	public RepeatedSamplingResult inspectJvmRuntimeRepeated(
 			@ToolParam(description = "RepeatedSamplingRequest JSON: pid, sampleCount, intervalMillis, includeThreadCount, includeClassCount.") RepeatedSamplingRequest request) {
 		return collector.collectRepeated(request);
+	}
+
+	@Tool(description = """
+			Record one short Java Flight Recorder session for a target JVM and return the .jfr path plus a lightweight summary. \
+			Requires a non-blank confirmationToken and an absolute jfrOutputPath ending in .jfr. \
+			Example: {"request":{"pid":12345,"durationSeconds":30,"settings":"profile","jfrOutputPath":"C:/tmp/app.jfr","maxSummaryEvents":200000,"confirmationToken":"user-approved"}}""")
+	public JfrRecordingResult recordJvmFlightRecording(
+			@ToolParam(description = "JfrRecordingRequest JSON: pid, durationSeconds, settings, jfrOutputPath, maxSummaryEvents, confirmationToken.") JfrRecordingRequest request) {
+		return collector.recordJfr(request);
 	}
 
 	@Tool(description = """

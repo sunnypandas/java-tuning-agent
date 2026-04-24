@@ -32,11 +32,13 @@ class McpPublicDocumentationContractTest {
 			assertThat(readme).as("README should mention " + tool).contains(tool);
 			assertThat(reference).as("Cursor reference should mention " + tool).contains(tool);
 		}
-		assertThat(skill).contains("inspectJvmRuntimeRepeated");
+		assertThat(skill).contains("inspectJvmRuntimeRepeated", "recordJvmFlightRecording", "jfrOutputPath");
 		assertThat(readme).contains("analysisDepth", "heapDumpAbsolutePath", "confirmationToken", "sampleCount",
-				"intervalMillis");
+				"intervalMillis", "recordJvmFlightRecording", "durationSeconds", "settings", "jfrOutputPath",
+				"maxSummaryEvents");
 		assertThat(reference).contains("analysisDepth", "heapDumpAbsolutePath", "confirmationToken", "sampleCount",
-				"intervalMillis");
+				"intervalMillis", "recordJvmFlightRecording", "durationSeconds", "settings", "jfrOutputPath",
+				"maxSummaryEvents");
 	}
 
 	@Test

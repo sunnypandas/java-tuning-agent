@@ -49,6 +49,23 @@ class McpToolSchemaContractTest {
 					assertThat(request.path("properties").path("includeClassCount").path("type").asText())
 						.isEqualTo("boolean");
 				}
+				case "recordJvmFlightRecording" -> {
+					JsonNode request = schema.path("properties").path("request");
+					assertThat(request.path("type").asText()).isEqualTo("object");
+					assertThat(request.path("properties").path("pid").path("type").asText()).isIn("integer", "number");
+					assertThat(request.path("properties").path("durationSeconds").path("type").asText())
+						.isIn("integer", "number");
+					assertThat(request.path("properties").path("settings").path("type").asText()).isEqualTo("string");
+					assertThat(request.path("properties").path("jfrOutputPath").path("type").asText())
+						.isEqualTo("string");
+					assertThat(request.path("properties").path("maxSummaryEvents").path("type").asText())
+						.isIn("integer", "number");
+					assertThat(request.path("properties").path("confirmationToken").path("type").asText())
+						.isEqualTo("string");
+					assertThat(def.description()).contains("Java Flight Recorder")
+						.contains("confirmationToken")
+						.contains(".jfr");
+				}
 				case "collectMemoryGcEvidence" -> {
 					JsonNode req = schema.path("properties").path("request");
 					assertThat(req.path("type").asText()).isEqualTo("object");
@@ -172,7 +189,8 @@ class McpToolSchemaContractTest {
 		for (var callback : toolCallbackProvider.getToolCallbacks()) {
 			var def = callback.getToolDefinition();
 			if (!"collectMemoryGcEvidence".equals(def.name()) && !"generateTuningAdvice".equals(def.name())
-					&& !"generateOfflineTuningAdvice".equals(def.name())) {
+					&& !"generateOfflineTuningAdvice".equals(def.name())
+					&& !"recordJvmFlightRecording".equals(def.name())) {
 				continue;
 			}
 			JsonNode schema = mapper.readTree(def.inputSchema());
@@ -212,6 +230,12 @@ class McpToolSchemaContractTest {
 	void inspectJvmRuntimeRepeatedShouldBeRegistered() {
 		assertThat(Arrays.stream(toolCallbackProvider.getToolCallbacks()).map(callback -> callback.getToolDefinition())
 			.map(def -> def.name())).contains("inspectJvmRuntimeRepeated");
+	}
+
+	@Test
+	void recordJvmFlightRecordingShouldBeRegistered() {
+		assertThat(Arrays.stream(toolCallbackProvider.getToolCallbacks()).map(callback -> callback.getToolDefinition())
+			.map(def -> def.name())).contains("recordJvmFlightRecording");
 	}
 
 	private static boolean schemaContainsDescription(JsonNode node, String substring) {
