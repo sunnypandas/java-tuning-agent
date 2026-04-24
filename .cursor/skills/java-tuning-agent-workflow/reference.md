@@ -33,6 +33,27 @@ Arguments: empty object `{}`.
 
 This safe read-only P0 repeated mode does not require `confirmationToken`.
 
+## 2c. `recordJvmFlightRecording`
+
+Use this only after explicit approval for short JFR profiling.
+
+```json
+{
+  "request": {
+    "pid": 12345,
+    "durationSeconds": 30,
+    "settings": "profile",
+    "jfrOutputPath": "C:/tmp/app-profile.jfr",
+    "maxSummaryEvents": 200000,
+    "confirmationToken": "user-approved"
+  }
+}
+```
+
+`jfrOutputPath` must be absolute, end in `.jfr`, and point to a file that does not already exist. Use `settings: "profile"` for more profiling signal or `settings: "default"` for lower overhead.
+
+Result fields to inspect: `jfrPath`, `fileSizeBytes`, `summary.eventCounts`, `summary.gcSummary`, `summary.allocationSummary`, `summary.threadSummary`, `summary.executionSampleSummary`, `warnings`, and `missingData`.
+
 ## 3. `collectMemoryGcEvidence`
 
 Wrapper key is **`request`**. All inner fields are required by schema; use `false` / `""` when not using a privileged option.
