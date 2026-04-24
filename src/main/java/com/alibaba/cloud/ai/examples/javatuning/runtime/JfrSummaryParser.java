@@ -19,7 +19,7 @@ import jdk.jfr.consumer.RecordedStackTrace;
 import jdk.jfr.consumer.RecordedThread;
 import jdk.jfr.consumer.RecordingFile;
 
-public class JfrSummaryParser {
+public class JfrSummaryParser implements JfrSummaryParserAdapter {
 
 	private static final int STACK_SAMPLE_LIMIT = 8;
 
