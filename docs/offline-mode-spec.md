@@ -57,7 +57,7 @@
 
 | ID | 内容 | 说明 |
 |----|------|------|
-| R1 | GC 日志 | 与问题时段重叠的 GC 日志（如 `-Xlog:gc*` 或历史格式）。 |
+| R1 | GC 日志 | 与问题时段重叠的 GC 日志（优先 JDK unified `-Xlog:gc*`；历史格式可保留为背景文本）。 |
 | R2 | 应用日志 | 同一时段内与异常、超时、OOM、发布相关片段。 |
 | R3 | 多次轻量采样 | 同窗口 2～3 次 `jstat` 或间隔 thread/histogram，用于区分瞬态与趋势。 |
 
@@ -189,7 +189,7 @@
 ### 8.1 实现边界与已知局限（首版）
 
 - **推荐项 R1–R3：** 服务端仅在草稿中 **`explicitlyNoGcLog` / `explicitlyNoAppLog` / `explicitlyNoRepeatedSamples` 为 true** 时，向 `missingData` 写入「本次没有」类说明。若用户**既未填写内容也未勾选「本次没有」**，MCP 层**不会**自动生成「推荐项缺失」条目；**宿主向导（Agent 对话 UI）应对每个推荐项强制二选一：提供路径或粘贴，或显式「本次没有」**，以免静默遗漏。
-- **草稿中的扩展字段：** `gcLogPathOrText`、`appLogPathOrText`、`repeatedSamplesPathOrText`、`backgroundNotes` 已保留在 `OfflineBundleDraft` 中，**首版不传入** `MemoryGcEvidencePack` 或现有诊断规则；GC/应用日志内容暂不参与引擎自动推理，后续如需应单独开需求。
+- **草稿中的扩展字段：** `gcLogPathOrText` 现在会从文件路径或内联文本解析 JDK unified GC pause 行，生成 `gcLogSummary` 并进入 `MemoryGcEvidencePack` 与现有 advice 规则；无法识别的 GC 日志会降级为 warning / `missingData`。`appLogPathOrText`、`repeatedSamplesPathOrText`、`backgroundNotes` 仍保留在 `OfflineBundleDraft` 中，暂不参与引擎自动推理。
 - **retention 结果接入：** phase 1 中 `analyzeOfflineHeapRetention` 的输出**不会**自动写回 `MemoryGcEvidencePack`、`generateOfflineTuningAdvice` 或现有 advice 规则；如需统一证据包消费，后续需单独收敛字段与契约。
 - **回退编辑：** 无服务端会话与草稿版本历史；用户通过在同一会话内**重发完整草稿 JSON** 实现回退或改某一步，与设计「无状态方案 C」一致。
 - **文案语言：** 校验接口的 `nextPromptZh` 为中文；写入 `missingData` 的部分技术短句当前为英文，与 `formattedSummary` 中英混排可并存，后续可统一为中文键名。
@@ -215,6 +215,7 @@
 | 2026-04-19 | 新增 §8.1 实现边界与已知局限（评审后固化）。 |
 | 2026-04-19 | 新增 §5.1：`.hprof` 自动 Shark 浅层摘要、配置项说明、九个 MCP 工具与 schema 同步文案更新。 |
 | 2026-04-22 | 同步 phase-1 工具拆分：`summarizeOfflineHeapDumpFile` 保持 shallow-only，新增 `analyzeOfflineHeapRetention` 的 holder 语义与近似指标说明，并将 shared `MemoryGcEvidencePack` 集成标记为后续阶段。 |
+| 2026-04-25 | P1 更新：`gcLogPathOrText` 开始解析 JDK unified GC pause 行并接入 `MemoryGcEvidencePack.gcLogSummary` 与 advice 规则；应用日志和 repeated samples 导入仍保持预留字段。 |
 
 ## Phase 2 Deep Retention Update
 

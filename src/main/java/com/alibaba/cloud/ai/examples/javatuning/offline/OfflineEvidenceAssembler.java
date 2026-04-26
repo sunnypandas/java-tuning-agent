@@ -8,6 +8,8 @@ import java.util.List;
 
 import com.alibaba.cloud.ai.examples.javatuning.runtime.ClassHistogramParser;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.ClassHistogramSummary;
+import com.alibaba.cloud.ai.examples.javatuning.runtime.GcLogSummary;
+import com.alibaba.cloud.ai.examples.javatuning.runtime.GcUnifiedLogParser;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.HeapDumpShallowSummary;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.HeapRetentionAnalysisResult;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.MemoryGcEvidencePack;
@@ -27,6 +29,8 @@ public class OfflineEvidenceAssembler {
 	private final ClassHistogramParser histogramParser;
 
 	private final ThreadDumpParser threadDumpParser;
+
+	private final GcUnifiedLogParser gcLogParser = new GcUnifiedLogParser();
 
 	private final SharkHeapDumpSummarizer heapDumpSummarizer;
 
@@ -50,13 +54,14 @@ public class OfflineEvidenceAssembler {
 
 		ClassHistogramSummary classHistogram = loadHistogram(draft, warnings, missingData);
 		ThreadDumpSummary threadDump = loadThreadDump(draft, warnings, missingData);
+		GcLogSummary gcLogSummary = loadGcLog(draft, warnings, missingData);
 
 		String heapDumpPath = draft.heapDumpAbsolutePath();
 
 		HeapDumpShallowSummary heapShallowSummary = summarizeHeapDumpIfEligible(heapDumpPath, warnings);
 
 		return new MemoryGcEvidencePack(snapshot, classHistogram, threadDump, List.copyOf(missingData),
-				List.copyOf(warnings), heapDumpPath, heapShallowSummary);
+				List.copyOf(warnings), heapDumpPath, heapShallowSummary).withGcLogSummary(gcLogSummary);
 	}
 
 	public MemoryGcEvidencePack build(OfflineBundleDraft draft, HeapRetentionAnalysisResult heapRetentionAnalysis) {
@@ -131,6 +136,43 @@ public class OfflineEvidenceAssembler {
 			warnings.add("Unable to parse thread dump: " + ex.getMessage());
 			return null;
 		}
+	}
+
+	private GcLogSummary loadGcLog(OfflineBundleDraft draft, List<String> warnings, List<String> missingData) {
+		String source = draft.gcLogPathOrText();
+		if (source == null || source.isBlank()) {
+			return null;
+		}
+		try {
+			String text = loadPathOrInlineText(source);
+			GcLogSummary summary = gcLogParser.parse(text);
+			warnings.addAll(summary.warnings());
+			if (!summary.hasPauseData()) {
+				missingData.add("gcLogSummary");
+			}
+			return summary;
+		}
+		catch (IOException ex) {
+			missingData.add("gcLog");
+			warnings.add("Unable to load GC log: " + ex.getMessage());
+			return null;
+		}
+		catch (RuntimeException ex) {
+			missingData.add("gcLogSummary");
+			warnings.add("Unable to parse GC log: " + ex.getMessage());
+			return null;
+		}
+	}
+
+	private static String loadPathOrInlineText(String pathOrText) throws IOException {
+		if (pathOrText.contains("\n") || pathOrText.contains("\r")) {
+			return pathOrText;
+		}
+		Path path = Path.of(pathOrText.trim());
+		if (Files.isRegularFile(path)) {
+			return Files.readString(path);
+		}
+		return pathOrText;
 	}
 
 }

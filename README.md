@@ -24,7 +24,7 @@ After the server is started over stdio, MCP clients should see **12** tools: six
 | `validateOfflineAnalysisDraft` | Validate an `OfflineBundleDraft` (B1–B6, recommended “absent” flags, degradation). |
 | `submitOfflineHeapDumpChunk` | Upload one Base64 chunk of a large `.hprof` (with `uploadId` / `chunkIndex` / `chunkTotal`). |
 | `finalizeOfflineHeapDump` | Merge chunks, verify SHA-256 and size, return absolute path for `heapDumpAbsolutePath`. |
-| `generateOfflineTuningAdvice` | Assemble `MemoryGcEvidencePack` from the draft and run the same `generateAdviceFromEvidence` path as online. If `heapDumpAbsolutePath` points to an existing file and heap summary auto-mode is on, the server **indexes the dump with Shark** and feeds **`heapShallowSummary`** into rules and `formattedSummary`. |
+| `generateOfflineTuningAdvice` | Assemble `MemoryGcEvidencePack` from the draft and run the same `generateAdviceFromEvidence` path as online. If `gcLogPathOrText` is present, JDK unified GC pause lines are parsed into `gcLogSummary` and used by pause-history rules. If `heapDumpAbsolutePath` points to an existing file and heap summary auto-mode is on, the server **indexes the dump with Shark** and feeds **`heapShallowSummary`** into rules and `formattedSummary`. |
 | `summarizeOfflineHeapDumpFile` | **Optional** ad-hoc call: return Markdown + structured top shallow-by-class rows for a local `.hprof` without running the full advice pipeline. |
 | `analyzeOfflineHeapRetention` | Analyze an existing `.hprof` for holder-oriented retention evidence; `analysisDepth=deep` attempts retained-style analysis and falls back honestly. |
 

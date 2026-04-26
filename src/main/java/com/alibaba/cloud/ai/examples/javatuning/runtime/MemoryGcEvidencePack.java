@@ -5,7 +5,7 @@ import java.util.List;
 public record MemoryGcEvidencePack(JvmRuntimeSnapshot snapshot, ClassHistogramSummary classHistogram,
 		ThreadDumpSummary threadDump, List<String> missingData, List<String> warnings, String heapDumpPath,
 		HeapDumpShallowSummary heapShallowSummary, HeapRetentionAnalysisResult heapRetentionAnalysis,
-		RepeatedSamplingResult repeatedSamplingResult) {
+		RepeatedSamplingResult repeatedSamplingResult, GcLogSummary gcLogSummary) {
 
 	public MemoryGcEvidencePack {
 		missingData = List.copyOf(missingData);
@@ -13,8 +13,8 @@ public record MemoryGcEvidencePack(JvmRuntimeSnapshot snapshot, ClassHistogramSu
 	}
 
 	public MemoryGcEvidencePack(JvmRuntimeSnapshot snapshot, ClassHistogramSummary classHistogram,
-			ThreadDumpSummary threadDump, List<String> missingData, List<String> warnings, String heapDumpPath,
-			HeapDumpShallowSummary heapShallowSummary) {
+		ThreadDumpSummary threadDump, List<String> missingData, List<String> warnings, String heapDumpPath,
+		HeapDumpShallowSummary heapShallowSummary) {
 		this(snapshot, classHistogram, threadDump, missingData, warnings, heapDumpPath, heapShallowSummary, null, null);
 	}
 
@@ -22,17 +22,30 @@ public record MemoryGcEvidencePack(JvmRuntimeSnapshot snapshot, ClassHistogramSu
 			ThreadDumpSummary threadDump, List<String> missingData, List<String> warnings, String heapDumpPath,
 			HeapDumpShallowSummary heapShallowSummary, HeapRetentionAnalysisResult heapRetentionAnalysis) {
 		this(snapshot, classHistogram, threadDump, missingData, warnings, heapDumpPath, heapShallowSummary,
-				heapRetentionAnalysis, null);
+				heapRetentionAnalysis, null, null);
+	}
+
+	public MemoryGcEvidencePack(JvmRuntimeSnapshot snapshot, ClassHistogramSummary classHistogram,
+			ThreadDumpSummary threadDump, List<String> missingData, List<String> warnings, String heapDumpPath,
+			HeapDumpShallowSummary heapShallowSummary, HeapRetentionAnalysisResult heapRetentionAnalysis,
+			RepeatedSamplingResult repeatedSamplingResult) {
+		this(snapshot, classHistogram, threadDump, missingData, warnings, heapDumpPath, heapShallowSummary,
+				heapRetentionAnalysis, repeatedSamplingResult, null);
 	}
 
 	public MemoryGcEvidencePack withHeapRetentionAnalysis(HeapRetentionAnalysisResult heapRetentionAnalysis) {
 		return new MemoryGcEvidencePack(snapshot, classHistogram, threadDump, missingData, warnings, heapDumpPath,
-				heapShallowSummary, heapRetentionAnalysis, repeatedSamplingResult);
+				heapShallowSummary, heapRetentionAnalysis, repeatedSamplingResult, gcLogSummary);
 	}
 
 	public MemoryGcEvidencePack withRepeatedSamplingResult(RepeatedSamplingResult repeatedSamplingResult) {
 		return new MemoryGcEvidencePack(snapshot, classHistogram, threadDump, missingData, warnings, heapDumpPath,
-				heapShallowSummary, heapRetentionAnalysis, repeatedSamplingResult);
+				heapShallowSummary, heapRetentionAnalysis, repeatedSamplingResult, gcLogSummary);
+	}
+
+	public MemoryGcEvidencePack withGcLogSummary(GcLogSummary gcLogSummary) {
+		return new MemoryGcEvidencePack(snapshot, classHistogram, threadDump, missingData, warnings, heapDumpPath,
+				heapShallowSummary, heapRetentionAnalysis, repeatedSamplingResult, gcLogSummary);
 	}
 
 }

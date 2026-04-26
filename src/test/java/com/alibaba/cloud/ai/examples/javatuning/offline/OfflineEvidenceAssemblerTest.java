@@ -74,4 +74,21 @@ class OfflineEvidenceAssemblerTest {
 		assertThat(OfflineTextLoader.load(new OfflineArtifactSource(null, null))).isEmpty();
 	}
 
+	@Test
+	void parsesGcLogPathOrTextIntoEvidencePack() {
+		String gcLog = """
+				[1.234s][info][gc] GC(1) Pause Young (Normal) (G1 Evacuation Pause) 128M->96M(512M) 12.345ms
+				[2.345s][info][gc] GC(2) Pause Full (G1 Compaction Pause) 450M->280M(512M) 210.000ms
+				""";
+		OfflineBundleDraft draft = new OfflineBundleDraft("pid=99999\n-XX:+UseG1GC", "VM.version:\n21.0.2",
+				"garbage-first heap total 262144K, used 218758K", new OfflineArtifactSource(null, null),
+				new OfflineArtifactSource(null, null), null, false, false, false, gcLog, null, null, Map.of());
+
+		MemoryGcEvidencePack pack = assembler.build(draft);
+
+		assertThat(pack.gcLogSummary()).isNotNull();
+		assertThat(pack.gcLogSummary().pauseEventCount()).isEqualTo(2);
+		assertThat(pack.gcLogSummary().fullPauseCount()).isEqualTo(1);
+	}
+
 }

@@ -5,6 +5,7 @@ import java.util.Map;
 
 import com.alibaba.cloud.ai.examples.javatuning.runtime.ClassHistogramParser;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.ClassHistogramSummary;
+import com.alibaba.cloud.ai.examples.javatuning.runtime.GcLogSummary;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.HeapRetentionAnalysisResult;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.HeapRetentionConfidence;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.HeapRetentionSummary;
@@ -102,6 +103,20 @@ class MemoryGcDiagnosisEngineTest {
 			.contains(RepeatedSamplingTrendRule.RISING_HEAP_TITLE);
 		assertThat(report.confidenceReasons())
 			.anyMatch(reason -> reason.contains("Repeated runtime samples present"));
+	}
+
+	@Test
+	void shouldIncludeGcLogFindingsFromImportedSummary() {
+		GcLogSummary gcLog = new GcLogSummary(2, 1, 1, 0, 850.0d, 870.0d, 500L * 1024L * 1024L,
+				260L * 1024L * 1024L, 0, 0, Map.of("G1 Compaction Pause", 1L), List.of());
+		MemoryGcEvidencePack evidence = stableBaseEvidence().withGcLogSummary(gcLog);
+
+		TuningAdviceReport report = MemoryGcDiagnosisEngine.firstVersion()
+			.diagnose(evidence, CodeContextSummary.empty(), "prod", "reduce pause");
+
+		assertThat(report.findings()).extracting(TuningFinding::title)
+			.contains(GcLogInsightsRule.LONG_PAUSE_TITLE);
+		assertThat(report.confidenceReasons()).anyMatch(reason -> reason.contains("GC log summary present"));
 	}
 
 	@Test

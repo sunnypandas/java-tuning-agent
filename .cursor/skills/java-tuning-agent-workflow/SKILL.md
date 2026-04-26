@@ -34,7 +34,7 @@ Use when the user analyzes **production-exported** files (histogram, thread dump
 When a local file already exists, prefer `filePath` over `inlineText`.
 `heapDumpAbsolutePath` is different: it is a plain string path, not an `OfflineArtifactSource`.
 
-**Recommended R1–R3 (GC log, app log, repeated samples):** For **each** item, the host must force a **binary choice** — supply `gcLogPathOrText` / `appLogPathOrText` / `repeatedSamplesPathOrText`, **or** set the matching `explicitlyNoGcLog` / `explicitlyNoAppLog` / `explicitlyNoRepeatedSamples` flag. If the user leaves an item neither filled nor explicitly absent, the server does **not** auto-flag it as missing; avoiding that silent gap is the agent’s responsibility.
+**Recommended R1–R3 (GC log, app log, repeated samples):** For **each** item, the host must force a **binary choice** — supply `gcLogPathOrText` / `appLogPathOrText` / `repeatedSamplesPathOrText`, **or** set the matching `explicitlyNoGcLog` / `explicitlyNoAppLog` / `explicitlyNoRepeatedSamples` flag. If `gcLogPathOrText` contains a local file path or inline JDK unified GC log text, the server parses pause history into advice evidence. If the user leaves an item neither filled nor explicitly absent, the server does **not** auto-flag it as missing; avoiding that silent gap is the agent’s responsibility.
 
 若必选缺失，调用 `validateOfflineAnalysisDraft(draft, proceedWithMissingRequired=false)` 获取 `missingRequired` 与中文 `nextPromptZh`；用户确认降级时改 `proceedWithMissingRequired=true`。
 

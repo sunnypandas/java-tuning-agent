@@ -38,6 +38,9 @@ public final class DiagnosisConfidenceEvaluator {
 		if (evidence.repeatedSamplingResult() != null && evidence.repeatedSamplingResult().samples().size() < 2) {
 			reasons.add("Repeated sampling had fewer than two successful samples; trend confidence is limited");
 		}
+		if (evidence.gcLogSummary() != null && evidence.gcLogSummary().hasPauseData()) {
+			reasons.add("GC log summary present: pause-history rules were applied");
+		}
 		if (!evidence.missingData().isEmpty()) {
 			reasons.add("Collection reported missing fragments: " + String.join(", ", evidence.missingData()));
 		}

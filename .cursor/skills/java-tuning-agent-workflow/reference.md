@@ -189,6 +189,7 @@ Use when there is **no** local target PID: the user provides exported `jcmd`/`js
 - `jvmIdentityText`, `jdkInfoText`, `runtimeSnapshotText`: plain strings
 - `classHistogram`, `threadDump`: `OfflineArtifactSource` objects, not bare strings
 - `heapDumpAbsolutePath`: plain string path
+- `gcLogPathOrText`: plain string path or inline JDK unified GC log text; parsed into `gcLogSummary` when present
 
 **OfflineArtifactSource shape:**
 
@@ -257,6 +258,8 @@ Write the returned path into `draft.heapDumpAbsolutePath` before `generateOfflin
 ```
 
 When `heapDumpAbsolutePath` is a real file and heap auto-summary is on, the server **automatically** runs Shark and includes the result in the same `TuningAdviceReport` as online (findings from rules, not the LLM).
+
+When `draft.gcLogPathOrText` is present, the server parses JDK unified GC pause lines and uses the resulting `gcLogSummary` for long-pause, Full GC, humongous-allocation, and evacuation-pressure findings.
 
 **5.5 `summarizeOfflineHeapDumpFile` (optional)**
 
