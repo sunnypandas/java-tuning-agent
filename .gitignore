@@ -22,6 +22,8 @@ target/
 
 # JVM dumps
 *.hprof
+hs_err_pid*.log
+replay_pid*.log
 
 # Keep Cursor workspace metadata
 !.cursor/
