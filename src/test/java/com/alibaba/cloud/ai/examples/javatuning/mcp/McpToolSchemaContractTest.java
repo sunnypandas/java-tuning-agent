@@ -3,7 +3,12 @@ package com.alibaba.cloud.ai.examples.javatuning.mcp;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.MissingNode;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Arrays;
+import java.util.Set;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.tool.ToolCallbackProvider;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -22,6 +27,8 @@ class McpToolSchemaContractTest {
 	private ToolCallbackProvider toolCallbackProvider;
 
 	private final ObjectMapper mapper = new ObjectMapper();
+
+	private static final Path PUBLISHED_SCHEMA_DIR = Path.of("mcps/user-java-tuning-agent/tools");
 
 	@Test
 	void everyRegisteredToolExposesParsableInputSchemaWithExpectedShape() throws Exception {
@@ -94,6 +101,40 @@ class McpToolSchemaContractTest {
 						.isEqualTo("string");
 					assertThat(schema.path("properties").path("confirmationToken").path("type").asText())
 						.isEqualTo("string");
+					assertThat(schema.path("properties").path("baselineEvidence").path("type").asText())
+						.isEqualTo("object");
+					assertThat(schema.path("properties").path("jfrSummary").path("type").asText()).isEqualTo("object");
+					assertThat(schema.path("properties").path("repeatedSamplingResult").path("type").asText())
+						.isEqualTo("object");
+					assertThat(schema.path("properties").path("resourceBudgetEvidence").path("type").asText())
+						.isEqualTo("object");
+				}
+				case "generateTuningAdviceFromEvidence" -> {
+					JsonNode properties = schema.path("properties");
+					JsonNode evidence = schema.path("properties").path("evidence");
+					assertThat(evidence.path("type").asText()).isEqualTo("object");
+					assertThat(evidence.path("properties").path("snapshot").path("type").asText()).isEqualTo("object");
+					assertThat(evidence.path("properties").path("classHistogram").path("type").asText())
+						.isEqualTo("object");
+					assertThat(evidence.path("properties").path("threadDump").path("type").asText())
+						.isEqualTo("object");
+					assertThat(evidence.path("properties").path("heapDumpPath").path("type").asText())
+						.isEqualTo("string");
+					JsonNode ctx = schema.path("properties").path("codeContextSummary");
+					assertThat(ctx.path("type").asText()).isEqualTo("object");
+					assertThat(ctx.path("properties").path("sourceRoots").path("type").asText()).isEqualTo("array");
+					assertThat(schema.path("properties").path("environment").path("type").asText()).isEqualTo("string");
+					assertThat(schema.path("properties").path("optimizationGoal").path("type").asText())
+						.isEqualTo("string");
+					assertThat(properties.has("pid")).isFalse();
+					assertThat(properties.has("collectClassHistogram")).isFalse();
+					assertThat(properties.has("collectThreadDump")).isFalse();
+					assertThat(properties.has("includeHeapDump")).isFalse();
+					assertThat(properties.has("heapDumpOutputPath")).isFalse();
+					assertThat(properties.has("confirmationToken")).isFalse();
+					assertThat(def.description()).contains("existing MemoryGcEvidencePack")
+						.contains("does not collect")
+						.contains("formattedSummary");
 				}
 				case "validateOfflineAnalysisDraft" -> {
 					JsonNode draft = schema.path("properties").path("draft");
@@ -105,6 +146,8 @@ class McpToolSchemaContractTest {
 					assertThat(classHistogram.path("type").asText()).isEqualTo("object");
 					assertThat(threadDump.path("type").asText()).isEqualTo("object");
 					assertThat(draft.path("properties").path("heapDumpAbsolutePath").path("type").asText())
+						.isEqualTo("string");
+					assertThat(draft.path("properties").path("repeatedSamplesPathOrText").path("type").asText())
 						.isEqualTo("string");
 					assertThat(descriptionOf(classHistogramProperty, classHistogram))
 						.contains("filePath", "inlineText");
@@ -140,6 +183,8 @@ class McpToolSchemaContractTest {
 					assertThat(classHistogram.path("type").asText()).isEqualTo("object");
 					assertThat(threadDump.path("type").asText()).isEqualTo("object");
 					assertThat(draft.path("properties").path("heapDumpAbsolutePath").path("type").asText())
+						.isEqualTo("string");
+					assertThat(draft.path("properties").path("repeatedSamplesPathOrText").path("type").asText())
 						.isEqualTo("string");
 					assertThat(descriptionOf(classHistogramProperty, classHistogram))
 						.contains("filePath", "inlineText");
@@ -181,6 +226,106 @@ class McpToolSchemaContractTest {
 				}
 				default -> throw new AssertionError("Unexpected tool: " + def.name());
 			}
+		}
+	}
+
+	@Test
+	void publishedSchemaDirectoryShouldContainEveryRegisteredToolWithClientSafeSchemas() throws Exception {
+		Set<String> registeredToolNames = registeredToolNames();
+		Set<String> publishedToolNames = publishedToolNames();
+
+		assertThat(publishedToolNames).containsExactlyInAnyOrderElementsOf(registeredToolNames);
+		for (String toolName : registeredToolNames) {
+			JsonNode tool = mapper.readTree(PUBLISHED_SCHEMA_DIR.resolve(toolName + ".json").toFile());
+			assertThat(tool.path("name").asText()).isEqualTo(toolName);
+			assertThat(tool.path("description").asText()).isNotBlank();
+			JsonNode schema = tool.path("inputSchema");
+			assertThat(schema.path("type").asText()).isEqualTo("object");
+			assertThat(containsRootRecursiveRef(schema)).as("schema for " + toolName + " must not contain $ref: \"#\"")
+				.isFalse();
+			assertReferencesResolve(schema, schema, toolName);
+			assertRequiredFieldsAreDeclared(schema, toolName);
+		}
+
+		JsonNode generateAdviceSchema = publishedInputSchema("generateTuningAdvice");
+		assertThat(requiredFields(generateAdviceSchema)).doesNotContain("baselineEvidence", "jfrSummary",
+				"repeatedSamplingResult", "resourceBudgetEvidence", "collectClassHistogram", "collectThreadDump",
+				"includeHeapDump", "heapDumpOutputPath", "confirmationToken");
+		assertThat(typeAllows(generateAdviceSchema.path("properties").path("baselineEvidence"), "null")).isTrue();
+		assertThat(typeAllows(generateAdviceSchema.path("properties").path("jfrSummary"), "null")).isTrue();
+
+		JsonNode fromEvidenceTool = mapper.readTree(PUBLISHED_SCHEMA_DIR.resolve("generateTuningAdviceFromEvidence.json")
+			.toFile());
+		JsonNode fromEvidenceSchema = fromEvidenceTool.path("inputSchema");
+		JsonNode fromEvidenceProperties = fromEvidenceSchema.path("properties");
+		assertThat(requiredFields(fromEvidenceSchema)).containsExactlyInAnyOrder("evidence", "codeContextSummary",
+				"environment", "optimizationGoal");
+		assertThat(fromEvidenceProperties.has("pid")).isFalse();
+		assertThat(fromEvidenceProperties.has("collectClassHistogram")).isFalse();
+		assertThat(fromEvidenceProperties.has("collectThreadDump")).isFalse();
+		assertThat(fromEvidenceProperties.has("includeHeapDump")).isFalse();
+		assertThat(fromEvidenceProperties.has("heapDumpOutputPath")).isFalse();
+		assertThat(fromEvidenceProperties.has("confirmationToken")).isFalse();
+		assertThat(fromEvidenceTool.path("description").asText()).contains("does not collect")
+			.contains("does not require confirmationToken");
+
+		JsonNode collectRequestSchema = publishedInputSchema("collectMemoryGcEvidence").path("properties")
+			.path("request");
+		assertThat(requiredFields(collectRequestSchema)).contains("pid")
+			.doesNotContain("includeClassHistogram", "includeThreadDump", "includeHeapDump", "heapDumpOutputPath",
+					"confirmationToken");
+
+		JsonNode repeatedRequestSchema = publishedInputSchema("inspectJvmRuntimeRepeated").path("properties")
+			.path("request");
+		assertThat(requiredFields(repeatedRequestSchema)).contains("pid")
+			.doesNotContain("sampleCount", "intervalMillis", "includeThreadCount", "includeClassCount",
+					"confirmationToken");
+
+		JsonNode jfrRequestSchema = publishedInputSchema("recordJvmFlightRecording").path("properties")
+			.path("request");
+		assertThat(requiredFields(jfrRequestSchema)).contains("pid", "jfrOutputPath", "confirmationToken")
+			.doesNotContain("durationSeconds", "settings", "maxSummaryEvents");
+
+		JsonNode validateDraftSchema = publishedInputSchema("validateOfflineAnalysisDraft").path("properties")
+			.path("draft");
+		assertThat(requiredFields(validateDraftSchema)).isEmpty();
+		JsonNode artifactSource = resolveSchemaNode(validateDraftSchema,
+				validateDraftSchema.path("properties").path("classHistogram"));
+		assertThat(requiredFields(artifactSource)).isEmpty();
+
+		JsonNode offlineAdviceSchema = publishedInputSchema("generateOfflineTuningAdvice");
+		assertThat(requiredFields(offlineAdviceSchema)).doesNotContain("codeContextSummary", "analysisDepth",
+				"confirmationToken");
+		assertThat(requiredFields(offlineAdviceSchema.path("properties").path("draft"))).isEmpty();
+
+		JsonNode summarizeHeapSchema = publishedInputSchema("summarizeOfflineHeapDumpFile");
+		assertThat(requiredFields(summarizeHeapSchema)).contains("heapDumpAbsolutePath")
+			.doesNotContain("topClassLimit", "maxOutputChars");
+
+		JsonNode retentionSchema = publishedInputSchema("analyzeOfflineHeapRetention");
+		assertThat(requiredFields(retentionSchema)).contains("heapDumpAbsolutePath")
+			.doesNotContain("topObjectLimit", "maxOutputChars", "analysisDepth", "focusTypes", "focusPackages");
+	}
+
+	@Test
+	void publicToolDescriptionsShouldBeBilingualForClients() throws Exception {
+		for (var callback : toolCallbackProvider.getToolCallbacks()) {
+			var def = callback.getToolDefinition();
+			assertThat(containsAsciiLetter(def.description()))
+				.as("registered description for " + def.name() + " should include English")
+				.isTrue();
+			assertThat(containsCjk(def.description()))
+				.as("registered description for " + def.name() + " should include Chinese")
+				.isTrue();
+
+			JsonNode publishedTool = mapper.readTree(PUBLISHED_SCHEMA_DIR.resolve(def.name() + ".json").toFile());
+			String publishedDescription = publishedTool.path("description").asText();
+			assertThat(containsAsciiLetter(publishedDescription))
+				.as("published description for " + def.name() + " should include English")
+				.isTrue();
+			assertThat(containsCjk(publishedDescription))
+				.as("published description for " + def.name() + " should include Chinese")
+				.isTrue();
 		}
 	}
 
@@ -238,6 +383,12 @@ class McpToolSchemaContractTest {
 			.map(def -> def.name())).contains("recordJvmFlightRecording");
 	}
 
+	@Test
+	void generateTuningAdviceFromEvidenceShouldBeRegistered() {
+		assertThat(Arrays.stream(toolCallbackProvider.getToolCallbacks()).map(callback -> callback.getToolDefinition())
+			.map(def -> def.name())).contains("generateTuningAdviceFromEvidence");
+	}
+
 	private static boolean schemaContainsDescription(JsonNode node, String substring) {
 		if (node == null || node.isMissingNode()) {
 			return false;
@@ -262,6 +413,110 @@ class McpToolSchemaContractTest {
 			}
 		}
 		return false;
+	}
+
+	private static boolean containsAsciiLetter(String text) {
+		return text != null && text.chars().anyMatch(ch -> (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z'));
+	}
+
+	private static boolean containsCjk(String text) {
+		return text != null && text.codePoints().anyMatch(ch -> ch >= 0x4E00 && ch <= 0x9FFF);
+	}
+
+	private Set<String> registeredToolNames() {
+		return Arrays.stream(toolCallbackProvider.getToolCallbacks())
+			.map(callback -> callback.getToolDefinition().name())
+			.collect(Collectors.toCollection(java.util.TreeSet::new));
+	}
+
+	private static Set<String> publishedToolNames() throws IOException {
+		try (var paths = Files.list(PUBLISHED_SCHEMA_DIR)) {
+			return paths.filter(path -> path.getFileName().toString().endsWith(".json"))
+				.map(path -> path.getFileName().toString().replaceFirst("\\.json$", ""))
+				.collect(Collectors.toCollection(java.util.TreeSet::new));
+		}
+	}
+
+	private JsonNode publishedInputSchema(String toolName) throws IOException {
+		return mapper.readTree(PUBLISHED_SCHEMA_DIR.resolve(toolName + ".json").toFile()).path("inputSchema");
+	}
+
+	private static Set<String> requiredFields(JsonNode schema) {
+		return streamArray(schema.path("required")).map(JsonNode::asText)
+			.collect(Collectors.toCollection(java.util.TreeSet::new));
+	}
+
+	private static boolean typeAllows(JsonNode schema, String expectedType) {
+		JsonNode type = schema.path("type");
+		if (type.isTextual()) {
+			return expectedType.equals(type.asText());
+		}
+		return streamArray(type).map(JsonNode::asText).anyMatch(expectedType::equals);
+	}
+
+	private static void assertRequiredFieldsAreDeclared(JsonNode schema, String toolName) {
+		Set<String> properties = new java.util.TreeSet<>();
+		schema.path("properties").fieldNames().forEachRemaining(properties::add);
+		for (String required : requiredFields(schema)) {
+			assertThat(properties).as("required field %s should be declared in properties for %s", required, toolName)
+				.contains(required);
+		}
+	}
+
+	private static java.util.stream.Stream<JsonNode> streamArray(JsonNode node) {
+		return node == null || !node.isArray() ? java.util.stream.Stream.empty()
+				: java.util.stream.StreamSupport.stream(node.spliterator(), false);
+	}
+
+	private static boolean containsRootRecursiveRef(JsonNode node) {
+		if (node == null || node.isMissingNode()) {
+			return false;
+		}
+		if (node.isObject()) {
+			JsonNode ref = node.get("$ref");
+			if (ref != null && ref.isTextual() && "#".equals(ref.asText())) {
+				return true;
+			}
+			var fields = node.fields();
+			while (fields.hasNext()) {
+				if (containsRootRecursiveRef(fields.next().getValue())) {
+					return true;
+				}
+			}
+		}
+		else if (node.isArray()) {
+			for (JsonNode child : node) {
+				if (containsRootRecursiveRef(child)) {
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	private static void assertReferencesResolve(JsonNode root, JsonNode node, String toolName) {
+		if (node == null || node.isMissingNode()) {
+			return;
+		}
+		if (node.isObject()) {
+			JsonNode ref = node.get("$ref");
+			if (ref != null && ref.isTextual()) {
+				String pointer = ref.asText();
+				assertThat(pointer).as("$ref in " + toolName).startsWith("#/");
+				assertThat(root.at(pointer.substring(1)).isMissingNode())
+					.as("$ref %s in %s should resolve from the schema root", pointer, toolName)
+					.isFalse();
+			}
+			var fields = node.fields();
+			while (fields.hasNext()) {
+				assertReferencesResolve(root, fields.next().getValue(), toolName);
+			}
+		}
+		else if (node.isArray()) {
+			for (JsonNode child : node) {
+				assertReferencesResolve(root, child, toolName);
+			}
+		}
 	}
 
 	private static JsonNode resolveSchemaNode(JsonNode root, JsonNode node) {

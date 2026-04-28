@@ -1,5 +1,6 @@
 package com.alibaba.cloud.ai.examples.javatuning.advice;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import com.alibaba.cloud.ai.examples.javatuning.runtime.HeapDumpShallowSummary;
@@ -44,11 +45,19 @@ public final class HeapDumpShallowDominanceRule implements DiagnosisRule {
 		if (top.approxSharePercent() < 30.0d) {
 			return;
 		}
-		scratch.addFinding(new TuningFinding("Dominant shallow type in heap dump", "high",
+		List<String> corroborators = corroboratorsFor(normalized, evidence, scratch);
+		boolean corroborated = !corroborators.isEmpty();
+		scratch.addFinding(new TuningFinding(
+				corroborated ? "Corroborated shallow heap dominance" : "Dominant shallow heap candidate",
+				corroborated ? "high" : "medium",
 				"hprof shallow leader=" + normalized + " shallowBytes=" + top.shallowBytes() + " approxSharePercent="
-						+ String.format("%.2f", top.approxSharePercent()),
-				"indexed-heap-shallow",
-				"A single type accounting for a large shallow share often merits allocation/retention review"));
+						+ String.format("%.2f", top.approxSharePercent())
+						+ (corroborated ? " corroboratedBy=" + String.join(",", corroborators)
+								: " retainedSize=not-proven"),
+				corroborated ? "corroborated-heap-shallow" : "indexed-heap-shallow-candidate",
+				corroborated
+						? "A dominant shallow type plus independent evidence supports deeper allocation/retention review"
+						: "A single shallow-by-class summary is a candidate signal only; shallow bytes do not prove retained ownership"));
 		scratch.addRecommendation(new TuningRecommendation(
 				"Trace allocation and retention for the dominant heap-dump shallow type", "code-review",
 				"Cross-check with class histogram timing; inspect dominator paths in MAT if needed",
@@ -61,5 +70,27 @@ public final class HeapDumpShallowDominanceRule implements DiagnosisRule {
 		else {
 			scratch.addNextStep("Open the type in MAT dominator tree or compare with live histogram sampling for " + normalized);
 		}
+	}
+
+	private static List<String> corroboratorsFor(String className, MemoryGcEvidencePack evidence, DiagnosisScratch scratch) {
+		List<String> corroborators = new ArrayList<>();
+		if (scratch.findings().stream().anyMatch(f -> RepeatedSamplingTrendRule.RISING_HEAP_TITLE.equals(f.title()))) {
+			corroborators.add("repeated-heap-growth");
+		}
+		if (hasJfrAllocationFor(className, evidence)) {
+			corroborators.add("jfr-allocation");
+		}
+		if (evidence.heapRetentionAnalysis() != null && evidence.heapRetentionAnalysis().analysisSucceeded()) {
+			corroborators.add("heap-retention-analysis");
+		}
+		return corroborators;
+	}
+
+	private static boolean hasJfrAllocationFor(String className, MemoryGcEvidencePack evidence) {
+		if (evidence.jfrSummary() == null || evidence.jfrSummary().allocationSummary() == null) {
+			return false;
+		}
+		return evidence.jfrSummary().allocationSummary().topAllocatedClasses().stream().anyMatch(
+				it -> HistogramClassNames.stripModuleSuffix(it.name()).equals(className));
 	}
 }

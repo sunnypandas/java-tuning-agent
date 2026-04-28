@@ -5,8 +5,9 @@ alwaysApply: true
 
 # Java tuning agent — use the workflow skill
 
-When the user asks for **JVM tuning**, **GC / memory / leak** diagnosis, **local Java process** analysis, **offline/import analysis**, or whenever you call MCP server **`user-java-tuning-agent`** / **`java-tuning-agent`** tools — **live JVM:** `listJavaApps`, `inspectJvmRuntime`, `collectMemoryGcEvidence`, `generateTuningAdvice`; **offline bundle:** `validateOfflineAnalysisDraft`, `submitOfflineHeapDumpChunk`, `finalizeOfflineHeapDump`, `generateOfflineTuningAdvice`, `summarizeOfflineHeapDumpFile`:
+When the user asks for **JVM tuning**, **GC / memory / leak** diagnosis, **local Java process** analysis, **offline/import analysis**, or whenever you call MCP server **`user-java-tuning-agent`** / **`java-tuning-agent`** tools — **live JVM:** `listJavaApps`, `inspectJvmRuntime`, `inspectJvmRuntimeRepeated`, `recordJvmFlightRecording`, `collectMemoryGcEvidence`, `generateTuningAdvice`, `generateTuningAdviceFromEvidence`; **offline bundle:** `validateOfflineAnalysisDraft`, `submitOfflineHeapDumpChunk`, `finalizeOfflineHeapDump`, `generateOfflineTuningAdvice`, `summarizeOfflineHeapDumpFile`, `analyzeOfflineHeapRetention`:
 
 1. **Read** `.cursor/skills/java-tuning-agent-workflow/SKILL.md` first and follow its **phased pipeline**, PID rules, **mandatory step-3 scope gate** (AskQuestion or explicit chat; **no silent “quick pass”**), and `formattedSummary` rendering (no outer Markdown fence around the whole summary).
 2. Before invoking tools, read the JSON schemas under the workspace `mcps/user-java-tuning-agent/tools/` when argument shape is unclear.
-3. Optional: user can attach the skill explicitly with **`/java-tuning-agent-workflow`** in Agent chat.
+3. Treat the current public surface as **13 tools** and keep bilingual tool/schema descriptions plus evidence-reuse guidance in sync: `baselineEvidence`, JFR, repeated sampling, native/NMT, resource budget, heap shallow summary, offline imported evidence, and deep retention are all current capabilities.
+4. Optional: user can attach the skill explicitly with **`/java-tuning-agent-workflow`** in Agent chat.

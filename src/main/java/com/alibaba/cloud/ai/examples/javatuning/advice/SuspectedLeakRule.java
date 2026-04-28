@@ -1,5 +1,6 @@
 package com.alibaba.cloud.ai.examples.javatuning.advice;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import com.alibaba.cloud.ai.examples.javatuning.runtime.ClassHistogramEntry;
@@ -54,11 +55,19 @@ public final class SuspectedLeakRule implements DiagnosisRule {
 			return;
 		}
 		String dominant = HistogramClassNames.stripModuleSuffix(topApp.className());
-		scratch.addFinding(new TuningFinding("Suspected retained-object leak", "high",
-				"classHistogram dominantType=" + dominant + " retainedBytes=" + topApp.bytes() + " shareOfHistogram="
-						+ String.format("%.2f", share),
-				"inferred-from-evidence",
-				"A small set of types retaining a large share of live heap often indicates accumulation or caches"));
+		List<String> corroborators = corroboratorsFor(dominant, evidence, scratch);
+		boolean corroborated = !corroborators.isEmpty();
+		scratch.addFinding(new TuningFinding(
+				corroborated ? "Likely retained-object leak" : "Dominant class-histogram candidate",
+				corroborated ? "high" : "medium",
+				"classHistogram dominantType=" + dominant + " liveBytes=" + topApp.bytes() + " shareOfHistogram="
+						+ String.format("%.2f", share)
+						+ (corroborated ? " corroboratedBy=" + String.join(",", corroborators)
+								: " retainedSize=not-proven"),
+				corroborated ? "corroborated-evidence" : "single-snapshot-candidate",
+				corroborated
+						? "A dominant live type plus independent evidence supports a retained-object leak hypothesis"
+						: "A single class histogram shows live-object dominance, but it is only a candidate signal until trend, allocation, or retention evidence corroborates it"));
 		scratch.addRecommendation(new TuningRecommendation(
 				"Investigate lifecycle and retention for dominant histogram types", "code-review",
 				"Trace allocation paths; verify caches/singletons/static collections are bounded",
@@ -73,5 +82,27 @@ public final class SuspectedLeakRule implements DiagnosisRule {
 		else {
 			scratch.addNextStep("Compare two histograms over time or capture allocation stacks for " + dominant);
 		}
+	}
+
+	private static List<String> corroboratorsFor(String dominant, MemoryGcEvidencePack evidence, DiagnosisScratch scratch) {
+		List<String> corroborators = new ArrayList<>();
+		if (scratch.findings().stream().anyMatch(f -> RepeatedSamplingTrendRule.RISING_HEAP_TITLE.equals(f.title()))) {
+			corroborators.add("repeated-heap-growth");
+		}
+		if (hasJfrAllocationFor(dominant, evidence)) {
+			corroborators.add("jfr-allocation");
+		}
+		if (evidence.heapRetentionAnalysis() != null && evidence.heapRetentionAnalysis().analysisSucceeded()) {
+			corroborators.add("heap-retention-analysis");
+		}
+		return corroborators;
+	}
+
+	private static boolean hasJfrAllocationFor(String dominant, MemoryGcEvidencePack evidence) {
+		if (evidence.jfrSummary() == null || evidence.jfrSummary().allocationSummary() == null) {
+			return false;
+		}
+		return evidence.jfrSummary().allocationSummary().topAllocatedClasses().stream().anyMatch(
+				it -> HistogramClassNames.stripModuleSuffix(it.name()).equals(dominant));
 	}
 }

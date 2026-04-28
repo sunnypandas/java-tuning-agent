@@ -1,0 +1,61 @@
+{
+  "name": "recordJvmFlightRecording",
+  "description": "Record one short Java Flight Recorder session for a target JVM and return the .jfr path plus a lightweight summary. 中文：为目标 JVM 录制一次短时 JFR，并返回 .jfr 路径与 GC/分配/线程等摘要。 Requires a non-blank confirmationToken and an absolute jfrOutputPath ending in .jfr. Example: {\"request\":{\"pid\":12345,\"durationSeconds\":30,\"settings\":\"profile\",\"jfrOutputPath\":\"C:/tmp/app.jfr\",\"maxSummaryEvents\":200000,\"confirmationToken\":\"user-approved\"}}",
+  "inputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "request": {
+        "type": "object",
+        "properties": {
+          "confirmationToken": {
+            "type": "string",
+            "description": "Non-blank caller-provided approval token required for JFR recording."
+          },
+          "durationSeconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Recording duration in seconds; null uses the server default, usually 30."
+          },
+          "jfrOutputPath": {
+            "type": "string",
+            "description": "Absolute output path for the recording file; must end in .jfr and must not already exist."
+          },
+          "maxSummaryEvents": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Maximum number of JFR events to parse for the summary; null uses the server default."
+          },
+          "pid": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Target JVM process id (decimal); should match a PID from listJavaApps."
+          },
+          "settings": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "JFR settings template: default or profile. Blank uses profile."
+          }
+        },
+        "required": [
+          "confirmationToken",
+          "jfrOutputPath",
+          "pid"
+        ],
+        "description": "JfrRecordingRequest JSON: pid, durationSeconds, settings, jfrOutputPath, maxSummaryEvents, confirmationToken."
+      }
+    },
+    "required": [
+      "request"
+    ],
+    "additionalProperties": false
+  }
+}

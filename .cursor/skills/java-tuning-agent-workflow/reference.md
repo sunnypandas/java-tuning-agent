@@ -4,6 +4,10 @@ Server name in config is often **`java-tuning-agent`**; Cursor may expose it as 
 
 **Workflow:** See **SKILL.md** — `collectMemoryGcEvidence` requires the **mandatory step-3 scope gate** first (AskQuestion or explicit chat choice), including **snapshot-only**; the agent must not silently use all-`false` without user selection.
 
+**Public surface:** Current schema export is **13 tools** (7 live JVM + 6 offline/import). Top-level tool descriptions should stay bilingual (English + 中文) in Java annotations and checked-in `mcps/user-java-tuning-agent/tools/*.json` so both MCP clients and Chinese troubleshooting guides remain understandable.
+
+**Evidence reuse:** When an existing `MemoryGcEvidencePack` is available, preserve optional fields such as `baselineEvidence`, `jfrSummary`, `repeatedSamplingResult`, `nativeMemorySummary`, `resourceBudgetEvidence`, `heapShallowSummary`, `heapRetentionAnalysis`, `gcLogSummary`, and `diagnosisWindow`; call `generateTuningAdviceFromEvidence` rather than recollecting.
+
 ## 1. `listJavaApps`
 
 Arguments: empty object `{}`.
@@ -56,7 +60,7 @@ Result fields to inspect: `jfrPath`, `fileSizeBytes`, `summary.eventCounts`, `su
 
 ## 3. `collectMemoryGcEvidence`
 
-Wrapper key is **`request`**. All inner fields are required by schema; use `false` / `""` when not using a privileged option.
+Wrapper key is **`request`**. Only `pid` is unconditionally required by schema; omit optional fields or use `false` / `""` when not using a privileged option.
 
 **Lightweight (no extra jcmd cost):**
 
@@ -102,11 +106,11 @@ Wrapper key is **`request`**. All inner fields are required by schema; use `fals
 
 2. **Chat text:** Copy the user’s **verbatim** approval phrase as `confirmationToken`, or normalize an unambiguous list of scopes into the canonical form above.
 
-**Heap dump:** set `includeHeapDump: true`, `heapDumpOutputPath` to an **absolute** `.hprof` path, and non-blank `confirmationToken`.
+**Heap dump:** set `includeHeapDump: true`, `heapDumpOutputPath` to an **absolute** `.hprof` path whose parent directory exists and target file does not, and non-blank `confirmationToken`.
 
 **Combined approval (one user message):** The user may list class histogram, thread dump, and heap dump in a **single** reply. Set the three `include*` flags to match; use canonical token or verbatim phrase as `confirmationToken`.
 
-**Default heap path:** If the user defers to “default”, resolve the OS temp directory to an absolute path and use `java-tuning-agent-heap-{pid}.hprof` there. State that full path in chat before calling the tool.
+**Default heap path:** If the user defers to “default”, resolve the OS temp directory to an absolute path and use a non-existing `java-tuning-agent-heap-{pid}.hprof` path there. State that full path in chat before calling the tool.
 
 **All three privileged (example paths are illustrative — substitute real absolute temp + pid):**
 
@@ -123,7 +127,39 @@ Wrapper key is **`request`**. All inner fields are required by schema; use `fals
 }
 ```
 
-## 4. `generateTuningAdvice`
+## 4. `generateTuningAdviceFromEvidence`
+
+Use this after `collectMemoryGcEvidence` when you want advice from the exact evidence pack that was just collected. It does not collect a second snapshot, histogram, thread dump, or heap dump.
+
+```json
+{
+  "evidence": {
+    "snapshot": { },
+    "classHistogram": null,
+    "threadDump": null,
+    "missingData": [],
+    "warnings": [],
+    "heapDumpPath": null
+  },
+  "environment": "local",
+  "optimizationGoal": "reduce GC pause and stable latency",
+  "codeContextSummary": {
+    "dependencies": [],
+    "configuration": {},
+    "applicationNames": ["MyApplication"],
+    "sourceRoots": ["C:/absolute/path/to/repo"],
+    "candidatePackages": ["com.example.app"]
+  }
+}
+```
+
+In practice, set `evidence` to the **full JSON object returned by `collectMemoryGcEvidence`**. Keep optional fields such as `nativeMemorySummary`, `resourceBudgetEvidence`, `heapShallowSummary`, `jfrSummary`, `repeatedSamplingResult`, `baselineEvidence`, and `diagnosisWindow` if present.
+
+**Do not** follow `collectMemoryGcEvidence` by calling `generateTuningAdvice` with the same `collectClassHistogram` / `collectThreadDump` / `includeHeapDump` / `heapDumpOutputPath` values. That path collects again.
+
+## 4b. `generateTuningAdvice`
+
+Use this as a one-shot collect-and-advise shortcut only when you have **not** already called `collectMemoryGcEvidence` for the current diagnosis. Existing clients can keep using it unchanged.
 
 **Lightweight advice (no extra collection inside this tool):**
 
@@ -147,7 +183,7 @@ Wrapper key is **`request`**. All inner fields are required by schema; use `fals
 }
 ```
 
-**With histogram inside generateTuningAdvice:** `collectClassHistogram: true` and non-blank `confirmationToken`. For source file hints, set **`sourceRoots`** to absolute roots.
+**With histogram inside generateTuningAdvice:** `collectClassHistogram: true` and non-blank `confirmationToken`. This performs a fresh collection inside the tool. For source file hints, set **`sourceRoots`** to absolute roots.
 
 **codeContextSummary fields:**
 
@@ -161,7 +197,7 @@ Wrapper key is **`request`**. All inner fields are required by schema; use `fals
 
 When unknown, use `[]` or `{}` as appropriate; the schema requires all five keys present.
 
-**Mirroring step 3:** If you already ran `collectMemoryGcEvidence` with histogram/thread/heap, call `generateTuningAdvice` with the same `collectClassHistogram` / `collectThreadDump` / `includeHeapDump` / `heapDumpOutputPath` / `confirmationToken` values in the same turn after **one** consent (UI multi-select or chat).
+**Evidence reuse:** If you already ran `collectMemoryGcEvidence` with histogram/thread/heap, call `generateTuningAdviceFromEvidence` with the returned pack instead. Do not mirror step-3 collection flags into `generateTuningAdvice`.
 
 **Response shape:** `TuningAdviceReport` includes **`formattedSummary`**: Markdown with fixed section order (`##` / `###`, lists, fenced `text` code blocks for evidence). **Show it in the chat as renderable Markdown** — paste the string into the message body **without** wrapping the whole thing in an outer code fence (that hides formatting). Add a short preamble above if needed. Do not paraphrase away `suspectedCodeHotspots` or other sections.
 
@@ -188,8 +224,11 @@ Use when there is **no** local target PID: the user provides exported `jcmd`/`js
 
 - `jvmIdentityText`, `jdkInfoText`, `runtimeSnapshotText`: plain strings
 - `classHistogram`, `threadDump`: `OfflineArtifactSource` objects, not bare strings
+- `nativeMemorySummary`, `directBufferEvidence`, `metaspaceEvidence`: optional `OfflineArtifactSource` objects; primary native/direct/metaspace rules consume structured `nativeMemorySummary`
 - `heapDumpAbsolutePath`: plain string path
 - `gcLogPathOrText`: plain string path or inline JDK unified GC log text; parsed into `gcLogSummary` when present
+- `repeatedSamplesPathOrText`: plain string path or inline `inspectJvmRuntimeRepeated` JSON; parsed into `repeatedSamplingResult` when present
+- `backgroundNotes.resourceBudget`: key=value resource budget text (`containerMemoryLimitBytes`, `processRssBytes`, `cpuQuotaCores`, optional `estimatedThreadStackBytes`); malformed values degrade to missing budget fields
 
 **OfflineArtifactSource shape:**
 
@@ -261,6 +300,8 @@ When `heapDumpAbsolutePath` is a real file and heap auto-summary is on, the serv
 
 When `draft.gcLogPathOrText` is present, the server parses JDK unified GC pause lines and uses the resulting `gcLogSummary` for long-pause, Full GC, humongous-allocation, and evacuation-pressure findings.
 
+When `draft.repeatedSamplesPathOrText`, `draft.nativeMemorySummary`, or `draft.backgroundNotes.resourceBudget` is present, the server imports repeated trend, native/NMT, or resource-budget evidence into the same pack. Set `analysisDepth: "deep"` only when holder-oriented heap retention evidence should be attempted and attached; blank uses balanced/default behavior.
+
 **5.5 `summarizeOfflineHeapDumpFile` (optional)**
 
 ```json
@@ -286,4 +327,4 @@ Use for a **standalone** shallow table / `topByShallowBytes` without running the
 }
 ```
 
-Use this when you need holder-oriented retention evidence instead of only shallow-by-class output. `analysisDepth` may be `shallow` or `deep`; deep mode attempts a retained-style analysis and falls back honestly if the dump cannot support it.
+Use this when you need holder-oriented retention evidence instead of only shallow-by-class output. `analysisDepth` may be `fast`, `balanced`, or `deep`; deep mode attempts a retained-style analysis and falls back honestly if the dump cannot support it.

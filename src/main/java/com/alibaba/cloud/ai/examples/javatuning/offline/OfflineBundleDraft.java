@@ -22,19 +22,30 @@ public record OfflineBundleDraft(
 		boolean explicitlyNoGcLog,
 		boolean explicitlyNoAppLog,
 		boolean explicitlyNoRepeatedSamples,
+		@JsonPropertyDescription("Optional native memory source. Pass filePath or inlineText for VM.native_memory summary output.")
+		OfflineArtifactSource nativeMemorySummary,
+		@JsonPropertyDescription("Optional direct buffer supporting evidence source. Currently retained for manual context/future expansion; primary direct-buffer rules consume nativeMemorySummary NIO data.")
+		OfflineArtifactSource directBufferEvidence,
+		@JsonPropertyDescription("Optional metaspace supporting evidence source. Currently retained for manual context/future expansion; primary metaspace rules consume runtime metaspace and nativeMemorySummary Class data.")
+		OfflineArtifactSource metaspaceEvidence,
 		String gcLogPathOrText,
 		String appLogPathOrText,
+		@JsonPropertyDescription("Optional repeated samples JSON or host-readable file path. Accepts inspectJvmRuntimeRepeated output shape.")
 		String repeatedSamplesPathOrText,
+		@JsonPropertyDescription("Optional notes keyed by evidence type. Use backgroundNotes.resourceBudget for container/RSS/CPU budget key=value text when no dedicated file exists.")
 		Map<String, String> backgroundNotes) {
 
 	public static OfflineBundleDraft empty() {
-		return new OfflineBundleDraft(null, null, null, null, null, null, false, false, false, null, null, null,
-				Map.of());
+		return new OfflineBundleDraft(null, null, null, null, null, null, false, false, false, null, null, null, null,
+				null, null, Map.of());
 	}
 
 	public OfflineBundleDraft {
 		classHistogram = classHistogram == null ? new OfflineArtifactSource(null, null) : classHistogram;
 		threadDump = threadDump == null ? new OfflineArtifactSource(null, null) : threadDump;
+		nativeMemorySummary = nativeMemorySummary == null ? new OfflineArtifactSource(null, null) : nativeMemorySummary;
+		directBufferEvidence = directBufferEvidence == null ? new OfflineArtifactSource(null, null) : directBufferEvidence;
+		metaspaceEvidence = metaspaceEvidence == null ? new OfflineArtifactSource(null, null) : metaspaceEvidence;
 		backgroundNotes = backgroundNotes == null ? Map.of() : Map.copyOf(backgroundNotes);
 	}
 

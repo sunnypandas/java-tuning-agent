@@ -1,0 +1,11 @@
+{
+  "name": "listJavaApps",
+  "description": "List local Java applications visible to the current machine user (typically via jps -lvm). 中文：列出当前用户可见的本机 Java/JVM 进程，用返回的 pid 进入后续诊断。 No parameters. Use returned pid values with inspectJvmRuntime / collectMemoryGcEvidence / generateTuningAdvice / generateTuningAdviceFromEvidence.",
+  "inputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {},
+    "required": [],
+    "additionalProperties": false
+  }
+}

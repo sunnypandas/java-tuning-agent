@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import com.alibaba.cloud.ai.examples.javatuning.runtime.GcCollectorDetector;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.GcHeapInfoParser;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.JstatGcUtilParser;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.JvmCollectionMetadata;
@@ -20,8 +21,6 @@ import com.alibaba.cloud.ai.examples.javatuning.runtime.VmVersionParser;
  */
 public class OfflineJvmSnapshotAssembler {
 
-	private static final Pattern FLAG_G1_PATTERN = Pattern.compile("(?i)-XX:\\+UseG1GC");
-
 	private static final Pattern FLAG_XMS_PATTERN = Pattern
 		.compile("(?i)(?<!\\S)(?:-Xms|(?:-XX:InitialHeapSize=))(\\d+)([kmg]?)(?!\\S)");
 
@@ -35,6 +34,8 @@ public class OfflineJvmSnapshotAssembler {
 	private final GcHeapInfoParser heapInfoParser = new GcHeapInfoParser();
 
 	private final JstatGcUtilParser gcUtilParser = new JstatGcUtilParser();
+
+	private final GcCollectorDetector gcCollectorDetector = new GcCollectorDetector();
 
 	public JvmRuntimeSnapshot assemble(OfflineBundleDraft draft) {
 		long collectedAt = System.currentTimeMillis();
@@ -116,10 +117,7 @@ public class OfflineJvmSnapshotAssembler {
 	private String inferCollector(String jvmIdentityText, String runtimeSnapshotText) {
 		String combined = (jvmIdentityText != null ? jvmIdentityText : "") + "\n"
 				+ (runtimeSnapshotText != null ? runtimeSnapshotText : "");
-		if (FLAG_G1_PATTERN.matcher(combined).find()) {
-			return "G1";
-		}
-		return "unknown";
+		return gcCollectorDetector.infer(combined, runtimeSnapshotText);
 	}
 
 	private String extractHeapSection(String runtimeSnapshotText) {

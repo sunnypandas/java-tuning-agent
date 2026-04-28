@@ -3,7 +3,7 @@ name: java-tuning-agent-workflow
 description: >-
   Runs the java-tuning-agent MCP pipeline in order: listJavaApps → inspectJvmRuntime →
   optional inspectJvmRuntimeRepeated → optional recordJvmFlightRecording → mandatory step-3 scope gate (AskQuestion or prior chat) →
-  collectMemoryGcEvidence → generateTuningAdvice. No silent quick pass: user must choose quick-only or privileged scopes.
+  collectMemoryGcEvidence → generateTuningAdviceFromEvidence. No silent quick pass: user must choose quick-only or privileged scopes.
   PID disambiguation, canonical confirmation tokens, formattedSummary as Markdown (no outer fence).
   Triggers:
   JVM tuning, GC pause or footprint goals, memory leak diagnosis, heap pressure, local Java
@@ -21,6 +21,12 @@ description: >-
 - Host commands **jps**, **jcmd**, **jstat** are available to that process; tools only work against JVMs the same user can see.
 - Read [reference.md](reference.md) for exact JSON argument shapes when building tool calls.
 
+## Current public surface
+
+The server exposes **13 MCP tools**: 7 live JVM tools (`listJavaApps`, `inspectJvmRuntime`, `inspectJvmRuntimeRepeated`, `recordJvmFlightRecording`, `collectMemoryGcEvidence`, `generateTuningAdvice`, `generateTuningAdviceFromEvidence`) and 6 offline/import tools (`validateOfflineAnalysisDraft`, `submitOfflineHeapDumpChunk`, `finalizeOfflineHeapDump`, `generateOfflineTuningAdvice`, `summarizeOfflineHeapDumpFile`, `analyzeOfflineHeapRetention`). Tool descriptions and checked-in schemas should remain bilingual enough for English MCP clients and 中文排障向导.
+
+Advice can reuse optional evidence already gathered in the same diagnosis window: `baselineEvidence`, `jfrSummary`, `repeatedSamplingResult`, `nativeMemorySummary`, `resourceBudgetEvidence`, `heapShallowSummary`, `heapRetentionAnalysis`, `gcLogSummary`, and `diagnosisWindow`. Prefer evidence reuse over recollection whenever a `MemoryGcEvidencePack` already exists.
+
 ## Offline mode (imported bundle)
 
 Use when the user analyzes **production-exported** files (histogram, thread dump, `.hprof`, jcmd/jstat text) **without** a live target PID on this machine. This path **does not** replace the default online pipeline; do not call `listJavaApps` unless the user also wants local processes.
@@ -34,7 +40,11 @@ Use when the user analyzes **production-exported** files (histogram, thread dump
 When a local file already exists, prefer `filePath` over `inlineText`.
 `heapDumpAbsolutePath` is different: it is a plain string path, not an `OfflineArtifactSource`.
 
-**Recommended R1–R3 (GC log, app log, repeated samples):** For **each** item, the host must force a **binary choice** — supply `gcLogPathOrText` / `appLogPathOrText` / `repeatedSamplesPathOrText`, **or** set the matching `explicitlyNoGcLog` / `explicitlyNoAppLog` / `explicitlyNoRepeatedSamples` flag. If `gcLogPathOrText` contains a local file path or inline JDK unified GC log text, the server parses pause history into advice evidence. If the user leaves an item neither filled nor explicitly absent, the server does **not** auto-flag it as missing; avoiding that silent gap is the agent’s responsibility.
+**Recommended R1–R3 (GC log, app log, repeated samples):** For **each** item, the host must force a **binary choice** — supply `gcLogPathOrText` / `appLogPathOrText` / `repeatedSamplesPathOrText`, **or** set the matching `explicitlyNoGcLog` / `explicitlyNoAppLog` / `explicitlyNoRepeatedSamples` flag. If `gcLogPathOrText` contains a local file path or inline JDK unified GC log text, the server parses pause history into advice evidence; if `repeatedSamplesPathOrText` contains `inspectJvmRuntimeRepeated` JSON or a readable file path, the server feeds trend evidence into advice. If the user leaves an item neither filled nor explicitly absent, the server does **not** auto-flag it as missing; avoiding that silent gap is the agent’s responsibility.
+
+**Optional native inputs:** `nativeMemorySummary`, `directBufferEvidence`, and `metaspaceEvidence` are also `OfflineArtifactSource` objects. Prefer `nativeMemorySummary` with `VM.native_memory summary` or `summary.diff`; current direct-buffer/metaspace rules primarily consume structured `nativeMemorySummary` `NIO` / `Class` data, while the other two fields are supporting context and future expansion.
+
+**Optional resource budget notes:** `backgroundNotes.resourceBudget` may contain key=value text such as `containerMemoryLimitBytes=...`, `processRssBytes=...`, `cpuQuotaCores=...`, and `estimatedThreadStackBytes=...`. Malformed values degrade to missing resource-budget fields instead of blocking offline analysis.
 
 若必选缺失，调用 `validateOfflineAnalysisDraft(draft, proceedWithMissingRequired=false)` 获取 `missingRequired` 与中文 `nextPromptZh`；用户确认降级时改 `proceedWithMissingRequired=true`。
 
@@ -42,7 +52,7 @@ When a local file already exists, prefer `filePath` over `inlineText`.
 
 **Heap dump shallow analysis (automatic):** When `heapDumpAbsolutePath` points to an **existing** `.hprof` file and **`java-tuning-agent.heap-summary.auto-enabled`** is `true` (default), the server **indexes the dump with Shark** (LeakCanary), fills **`heapShallowSummary`** on the evidence pack, runs rules that consume it (e.g. shallow dominance), and **appends** a bounded Markdown table **after** the main report sections inside `formattedSummary`. This is **shallow-by-class** statistics only—not MAT retained-size analysis. Raw binary is **not** sent to the LLM. To **only** preview a summary without running the full offline advice pipeline, call **`summarizeOfflineHeapDumpFile`** (returns Markdown + structured top rows).
 
-**Advice:** `generateOfflineTuningAdvice` requires the same **consent semantics** as online privileged collection: non-blank `confirmationToken` when the draft includes class histogram, thread dump, or heap path (use canonical `java-tuning-agent:ui-approval:v1:pid=0:scopes=...` style with offline-appropriate scope names if the host encodes selections, or the user’s verbatim phrase).
+**Advice:** `generateOfflineTuningAdvice` requires the same **consent semantics** as online privileged collection: non-blank `confirmationToken` when the draft includes class histogram, thread dump, or heap path (use canonical `java-tuning-agent:ui-approval:v1:pid=0:scopes=...` style with offline-appropriate scope names if the host encodes selections, or the user’s verbatim phrase). Leave `analysisDepth` blank for balanced/default behavior; set `analysisDepth: "deep"` only when the user wants holder-oriented retention evidence attached to the offline advice path.
 
 **Output:** Prefer rendering `formattedSummary` like the online pipeline (no outer Markdown fence). Expect the optional **heap dump summary** subsection at the end when a dump was indexed successfully, or a short **failed** heading if indexing errored.
 
@@ -57,7 +67,7 @@ Execute **in this order**, carrying forward the chosen `pid` and any evidence in
 | 2b | `inspectJvmRuntimeRepeated` | Optional repeated safe-readonly branch for trend questions (`sampleCount`, `intervalMillis`, optional thread/class counts). |
 | 2c | `recordJvmFlightRecording` | Optional short JFR profiling branch. Requires explicit approval, `durationSeconds`, `settings`, an absolute `jfrOutputPath`, `maxSummaryEvents`, and `confirmationToken`. |
 | 3 | `collectMemoryGcEvidence` | Optional **medium-cost** evidence (class histogram, thread dump, heap dump). **Never call until [Mandatory step-3 scope gate](#mandatory-step-3-scope-gate-no-silent-quick-pass) is satisfied.** |
-| 4 | `generateTuningAdvice` | Structured tuning advice; may reuse runtime data and optional **code context**. |
+| 4 | `generateTuningAdviceFromEvidence` | Structured tuning advice from the exact **MemoryGcEvidencePack** returned by step 3; no second collection. |
 
 ### Phased execution (stable order — do not collapse)
 
@@ -70,7 +80,7 @@ Treat the workflow as **phases**. Completing an earlier phase is required before
 | **P2c — Short profiling** | Optional `recordJvmFlightRecording` | Only after explicit user approval and agreed `jfrOutputPath` |
 | **P3 — Scope gate** | User chooses step-3 evidence scope | See [Mandatory step-3 scope gate](#mandatory-step-3-scope-gate-no-silent-quick-pass) |
 | **P3b — Evidence** | `collectMemoryGcEvidence` with flags matching the gate outcome | — |
-| **P4 — Advice** | `generateTuningAdvice` mirroring P3b privileged flags + token | If `optimizationGoal` is unknown and not inferable in one short phrase, **ask once** before P4 |
+| **P4 — Advice** | `generateTuningAdviceFromEvidence` using the P3b evidence pack | If `optimizationGoal` is unknown and not inferable in one short phrase, **ask once** before P4 |
 
 **Pipeline rule:** Do not skip step 1. Do not call step 2 until a single target `pid` is agreed. **Do not call step 3 (`collectMemoryGcEvidence`) until the step-3 scope gate is satisfied** — including when the outcome is “quick pass only” (all `include*` false). Step 4 always runs last for the narrative “tuning analysis” outcome.
 
@@ -104,7 +114,7 @@ The agent **must not** choose step-3 scope on the user’s behalf. **“Quick pa
 2. Infer **candidatePackages** from `pom.xml` / `build.gradle` (`groupId`, `group`, or Java package dirs under `src/main/java`).
 3. Infer **applicationNames** when possible: search for `@SpringBootApplication` / known `main` class simple names; if uncertain, ask once.
 4. Call **step 1**, then resolve **pid** (see [Resolving the target PID](#resolving-the-target-pid)). Prefer JVMs whose `mainClassOrJar` or `commandLine` matches this project’s artifact or main class over IDE/MCP/helper processes.
-5. Run **P2** (`inspectJvmRuntime`), then the **step-3 scope gate** (see [Mandatory step-3 scope gate](#mandatory-step-3-scope-gate-no-silent-quick-pass)); only then **P3b** (`collectMemoryGcEvidence`) and **P4** (`generateTuningAdvice`). Use `environment` default **`local`** unless the user says otherwise. Set `optimizationGoal` from the user request or ask once before P4 if unclear.
+5. Run **P2** (`inspectJvmRuntime`), then the **step-3 scope gate** (see [Mandatory step-3 scope gate](#mandatory-step-3-scope-gate-no-silent-quick-pass)); only then **P3b** (`collectMemoryGcEvidence`) and **P4** (`generateTuningAdviceFromEvidence`). Use `environment` default **`local`** unless the user says otherwise. Set `optimizationGoal` from the user request or ask once before P4 if unclear.
 
 ### B — “App name + optional source path”
 
@@ -129,7 +139,7 @@ The agent **must not** choose step-3 scope on the user’s behalf. **“Quick pa
 
 - **Cost / impact:** histogram and thread dump add pause/load; heap dump writes a large `.hprof` file and needs disk space.
 - **Required user interaction:** Before any `includeClassHistogram`, `includeThreadDump`, or `includeHeapDump` is `true`, the user must **explicitly consent** via **either** [Structured UI approval](#structured-ui-approval-preferred) **or** a clear chat reply. The MCP API still requires a **non-blank** `confirmationToken` string — use the [Canonical UI token](#canonical-ui-token-format) when consent came from multi-select; otherwise you may copy the user’s **exact** approval phrase as the token.
-- **Heap dump:** `includeHeapDump: true` requires an **absolute** `heapDumpOutputPath` ending in `.hprof`; agree the path with the user first, unless they defer to the [Default heap dump path](#default-heap-dump-path) below.
+- **Heap dump:** `includeHeapDump: true` requires an **absolute** `heapDumpOutputPath` ending in `.hprof`; its parent directory must already exist and the target file must not. Agree the path with the user first, unless they defer to the [Default heap dump path](#default-heap-dump-path) below.
 - **Snapshot-only (quick pass):** After the user **explicitly chooses** snapshot-only via the [step-3 gate](#mandatory-step-3-scope-gate-no-silent-quick-pass), call step 3 with **all** `include*` flags **`false`**, `heapDumpOutputPath` `""`, and `confirmationToken` `""` (still pass the full `request` object per schema), then step 4 lightweight. The agent **must not** pick this path without that explicit choice.
 
 ### `recordJvmFlightRecording` (optional step 2c)
@@ -162,7 +172,7 @@ java-tuning-agent:ui-approval:v1:pid=<decimalPid>:scopes=<sorted-comma-list>
   - Examples: `classHistogram` only → `scopes=classHistogram`. All three → `scopes=classHistogram,heapDump,threadDump`.
 - If **no** privileged scope was selected, keep all `include*` `false` and `confirmationToken` `""` (do not emit a ui-approval token).
 
-Use this **same** string as `confirmationToken` on every privileged MCP call in that turn (`collectMemoryGcEvidence` and matching `generateTuningAdvice` flags).
+Use this string as `confirmationToken` on the privileged `collectMemoryGcEvidence` call. The follow-up `generateTuningAdviceFromEvidence` call reuses the returned evidence pack and does not take a token.
 
 ### Single message covers histogram, thread dump, heap dump, and token
 
@@ -171,7 +181,7 @@ The user may approve **everything in one chat message** instead of separate roun
 - They state which of **class histogram**, **thread dump**, and **heap dump** they want (any subset or all three).
 - **Token:** Either they paste a phrase you copy verbatim as `confirmationToken`, **or** you normalize their intent into the [Canonical UI token](#canonical-ui-token-format) if their message unambiguously lists the same scopes (still non-blank).
 
-Use that **same non-blank string** as `confirmationToken` for every privileged MCP call in that turn (`collectMemoryGcEvidence` and, if applicable, `generateTuningAdvice` flags mirroring the same scope).
+Use that same non-blank string as `confirmationToken` for `collectMemoryGcEvidence`. Then pass the returned evidence pack to `generateTuningAdviceFromEvidence`; do not call `generateTuningAdvice` with matching privileged flags after evidence was already collected.
 
 ### Default heap dump path
 
@@ -183,11 +193,19 @@ When the user says to use the **default** path (or does not care, and heap dump 
 
 If the user later specifies a different directory, override this default for that run only.
 
-### `generateTuningAdvice` (step 4)
+### `generateTuningAdviceFromEvidence` (step 4)
 
-- **Lightweight (default):** `collectClassHistogram`, `collectThreadDump`, `includeHeapDump` all **`false`**, `confirmationToken` `""`, `heapDumpOutputPath` `""` — uses snapshot-style data without extra privileged collection inside this tool.
-- **Richer analysis:** Offer toggles mirroring step 3 (histogram / thread / heap). Any of those `true` requires the same **non-blank** `confirmationToken` (and heap path rules for heap dump) — use the **canonical UI token** or the user’s verbatim phrase, same as step 3. If step 3 already ran with privileged flags, mirror the **same** scope and token here when you want advice to include the same evidence; one consent (UI or chat) covers both tools in one turn.
+- Pass the exact `MemoryGcEvidencePack` returned by step 3 as `evidence`; do not reconstruct or recollect it.
+- This tool does **not** call `jcmd`, `jstat`, `GC.class_histogram`, `Thread.print`, or `GC.heap_dump`, and it has no `confirmationToken` field.
+- If step 3 was snapshot-only, this still produces lightweight advice from that evidence pack.
+- If step 3 included histogram/thread/heap, this produces richer advice from the same pack without repeating privileged collection or reusing the same `.hprof` output path.
 - Always set **`optimizationGoal`** and **`environment`** explicitly. Fill **`codeContextSummary`** per intent A or B; use empty arrays/objects where unknown.
+
+### `generateTuningAdvice` (one-shot / backward-compatible path)
+
+- Existing callers may still use `generateTuningAdvice` exactly as before.
+- Use it as a one-shot collect-and-advise shortcut only when you have **not** already called `collectMemoryGcEvidence` for the current diagnosis.
+- If `collectClassHistogram`, `collectThreadDump`, or `includeHeapDump` is true, it performs a fresh collection inside the tool. Do not call it with those flags after step 3, because that duplicates histogram/thread/heap work and can collide on heap dump paths.
 
 ## Output expectations — `formattedSummary`
 
@@ -214,6 +232,6 @@ Copy and track in the reply:
 [ ] 3a. Optional recordJvmFlightRecording — only with explicit approval and absolute jfrOutputPath
 [ ] 3b. Step-3 scope gate: AskQuestion (or chat) — user chose snapshot-only and/or privileged scopes; no silent quick pass
 [ ] 4. collectMemoryGcEvidence — flags match gate; token/path if privileged
-[ ] 5. generateTuningAdvice — codeContextSummary + goals; collect* flags mirror `collectMemoryGcEvidence` (same turn, same consent)
+[ ] 5. generateTuningAdviceFromEvidence — pass step-3 evidence pack + codeContextSummary + goals; no recollection
 [ ] 6. Present formattedSummary as Markdown in the message (no outer code fence); short preamble optional
 ```

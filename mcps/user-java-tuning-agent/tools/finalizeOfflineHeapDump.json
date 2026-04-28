@@ -1,0 +1,28 @@
+{
+  "name": "finalizeOfflineHeapDump",
+  "description": "离线模式：在完成全部分块后校验并合并为单个 .hprof 文件。\nEnglish: Finalize uploaded chunks into one verified .hprof file and return the absolute heapDumpAbsolutePath value.\n成功时返回 finalizeHeapDumpPath（绝对路径），请写入草稿的 heapDumpAbsolutePath。",
+  "inputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "uploadId": {
+        "type": "string",
+        "description": "submitOfflineHeapDumpChunk 返回的 uploadId。"
+      },
+      "expectedSha256Hex": {
+        "type": "string",
+        "description": "整个文件的 SHA-256 十六进制（小写或大写均可）。"
+      },
+      "expectedSizeBytes": {
+        "type": "integer",
+        "description": "整个文件的精确字节长度。"
+      }
+    },
+    "required": [
+      "uploadId",
+      "expectedSha256Hex",
+      "expectedSizeBytes"
+    ],
+    "additionalProperties": false
+  }
+}

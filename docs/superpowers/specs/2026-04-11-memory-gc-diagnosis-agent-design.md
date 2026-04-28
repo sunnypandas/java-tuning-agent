@@ -245,7 +245,20 @@ This tool should require explicit confirmation for privileged or heavier evidenc
 
 **Implementation note:** See §16 for current behavior (histogram supported; thread dump flag gated but collection may still be incomplete).
 
-### 6.4 `generateTuningAdvice`
+### 6.4 `generateTuningAdviceFromEvidence`
+
+Purpose:
+
+- Generate a structured diagnosis report from an existing `MemoryGcEvidencePack` plus optional code context.
+- This is the preferred path immediately after `collectMemoryGcEvidence`; it does not recollect the snapshot, class histogram, thread dump, or heap dump, and it does not take `confirmationToken`.
+
+Input:
+
+- **`evidence`** — the exact `MemoryGcEvidencePack` returned by `collectMemoryGcEvidence`
+- **`CodeContextSummary`** (including optional **`sourceRoots`**)
+- **`environment`**, **`optimizationGoal`**
+
+### 6.5 `generateTuningAdvice`
 
 Purpose:
 
@@ -258,6 +271,8 @@ Input (`GenerateTuningAdviceParams` / MCP flattened fields):
 - **`collectClassHistogram`** / **`collectThreadDump`** plus **`confirmationToken`** when privileged collection is requested (histogram path runs `collectMemoryGcEvidence` before diagnosis)
 
 Supports both local-source-aware agents and callers without direct source access.
+
+Use this as the backward-compatible one-shot path only when the caller has not already collected a `MemoryGcEvidencePack`. If the caller already ran `collectMemoryGcEvidence`, it should call `generateTuningAdviceFromEvidence` instead to avoid duplicate histogram/thread/heap work and heap dump path conflicts.
 
 ## 7. Diagnosis Targets for First Version
 

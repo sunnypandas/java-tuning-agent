@@ -1,0 +1,59 @@
+{
+  "name": "analyzeOfflineHeapRetention",
+  "description": "Offline mode: analyze an existing local .hprof for retention-oriented evidence and return structured JSON plus Markdown.\n中文：离线分析已有本地 .hprof，产出 holder/引用链/GC root 方向的 retention 证据与 Markdown 摘要。\nThis tool focuses on suspected holders, representative reference chains, and GC-root hints; it is separate from summarizeOfflineHeapDumpFile, which only provides a shallow-by-class summary.\nretainedBytesApprox is populated only when the analyzer can defend that retained-style interpretation; otherwise it may be null and reachableSubgraphBytesApprox is only an approximate ranking hint.\n",
+  "inputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "heapDumpAbsolutePath": {
+        "type": "string",
+        "description": "Absolute path to an existing .hprof file on the host."
+      },
+      "topObjectLimit": {
+        "type": [
+          "integer",
+          "null"
+        ],
+        "description": "Maximum number of holder / chain rows to include in the retention result."
+      },
+      "maxOutputChars": {
+        "type": [
+          "integer",
+          "null"
+        ],
+        "description": "Maximum Markdown characters to return in the retention summary."
+      },
+      "analysisDepth": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "description": "Analysis depth hint: fast, balanced, or deep."
+      },
+      "focusTypes": {
+        "type": [
+          "array",
+          "null"
+        ],
+        "items": {
+          "type": "string"
+        },
+        "description": "Optional terminal types to prioritize, such as byte[] or java.lang.String[]."
+      },
+      "focusPackages": {
+        "type": [
+          "array",
+          "null"
+        ],
+        "items": {
+          "type": "string"
+        },
+        "description": "Optional business package prefixes used to prioritize candidates before bounded truncation; not a hard filter."
+      }
+    },
+    "required": [
+      "heapDumpAbsolutePath"
+    ],
+    "additionalProperties": false
+  }
+}

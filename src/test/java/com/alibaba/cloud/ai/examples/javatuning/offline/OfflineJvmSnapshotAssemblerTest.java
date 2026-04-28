@@ -26,7 +26,7 @@ class OfflineJvmSnapshotAssemblerTest {
 				VM.version:
 				21.0.1
 				""", runtime, new OfflineArtifactSource(null, null), new OfflineArtifactSource(null, null), null, false,
-				false, false, null, null, null, Map.of());
+				false, false, null, null, null, null, null, null, Map.of());
 
 		JvmRuntimeSnapshot snap = assembler.assemble(draft);
 
@@ -46,12 +46,33 @@ class OfflineJvmSnapshotAssemblerTest {
 				""";
 		OfflineBundleDraft draft = new OfflineBundleDraft("pid=424242", "", runtime,
 				new OfflineArtifactSource(null, null), new OfflineArtifactSource(null, null), null, false, false, false,
-				null, null, null, Map.of());
+				null, null, null, null, null, null, Map.of());
 
 		JvmRuntimeSnapshot snap = assembler.assemble(draft);
 
 		assertThat(snap.pid()).isEqualTo(424242L);
 		assertThat(snap.gc()).isNotNull();
+	}
+
+	@Test
+	void infersSupportedCollectorsFromOfflineText() {
+		OfflineBundleDraft zgcDraft = new OfflineBundleDraft("pid=1\n-XX:+UseZGC", "", "",
+				new OfflineArtifactSource(null, null), new OfflineArtifactSource(null, null), null, false, false, false,
+				null, null, null, null, null, null, Map.of());
+		OfflineBundleDraft serialDraft = new OfflineBundleDraft("pid=2\n-XX:+UseSerialGC", "", "",
+				new OfflineArtifactSource(null, null), new OfflineArtifactSource(null, null), null, false, false, false,
+				null, null, null, null, null, null, Map.of());
+		OfflineBundleDraft parallelDraft = new OfflineBundleDraft("pid=3\n-XX:+UseParallelGC", "", "",
+				new OfflineArtifactSource(null, null), new OfflineArtifactSource(null, null), null, false, false, false,
+				null, null, null, null, null, null, Map.of());
+		OfflineBundleDraft cmsDraft = new OfflineBundleDraft("pid=4\n-XX:+UseConcMarkSweepGC", "", "",
+				new OfflineArtifactSource(null, null), new OfflineArtifactSource(null, null), null, false, false, false,
+				null, null, null, null, null, null, Map.of());
+
+		assertThat(assembler.assemble(zgcDraft).gc().collector()).isEqualTo("ZGC");
+		assertThat(assembler.assemble(serialDraft).gc().collector()).isEqualTo("Serial");
+		assertThat(assembler.assemble(parallelDraft).gc().collector()).isEqualTo("Parallel");
+		assertThat(assembler.assemble(cmsDraft).gc().collector()).isEqualTo("CMS");
 	}
 
 }

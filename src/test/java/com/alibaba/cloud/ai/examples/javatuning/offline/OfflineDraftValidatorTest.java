@@ -23,6 +23,7 @@ class OfflineDraftValidatorTest {
 		OfflineDraftValidationResult r = validator.validate(draft, true);
 		assertThat(r.allowedToProceed()).isTrue();
 		assertThat(r.degradationWarnings()).isNotEmpty();
+		assertThat(r.degradationWarnings()).anyMatch(w -> w.contains("nativeMemorySummary"));
 	}
 
 }

@@ -1,0 +1,242 @@
+{
+  "name": "generateTuningAdvice",
+  "description": "Generate structured tuning advice from runtime data and code context. 中文：基于运行时数据与源码上下文生成结构化 JVM 调优建议，默认只做轻量快照。 Returns TuningAdviceReport JSON: findings, recommendations, suspectedCodeHotspots, missingData, nextSteps, confidence, confidenceReasons, and formattedSummary. The formattedSummary field is stable Markdown (same sections in a fixed order) for user-facing display—hosts should prefer showing it so suspectedCodeHotspots are not dropped. By default collects a lightweight jcmd/jstat snapshot only (all three collect* flags false, confirmationToken may be blank). Set collectClassHistogram=true and non-blank confirmationToken to run GC.class_histogram for retention signals and source file hints when sourceRoots are set. Set collectThreadDump=true and/or includeHeapDump=true (plus absolute .hprof heapDumpOutputPath whose parent exists and target does not) for deeper diagnostics; confirmationToken is required when any privileged flag is true. If you already have a MemoryGcEvidencePack from collectMemoryGcEvidence, call generateTuningAdviceFromEvidence instead so evidence is not collected twice. Example (lightweight): {\"codeContextSummary\":{\"dependencies\":[],\"configuration\":{},\"applicationNames\":[],\"sourceRoots\":[],\"candidatePackages\":[]},\"pid\":12345,\"environment\":\"local\",\"optimizationGoal\":\"reduce GC pause\",\"collectClassHistogram\":false,\"collectThreadDump\":false,\"includeHeapDump\":false,\"heapDumpOutputPath\":\"\",\"confirmationToken\":\"\"} Example (histogram): same as above but collectClassHistogram=true and confirmationToken non-blank. Optional baselineEvidence: prior MemoryGcEvidencePack (e.g. earlier collectMemoryGcEvidence) to populate Key Deltas vs current run. Optional jfrSummary: JFR summary object (e.g. recordJvmFlightRecording result summary) so JFR-backed findings are included. Optional repeatedSamplingResult: inspectJvmRuntimeRepeated output from the same diagnosis window so trend findings are included. Optional resourceBudgetEvidence: cgroup/RSS/CPU budget evidence when supplied by the caller or imported bundle.",
+  "inputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "codeContextSummary": {
+        "type": "object",
+        "properties": {
+          "applicationNames": {
+            "description": "Spring @SpringBootApplication or other main class simple names if known.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "candidatePackages": {
+            "description": "FQCN package prefixes (e.g. com.example.app) to prefer when ranking suspected hotspots.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "configuration": {
+            "type": "object",
+            "description": "Optional key/value configuration snippets relevant to tuning (profiles, pool sizes, etc.)."
+          },
+          "dependencies": {
+            "description": "Optional Maven/Gradle coordinates or dependency names as free-form strings.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "sourceRoots": {
+            "description": "Local source tree roots to search for .java files when mapping class histogram entries.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "applicationNames",
+          "candidatePackages",
+          "configuration",
+          "dependencies",
+          "sourceRoots"
+        ],
+        "description": "CodeContextSummary JSON: dependencies, configuration, applicationNames, sourceRoots, candidatePackages."
+      },
+      "pid": {
+        "type": "integer",
+        "description": "Target JVM process id (decimal); must match listJavaApps."
+      },
+      "environment": {
+        "type": "string",
+        "description": "Deployment or runtime label, e.g. prod, stage, local."
+      },
+      "optimizationGoal": {
+        "type": "string",
+        "description": "What to optimize for: latency, throughput, footprint, diagnose leak, etc."
+      },
+      "collectClassHistogram": {
+        "type": [
+          "boolean",
+          "null"
+        ],
+        "description": "When true, runs GC.class_histogram before advice (requires non-blank confirmationToken)."
+      },
+      "collectThreadDump": {
+        "type": [
+          "boolean",
+          "null"
+        ],
+        "description": "When true, runs Thread.print before advice (requires non-blank confirmationToken)."
+      },
+      "includeHeapDump": {
+        "type": [
+          "boolean",
+          "null"
+        ],
+        "description": "When true, runs GC.heap_dump to heapDumpOutputPath (requires non-blank confirmationToken and an absolute .hprof path that does not already exist)."
+      },
+      "heapDumpOutputPath": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "description": "Absolute .hprof output path when includeHeapDump is true; parent directory must exist and target file must not already exist. Otherwise \"\"."
+      },
+      "confirmationToken": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "description": "Non-blank user approval token whenever any of collectClassHistogram, collectThreadDump, or includeHeapDump is true."
+      },
+      "baselineEvidence": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "description": "Optional prior MemoryGcEvidencePack for Key Deltas.",
+        "properties": {
+          "snapshot": {
+            "type": "object",
+            "description": "JvmRuntimeSnapshot captured in the evidence pack."
+          },
+          "classHistogram": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Optional ClassHistogramSummary already collected."
+          },
+          "threadDump": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Optional ThreadDumpSummary already collected."
+          },
+          "missingData": {
+            "type": "array",
+            "description": "Explicit evidence gaps.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "warnings": {
+            "type": "array",
+            "description": "Collection or import warnings.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "heapDumpPath": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Existing heap dump path from the evidence pack, if one was already produced."
+          },
+          "heapShallowSummary": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Optional shallow heap summary already attached to the evidence pack."
+          },
+          "nativeMemorySummary": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Optional native memory summary already attached to the evidence pack."
+          },
+          "heapRetentionAnalysis": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Optional heap retention analysis already attached to the evidence pack."
+          },
+          "repeatedSamplingResult": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Optional repeated sampling result already attached to the evidence pack."
+          },
+          "gcLogSummary": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Optional GC log summary already attached to the evidence pack."
+          },
+          "jfrSummary": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Optional JFR summary already attached to the evidence pack."
+          },
+          "baselineEvidence": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Optional baseline MemoryGcEvidencePack for Key Deltas."
+          },
+          "diagnosisWindow": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Optional diagnosis window metadata."
+          },
+          "resourceBudgetEvidence": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Optional resource budget evidence already attached to the evidence pack."
+          }
+        },
+        "additionalProperties": true
+      },
+      "jfrSummary": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "description": "Optional JfrSummary merged into diagnosis; use recordJvmFlightRecording summary shape."
+      },
+      "repeatedSamplingResult": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "description": "Optional inspectJvmRuntimeRepeated output for trend-aware findings."
+      },
+      "resourceBudgetEvidence": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "description": "Optional cgroup/RSS/CPU and heap/native/thread-stack budget evidence."
+      }
+    },
+    "required": [
+      "codeContextSummary",
+      "pid",
+      "environment",
+      "optimizationGoal"
+    ],
+    "additionalProperties": false
+  }
+}

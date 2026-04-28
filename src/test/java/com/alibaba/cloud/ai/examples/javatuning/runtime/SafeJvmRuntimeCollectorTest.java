@@ -33,6 +33,15 @@ class SafeJvmRuntimeCollectorTest {
 				   12  24.00        0     0.00       0.01
 				""");
 		given(executor.run(List.of("jcmd", pid, "PerfCounter.print"))).willReturn("java.threads.live            4\n");
+		given(executor.run(List.of("jcmd", pid, "VM.native_memory", "summary"))).willReturn("""
+				Total: reserved=1024M, committed=768M
+				-                            NIO (reserved=128M, committed=96M)
+				-                          Class (reserved=256M, committed=192M)
+				""");
+		given(executor.run(List.of("jcmd", pid, "help", "VM.native_memory"))).willReturn("""
+				VM.native_memory
+				Print native memory usage
+				""");
 	}
 
 	@Test
@@ -183,9 +192,8 @@ class SafeJvmRuntimeCollectorTest {
 
 		JvmRuntimeSnapshot snapshot = collector.collect(123L, RuntimeCollectionPolicy.CollectionRequest.safeReadonly());
 
-		assertThat(snapshot.gc().collector()).isEqualTo("unknown");
-		assertThat(snapshot.warnings()).contains("Unable to infer GC collector from VM.flags",
-				"Unsupported or non-G1 GC.heap_info output");
+		assertThat(snapshot.gc().collector()).isEqualTo("Parallel");
+		assertThat(snapshot.warnings()).isEmpty();
 	}
 
 	@Test
@@ -219,6 +227,50 @@ class SafeJvmRuntimeCollectorTest {
 	}
 
 	@Test
+	void shouldRejectHeapDumpRelativeOutputPath() {
+		SafeJvmRuntimeCollector collector = testCollector(mock(CommandExecutor.class));
+
+		assertThatThrownBy(() -> collector.collectMemoryGcEvidence(
+				new MemoryGcEvidenceRequest(123L, false, false, true, "relative.hprof", "confirmed")))
+			.isInstanceOf(IllegalArgumentException.class)
+			.hasMessageContaining("absolute");
+	}
+
+	@Test
+	void shouldRejectHeapDumpOutputPathWithoutHprofExtension(@TempDir Path tempDir) {
+		SafeJvmRuntimeCollector collector = testCollector(mock(CommandExecutor.class));
+		String output = tempDir.resolve("heap.bin").toAbsolutePath().normalize().toString();
+
+		assertThatThrownBy(() -> collector.collectMemoryGcEvidence(
+				new MemoryGcEvidenceRequest(123L, false, false, true, output, "confirmed")))
+			.isInstanceOf(IllegalArgumentException.class)
+			.hasMessageContaining(".hprof");
+	}
+
+	@Test
+	void shouldRejectHeapDumpOutputPathWithMissingParent(@TempDir Path tempDir) {
+		SafeJvmRuntimeCollector collector = testCollector(mock(CommandExecutor.class));
+		String output = tempDir.resolve("missing").resolve("heap.hprof").toAbsolutePath().normalize().toString();
+
+		assertThatThrownBy(() -> collector.collectMemoryGcEvidence(
+				new MemoryGcEvidenceRequest(123L, false, false, true, output, "confirmed")))
+			.isInstanceOf(IllegalArgumentException.class)
+			.hasMessageContaining("parent");
+	}
+
+	@Test
+	void shouldRejectExistingHeapDumpOutputFile(@TempDir Path tempDir) throws Exception {
+		SafeJvmRuntimeCollector collector = testCollector(mock(CommandExecutor.class));
+		Path output = tempDir.resolve("heap.hprof").toAbsolutePath().normalize();
+		Files.writeString(output, "existing");
+
+		assertThatThrownBy(() -> collector.collectMemoryGcEvidence(
+				new MemoryGcEvidenceRequest(123L, false, false, true, output.toString(), "confirmed")))
+			.isInstanceOf(IllegalArgumentException.class)
+			.hasMessageContaining("already exists");
+	}
+
+	@Test
 	void shouldRejectHeapDumpWithoutConfirmationToken() {
 		SafeJvmRuntimeCollector collector = testCollector(mock(CommandExecutor.class));
 
@@ -233,6 +285,7 @@ class SafeJvmRuntimeCollectorTest {
 		CommandExecutor executor = mock(CommandExecutor.class);
 		given(executor.run(List.of("jcmd", "123", "VM.flags"))).willReturn("-XX:+UseG1GC -Xms512m -Xmx1024m");
 		stubExtendedCollectors(executor, "123");
+		given(executor.run(List.of("jcmd", "123", "VM.version"))).willReturn("123:\nOpenJDK 64-Bit Server VM 21.0.2");
 		given(executor.run(List.of("jcmd", "123", "GC.heap_info"))).willReturn("""
 				123:
 				garbage-first heap total 1048576K, used 524288K
@@ -249,6 +302,12 @@ class SafeJvmRuntimeCollectorTest {
 				----------------------------------------------
 				   1:            10             400  java.lang.Object
 				   2:             2              80  [B
+				""");
+		given(executor.run(List.of("jcmd", "123", "help", "VM.native_memory"))).willReturn("VM.native_memory");
+		given(executor.run(List.of("jcmd", "123", "VM.native_memory", "summary"))).willReturn("""
+				Total: reserved=1024M, committed=640M
+				-                            NIO (reserved=80M, committed=40M)
+				-                          Class (reserved=120M, committed=60M)
 				""");
 
 		SafeJvmRuntimeCollector collector = testCollector(executor);
@@ -452,6 +511,123 @@ class SafeJvmRuntimeCollectorTest {
 
 		assertThat(snapshot.threadCount()).isNull();
 		assertThat(snapshot.warnings()).contains("Could not parse java.threads.live from jcmd PerfCounter.print");
+	}
+
+	@Test
+	void shouldCollectNativeMemorySummaryWhenCommandSupported() {
+		CommandExecutor executor = mock(CommandExecutor.class);
+		given(executor.run(List.of("jcmd", "123", "VM.flags"))).willReturn("-XX:+UseG1GC -Xms512m -Xmx1024m");
+		given(executor.run(List.of("jcmd", "123", "VM.version"))).willReturn("123:\nOpenJDK 64-Bit Server VM 17.0.10");
+		given(executor.run(List.of("jcmd", "123", "GC.heap_info"))).willReturn("""
+				123:
+				garbage-first heap total 1048576K, used 524288K
+				Metaspace       used 8192K, committed 9216K, reserved 65536K
+				""");
+		given(executor.run(List.of("jstat", "-gcutil", "123"))).willReturn("""
+				  S0     S1     E      O      M      CCS     YGC     YGCT    FGC    FGCT     CGC    CGCT       GCT
+				  0.00   0.00  12.34  78.90  92.21   88.12     145    1.234      2    0.456      -       -     1.690
+				""");
+		given(executor.run(List.of("jstat", "-class", "123"))).willReturn("Loaded  Bytes\n1 1.00\n");
+		given(executor.run(List.of("jcmd", "123", "PerfCounter.print"))).willReturn("java.threads.live=2");
+		given(executor.run(List.of("jcmd", "123", "help", "VM.native_memory"))).willReturn("VM.native_memory");
+		given(executor.run(List.of("jcmd", "123", "VM.native_memory", "summary"))).willReturn("""
+				Native Memory Tracking:
+				Total: reserved=2048M, committed=1536M
+				-                            NIO (reserved=256M, committed=220M)
+				-                          Class (reserved=640M, committed=540M)
+				""");
+		given(executor.run(List.of("jcmd", "123", "VM.native_memory", "summary.diff"))).willReturn("""
+				Total: reserved=+128M, committed=+96M
+				-                            NIO (reserved=+32M, committed=+20M)
+				-                          Class (reserved=+48M, committed=+40M)
+				""");
+
+		MemoryGcEvidencePack pack = testCollector(executor)
+			.collectMemoryGcEvidence(new MemoryGcEvidenceRequest(123L, false, false, false, "", null));
+
+		assertThat(pack.nativeMemorySummary()).isNotNull();
+		assertThat(pack.missingData()).doesNotContain("nativeMemorySummary");
+		assertThat(pack.nativeMemorySummary().categoryGrowth().get("nio").committedDeltaBytes())
+			.isEqualTo(20L * 1024L * 1024L);
+	}
+
+	@Test
+	void shouldDegradeNativeCollectionWhenProbeFails() {
+		CommandExecutor executor = mock(CommandExecutor.class);
+		given(executor.run(List.of("jcmd", "123", "VM.flags"))).willReturn("-XX:+UseG1GC -Xmx1024m");
+		given(executor.run(List.of("jcmd", "123", "VM.version"))).willReturn("123:\nOpenJDK 64-Bit Server VM 21.0.3");
+		given(executor.run(List.of("jcmd", "123", "GC.heap_info"))).willReturn("garbage-first heap total 1024K, used 1K");
+		given(executor.run(List.of("jstat", "-gcutil", "123"))).willReturn("""
+				  S0 S1 E O M CCS YGC YGCT FGC FGCT CGC CGCT GCT
+				  0.00 0.00 1.00 1.00 1.00 1.00 1 0.001 0 0.000 - - 0.001
+				""");
+		given(executor.run(List.of("jstat", "-class", "123"))).willReturn("Loaded  Bytes\n1 1.00\n");
+		given(executor.run(List.of("jcmd", "123", "PerfCounter.print"))).willReturn("java.threads.live=2");
+		given(executor.run(List.of("jcmd", "123", "help", "VM.native_memory")))
+			.willThrow(new IllegalStateException("attach denied"));
+
+		MemoryGcEvidencePack pack = testCollector(executor)
+			.collectMemoryGcEvidence(new MemoryGcEvidenceRequest(123L, false, false, false, "", null));
+
+		assertThat(pack.nativeMemorySummary()).isNull();
+		assertThat(pack.missingData()).contains("nativeMemorySummary");
+		assertThat(pack.warnings()).anyMatch(w -> w.contains("unable to probe VM.native_memory support"));
+	}
+
+	@Test
+	void shouldStillProbeNativeMemoryWhenCollectorIsUnknown() {
+		CommandExecutor executor = mock(CommandExecutor.class);
+		given(executor.run(List.of("jcmd", "123", "VM.flags"))).willReturn("-Xmx1024m");
+		given(executor.run(List.of("jcmd", "123", "VM.version"))).willReturn("123:\nOpenJDK 64-Bit Server VM 21.0.3");
+		given(executor.run(List.of("jcmd", "123", "GC.heap_info"))).willReturn("some heap text without collector");
+		given(executor.run(List.of("jstat", "-gcutil", "123"))).willReturn("""
+				  S0 S1 E O M CCS YGC YGCT FGC FGCT CGC CGCT GCT
+				  0.00 0.00 1.00 1.00 1.00 1.00 1 0.001 0 0.000 - - 0.001
+				""");
+		given(executor.run(List.of("jstat", "-class", "123"))).willReturn("Loaded  Bytes\n1 1.00\n");
+		given(executor.run(List.of("jcmd", "123", "PerfCounter.print"))).willReturn("java.threads.live=2");
+		given(executor.run(List.of("jcmd", "123", "help", "VM.native_memory"))).willReturn("VM.native_memory");
+		given(executor.run(List.of("jcmd", "123", "VM.native_memory", "summary"))).willReturn("""
+				Total: reserved=1024M, committed=768M
+				-                            NIO (reserved=128M, committed=96M)
+				-                          Class (reserved=256M, committed=192M)
+				""");
+		given(executor.run(List.of("jcmd", "123", "VM.native_memory", "summary.diff"))).willReturn("");
+
+		MemoryGcEvidencePack pack = testCollector(executor)
+			.collectMemoryGcEvidence(new MemoryGcEvidenceRequest(123L, false, false, false, "", null));
+
+		assertThat(pack.nativeMemorySummary()).isNotNull();
+		assertThat(pack.missingData()).doesNotContain("nativeMemorySummary");
+		assertThat(pack.warnings()).anyMatch(w -> w.contains("unsupported/unknown GC collector unknown"));
+	}
+
+	@Test
+	void shouldKeepResourceBudgetCollectionBestEffortWhenProcessRssUnavailable() {
+		CommandExecutor executor = mock(CommandExecutor.class);
+		String pid = "987654321";
+		given(executor.run(List.of("jcmd", pid, "VM.flags"))).willReturn("-XX:+UseG1GC -Xmx1024m");
+		given(executor.run(List.of("jcmd", pid, "VM.version"))).willReturn(pid + ":\nOpenJDK 64-Bit Server VM 21.0.3");
+		given(executor.run(List.of("jcmd", pid, "GC.heap_info")))
+			.willReturn("garbage-first heap total 1048576K, used 524288K");
+		given(executor.run(List.of("jstat", "-gcutil", pid))).willReturn("""
+				  S0 S1 E O M CCS YGC YGCT FGC FGCT CGC CGCT GCT
+				  0.00 0.00 1.00 1.00 1.00 1.00 1 0.001 0 0.000 - - 0.001
+				""");
+		given(executor.run(List.of("jstat", "-class", pid))).willReturn("Loaded  Bytes\n1 1.00\n");
+		given(executor.run(List.of("jcmd", pid, "PerfCounter.print"))).willReturn("java.threads.live=2");
+		given(executor.run(List.of("jcmd", pid, "help", "VM.native_memory")))
+			.willThrow(new IllegalStateException("attach denied"));
+		given(executor.run(List.of("ps", "-o", "rss=", "-p", pid)))
+			.willThrow(new IllegalStateException("ps unavailable"));
+
+		MemoryGcEvidencePack pack = testCollector(executor)
+			.collectMemoryGcEvidence(new MemoryGcEvidenceRequest(Long.parseLong(pid), false, false, false, "", null));
+
+		assertThat(pack.resourceBudgetEvidence()).isNotNull();
+		assertThat(pack.resourceBudgetEvidence().processRssBytes()).isNull();
+		assertThat(pack.resourceBudgetEvidence().heapCommittedBytes()).isPositive();
+		assertThat(pack.resourceBudgetEvidence().estimatedThreadStackBytes()).isEqualTo(2L * 1024L * 1024L);
 	}
 
 }

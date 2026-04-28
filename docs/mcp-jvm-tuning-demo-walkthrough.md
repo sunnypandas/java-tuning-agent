@@ -2,7 +2,7 @@
 
 这份文档是一份可直接照着操作的分享脚本，目标是完成三段演示：
 
-1. 先展示当前注册的 MCP，并重点介绍 `java-tuning-agent` 以及它暴露的 tool（**共 9 个**：4 个在线 JVM 链路 + 5 个离线导入；本脚本 **主线演示在线 4 步**）
+1. 先展示当前注册的 MCP，并重点介绍 `java-tuning-agent` 以及它暴露的 tool（**共 13 个**：7 个在线 JVM 链路 + 6 个离线导入；本脚本 **主线演示在线 evidence 复用链路**）
 2. 先手动完成一次在线 JVM tuning 流程
 3. 补充一段离线模式导入材料测试，再用 `.cursor` 里的 skill 演示一次全流程
 
@@ -15,7 +15,7 @@
 1. `MCP 是什么`
   先展示当前客户端里注册了哪些 MCP server，说明 `java-tuning-agent` 只是其中之一
 2. `java-tuning-agent 能做什么`
-  简单介绍在线排查链路的 **4** 个核心 tool（完整能力含离线共 **9** 个，见仓库 [README](../README.md)）
+  简单介绍在线排查链路的核心 tool（完整能力含离线共 **13** 个，见仓库 [README](../README.md)）
 3. `在线流程怎么落地`
   先手动完成一次在线排查流程
 4. `离线流程怎么落地`
@@ -86,7 +86,7 @@ curl.exe -X POST http://localhost:8091/api/leak/deadlock/trigger
 - [tool 参数参考](/c:/Users/panpa/Workspace/java-tuning-agent/.cursor/skills/java-tuning-agent-workflow/reference.md:1)
 - [项目规则](/c:/Users/panpa/Workspace/java-tuning-agent/.cursor/rules/java-tuning-agent-mcp.mdc:1)
 
-你可以顺手提一句：这个 skill 约束了 Agent 必须按固定流程调用 **在线**这 4 个 tool（离线另有五条工具链），而不是随便跳步骤。
+你可以顺手提一句：这个 skill 约束了 Agent 必须按固定流程调用在线工具，并在采集证据后复用同一份 evidence 生成建议（离线另有六条工具链），而不是随便跳步骤。
 
 ## Part 1: 展示当前注册的 MCP
 
@@ -106,25 +106,25 @@ curl.exe -X POST http://localhost:8091/api/leak/deadlock/trigger
 
 ## Part 2: 介绍 `java-tuning-agent`（在线四条主线）
 
-完整注册表里还有 **5 个离线 tool**（草稿校验、heap 分块上传与 finalize、离线 `generateOfflineTuningAdvice`、可选 `summarizeOfflineHeapDumpFile`），本段不展开，详见 [README](../README.md) 与 [offline-mode-spec.md](../offline-mode-spec.md)。
+完整注册表里还有 **6 个离线 tool**（草稿校验、heap 分块上传与 finalize、离线 `generateOfflineTuningAdvice`、可选 `summarizeOfflineHeapDumpFile` / `analyzeOfflineHeapRetention`），本段不展开，详见 [README](../README.md) 与 [offline-mode-spec.md](../offline-mode-spec.md)。
 
 ### 讲解重点
 
-在线排查的 **4** 个 tool 建议按这个顺序讲：
+在线排查的主线建议按这个顺序讲：
 
 
-| Tool                      | 作用               | 现场怎么讲                                      |
+| Tool                      | 作用 / Role        | 现场怎么讲                                      |
 | ------------------------- | ---------------- | ------------------------------------------ |
-| `listJavaApps`            | 列出当前用户可见的 JVM 进程 | 先找到“要分析谁”                                  |
-| `inspectJvmRuntime`       | 做一次轻量只读快照        | 先看基础运行状态                                   |
-| `collectMemoryGcEvidence` | 采集中等成本证据         | 需要时再拿 histogram、thread dump、heap dump      |
-| `generateTuningAdvice`    | 产出结构化分析结论        | 最后把现象归纳成 findings、recommendations、hotspots |
+| `listJavaApps`            | 列出当前用户可见的 JVM 进程 / discover local JVMs | 先找到“要分析谁”                                  |
+| `inspectJvmRuntime`       | 做一次轻量只读快照 / safe readonly snapshot | 先看基础运行状态                                   |
+| `collectMemoryGcEvidence` | 采集中等成本证据 / collect memory-GC evidence | 需要时再拿 histogram、thread dump、heap dump      |
+| `generateTuningAdviceFromEvidence` | 从已采集证据产出结构化结论 / advise from existing evidence | 最后把同一份 evidence 归纳成 findings、recommendations、hotspots |
 
 若现场有人问 **heap dump**：补充说明采集到 `.hprof` 后，服务端在默认配置下会用 **Shark** 做**浅层**按类摘要并写进报告（非 MAT dominator）；详见 README。
 
 ### 讲解词
 
-> 这 4 个 tool 对应的是一个很自然的排查链路：  
+> 这条主线对应的是一个很自然的排查链路：
 > 先找进程，再看快照，再按需补证据，最后生成分析结论。  
 > 所以它不是一个“单点工具”，而是一条可组合、可编排的 tuning workflow。
 
@@ -278,13 +278,14 @@ C:/Users/panpa/AppData/Local/Temp/java-tuning-agent-heap-<pid>.hprof
 
 ### 离线链路（建议讲解顺序）
 
-建议按下面顺序演示（对应 5 个离线 tool）：
+建议按下面顺序演示（对应 6 个离线 tool）：
 
 1. `validateOfflineAnalysisDraft`
 2. `submitOfflineHeapDumpChunk`（可选，heap dump 很大时）
 3. `finalizeOfflineHeapDump`（仅分块上传时）
 4. `summarizeOfflineHeapDumpFile`（可选，仅看浅层摘要）
-5. `generateOfflineTuningAdvice`
+5. `analyzeOfflineHeapRetention`（可选，做 holder/retention 方向证据）
+6. `generateOfflineTuningAdvice`
 
 ### Step 1. 先构建离线草稿并做一次校验
 
@@ -303,6 +304,11 @@ C:/Users/panpa/AppData/Local/Temp/java-tuning-agent-heap-<pid>.hprof
 - 提供 `appLogPathOrText`，或 `explicitlyNoAppLog=true`
 - 提供 `repeatedSamplesPathOrText`，或 `explicitlyNoRepeatedSamples=true`
 
+可选增强证据按需补充：
+
+- `nativeMemorySummary`：`VM.native_memory summary` / `summary.diff` 的 `filePath` 或 `inlineText`，用于 native / direct buffer / metaspace 规则
+- `backgroundNotes.resourceBudget`：容器内存、RSS、CPU quota 等 key=value 预算信息；格式错误会降级，不阻断离线分析
+
 首次校验建议 `proceedWithMissingRequired=false`，先看缺失项：
 
 ```json
@@ -317,10 +323,13 @@ C:/Users/panpa/AppData/Local/Temp/java-tuning-agent-heap-<pid>.hprof
     "gcLogPathOrText": "",
     "appLogPathOrText": "",
     "repeatedSamplesPathOrText": "",
+    "nativeMemorySummary": { "filePath": "C:/demo/offline/nmt-summary.txt" },
     "explicitlyNoGcLog": true,
     "explicitlyNoAppLog": true,
     "explicitlyNoRepeatedSamples": true,
-    "backgroundNotes": {}
+    "backgroundNotes": {
+      "resourceBudget": "containerMemoryLimitBytes=1073741824\nprocessRssBytes=805306368\ncpuQuotaCores=2.0"
+    }
   },
   "proceedWithMissingRequired": false
 }
@@ -355,6 +364,7 @@ C:/Users/panpa/AppData/Local/Temp/java-tuning-agent-heap-<pid>.hprof
 
 - 若 `draft` 中包含 class histogram / thread dump / heap dump 路径，`confirmationToken` 需要非空
 - 若你决定“缺项也继续”，把 `proceedWithMissingRequired=true`
+- 默认不需要传 `analysisDepth`；如果要把 holder-oriented retention 证据接入本次离线 advice，传 `analysisDepth="deep"`，失败时会在 warnings / missingData / Markdown 中降级说明
 
 示例（含源码上下文）：
 
@@ -451,7 +461,7 @@ Agent 应该会按固定顺序走：
 如果你想把全程压缩成一段比较自然的分享，可以照下面的节奏：
 
 1. “先看 MCP 列表，我们的 `java-tuning-agent` 是其中一个 server。”
-2. “在线排查链路是 4 个 core tool（整站还注册离线等共 9 个），分别负责找 JVM、看快照、补证据、出结论。”
+2. “在线排查链路负责找 JVM、看快照、补证据、复用同一份 evidence 出结论（整站共 13 个 tool）。”
 3. “我先手动演示一遍，但会用用户语言来描述诉求，而不是直接念 tool 名字。”
 4. “接着演示离线模式：校验草稿、可选上传 heap dump、最后生成离线结论。”
 5. “现在再用 skill 跑一次在线流程，你会发现 Agent 已经会自己按这条流程去编排。”

@@ -1,0 +1,217 @@
+{
+  "name": "validateOfflineAnalysisDraft",
+  "description": "离线模式：校验手工导入的 JVM 诊断草稿（必选 B1-B6 与推荐项标记）。无服务端会话；每次可携带完整草稿 JSON。\nEnglish: Validate an imported offline JVM diagnosis draft and return missing required inputs, degradation status, and the next Chinese prompt.\n草稿字段形状以 MCP inputSchema 为准：jvmIdentityText/jdkInfoText/runtimeSnapshotText 为普通字符串；\nclassHistogram/threadDump 为 OfflineArtifactSource 对象，只能传 {\"filePath\":\"...\"} 或 {\"inlineText\":\"...\"}，不得传 bare string；\nheapDumpAbsolutePath 为普通字符串路径。若本地文件已存在，优先使用 filePath 而不是 inlineText。\n返回缺失必选 ID、是否允许继续（降级）、中文 nextPromptZh。\nproceedWithMissingRequired=true 时在必选不齐情况下仍 allowedToProceed=true 并带 degradationWarnings。",
+  "inputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "draft": {
+        "type": "object",
+        "properties": {
+          "appLogPathOrText": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "backgroundNotes": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Optional notes keyed by evidence type. Use backgroundNotes.resourceBudget for container/RSS/CPU budget key=value text when no dedicated file exists."
+          },
+          "classHistogram": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Required B4 artifact source. Pass an object with filePath or inlineText; bare string is not allowed. Prefer filePath when the histogram already exists locally.",
+            "properties": {
+              "filePath": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Absolute or host-readable artifact path. Prefer this when the file already exists locally."
+              },
+              "inlineText": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Inline artifact text. Use this only when a file path is unavailable or impractical."
+              }
+            },
+            "additionalProperties": false
+          },
+          "directBufferEvidence": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Optional direct buffer supporting evidence source. Currently retained for manual context/future expansion; primary direct-buffer rules consume nativeMemorySummary NIO data.",
+            "properties": {
+              "filePath": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Absolute or host-readable artifact path. Prefer this when the file already exists locally."
+              },
+              "inlineText": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Inline artifact text. Use this only when a file path is unavailable or impractical."
+              }
+            },
+            "additionalProperties": false
+          },
+          "explicitlyNoAppLog": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "explicitlyNoGcLog": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "explicitlyNoRepeatedSamples": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "gcLogPathOrText": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "heapDumpAbsolutePath": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Required B6 string path. Absolute or host-readable .hprof path; unlike classHistogram/threadDump this is a plain string, not an OfflineArtifactSource object."
+          },
+          "jdkInfoText": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Required B2 text. JDK vendor/version details from the exported environment."
+          },
+          "jvmIdentityText": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Required B1 text. JVM/process identity such as PID, command line, JVM flags, and collection timestamp."
+          },
+          "metaspaceEvidence": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Optional metaspace supporting evidence source. Currently retained for manual context/future expansion; primary metaspace rules consume runtime metaspace and nativeMemorySummary Class data.",
+            "properties": {
+              "filePath": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Absolute or host-readable artifact path. Prefer this when the file already exists locally."
+              },
+              "inlineText": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Inline artifact text. Use this only when a file path is unavailable or impractical."
+              }
+            },
+            "additionalProperties": false
+          },
+          "nativeMemorySummary": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Optional native memory source. Pass filePath or inlineText for VM.native_memory summary output.",
+            "properties": {
+              "filePath": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Absolute or host-readable artifact path. Prefer this when the file already exists locally."
+              },
+              "inlineText": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Inline artifact text. Use this only when a file path is unavailable or impractical."
+              }
+            },
+            "additionalProperties": false
+          },
+          "repeatedSamplesPathOrText": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional repeated samples JSON or host-readable file path. Accepts inspectJvmRuntimeRepeated output shape."
+          },
+          "runtimeSnapshotText": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Required B3 text. Exported runtime snapshot content such as jcmd/jstat summaries."
+          },
+          "threadDump": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Required B5 artifact source. Pass an object with filePath or inlineText; bare string is not allowed. Prefer filePath when the thread dump already exists locally.",
+            "properties": {
+              "filePath": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Absolute or host-readable artifact path. Prefer this when the file already exists locally."
+              },
+              "inlineText": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Inline artifact text. Use this only when a file path is unavailable or impractical."
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "description": "OfflineBundleDraft。关键字段：classHistogram/threadDump 必须是 {\"filePath\":\"...\"} 或 {\"inlineText\":\"...\"}；不要给这两个字段传 bare string。heapDumpAbsolutePath 才是普通字符串路径。"
+      },
+      "proceedWithMissingRequired": {
+        "type": "boolean",
+        "description": "是否在必选不齐时仍允许后续生成报告（降级）。"
+      }
+    },
+    "required": [
+      "draft",
+      "proceedWithMissingRequired"
+    ],
+    "additionalProperties": false
+  }
+}

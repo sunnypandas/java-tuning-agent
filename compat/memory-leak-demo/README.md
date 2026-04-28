@@ -94,13 +94,14 @@ curl.exe -X POST http://localhost:8091/api/leak/raw/clear
 2. `listJavaApps` → PID for `memory-leak-demo`.  
 3. `inspectJvmRuntime(pid)` — baseline.  
 4. Drive one scenario (allocate, raw allocate, churn loop, or deadlock trigger).  
-5. `inspectJvmRuntime` again **or** `collectMemoryGcEvidence` / `generateTuningAdvice` with:
-   - `collectClassHistogram` + non-blank `confirmationToken` when you want histogram-backed findings.  
-   - `collectThreadDump` + token after `deadlock/trigger`.  
-6. `generateTuningAdvice` with `CodeContextSummary` including:
+5. `inspectJvmRuntime` again **or** `collectMemoryGcEvidence` with:
+   - `includeClassHistogram` + non-blank `confirmationToken` when you want histogram-backed findings.
+   - `includeThreadDump` + token after `deadlock/trigger`.
+6. `generateTuningAdviceFromEvidence` with the returned evidence pack and `CodeContextSummary` including:
    - `sourceRoots`: `["compat/memory-leak-demo"]` (repo root as cwd for the agent).  
    - Optional text in `dependencies` / `configuration` describing `AllocationRecord`, `/api/leak/*`, and Spring MVC.  
-7. Clear stores and/or restart JVM between scenarios to avoid mixing effects.
+7. Use `generateTuningAdvice` only as a one-shot shortcut when you did not already call `collectMemoryGcEvidence`.
+8. Clear stores and/or restart JVM between scenarios to avoid mixing effects.
 
 ## Configuration
 

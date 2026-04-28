@@ -1,0 +1,182 @@
+{
+  "name": "generateTuningAdviceFromEvidence",
+  "description": "Generate structured tuning advice from an existing MemoryGcEvidencePack and code context. 中文：复用已有 MemoryGcEvidencePack 生成调优建议，不再次采集 jcmd/jstat、histogram、thread dump 或 heap dump。 This is the advise-from-evidence path: it does not collect jcmd/jstat data, does not run GC.class_histogram, Thread.print, or GC.heap_dump, and does not require confirmationToken. Use this after collectMemoryGcEvidence when the user already saw/approved the evidence pack, especially for class histogram, thread dump, or heap dump evidence. Returns the same TuningAdviceReport JSON as generateTuningAdvice, including formattedSummary Markdown; hosts should render formattedSummary without an outer Markdown fence.",
+  "inputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "evidence": {
+        "type": "object",
+        "description": "Existing MemoryGcEvidencePack JSON, typically the exact collectMemoryGcEvidence response to reuse without recollection.",
+        "properties": {
+          "snapshot": {
+            "type": "object",
+            "description": "JvmRuntimeSnapshot captured in the evidence pack."
+          },
+          "classHistogram": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Optional ClassHistogramSummary already collected."
+          },
+          "threadDump": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Optional ThreadDumpSummary already collected."
+          },
+          "missingData": {
+            "type": "array",
+            "description": "Explicit evidence gaps.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "warnings": {
+            "type": "array",
+            "description": "Collection or import warnings.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "heapDumpPath": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Existing heap dump path from the evidence pack, if one was already produced."
+          },
+          "heapShallowSummary": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Optional shallow heap summary already attached to the evidence pack."
+          },
+          "nativeMemorySummary": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Optional native memory summary already attached to the evidence pack."
+          },
+          "heapRetentionAnalysis": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Optional heap retention analysis already attached to the evidence pack."
+          },
+          "repeatedSamplingResult": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Optional repeated sampling result already attached to the evidence pack."
+          },
+          "gcLogSummary": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Optional GC log summary already attached to the evidence pack."
+          },
+          "jfrSummary": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Optional JFR summary already attached to the evidence pack."
+          },
+          "baselineEvidence": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Optional baseline MemoryGcEvidencePack for Key Deltas."
+          },
+          "diagnosisWindow": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Optional diagnosis window metadata."
+          },
+          "resourceBudgetEvidence": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Optional resource budget evidence already attached to the evidence pack."
+          }
+        },
+        "required": [
+          "snapshot"
+        ],
+        "additionalProperties": true
+      },
+      "codeContextSummary": {
+        "type": "object",
+        "properties": {
+          "applicationNames": {
+            "description": "Spring @SpringBootApplication or other main class simple names if known.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "candidatePackages": {
+            "description": "FQCN package prefixes (e.g. com.example.app) to prefer when ranking suspected hotspots.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "configuration": {
+            "type": "object",
+            "description": "Optional key/value configuration snippets relevant to tuning (profiles, pool sizes, etc.)."
+          },
+          "dependencies": {
+            "description": "Optional Maven/Gradle coordinates or dependency names as free-form strings.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "sourceRoots": {
+            "description": "Local source tree roots to search for .java files when mapping class histogram entries.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "applicationNames",
+          "candidatePackages",
+          "configuration",
+          "dependencies",
+          "sourceRoots"
+        ],
+        "description": "CodeContextSummary JSON: dependencies, configuration, applicationNames, sourceRoots, candidatePackages."
+      },
+      "environment": {
+        "type": "string",
+        "description": "Deployment or runtime label, e.g. prod, stage, local."
+      },
+      "optimizationGoal": {
+        "type": "string",
+        "description": "What to optimize for: latency, throughput, footprint, diagnose leak, etc."
+      }
+    },
+    "required": [
+      "evidence",
+      "codeContextSummary",
+      "environment",
+      "optimizationGoal"
+    ],
+    "additionalProperties": false
+  }
+}

@@ -10,10 +10,10 @@
 
 ### 1.1 现有在线流水线（必须保持兼容）
 
-- MCP 入口：`JavaTuningMcpTools` — `listJavaApps` → `inspectJvmRuntime(pid)` → `collectMemoryGcEvidence(request)` → `generateTuningAdvice(...)`。
+- MCP 入口：`JavaTuningMcpTools` — `listJavaApps` → `inspectJvmRuntime(pid)` → `collectMemoryGcEvidence(request)` → `generateTuningAdviceFromEvidence(evidence, ...)`。`generateTuningAdvice(...)` 保留为未预先采集 evidence 时的一次性兼容入口。
 - 诊断核心：`JavaTuningWorkflowService#generateAdviceFromEvidence(MemoryGcEvidencePack, CodeContextSummary, environment, optimizationGoal)`。
 - 证据载体：`MemoryGcEvidencePack` = `JvmRuntimeSnapshot` + `ClassHistogramSummary` + `ThreadDumpSummary` + `missingData` / `warnings` + `heapDumpPath` + **可选** `heapShallowSummary`（对 `.hprof` 做 **Shark** 浅层按类统计后的结构化结果 + 有界 Markdown 文本；与线上一致，在 `heapDumpPath` 有效且 `java-tuning-agent.heap-summary.auto-enabled` 为 `true` 时由采集器/组装器自动填充）。
-- 在线路径下，`generateTuningAdvice` 在特权 flag 为真时先 `collectEvidence` 再 `generateAdviceFromEvidence`；否则仅构造轻量 `MemoryGcEvidencePack`（仅 snapshot）。
+- 在线路径下，`generateTuningAdviceFromEvidence` 直接复用既有 `MemoryGcEvidencePack`，不会再次采集 histogram/thread/heap；`generateTuningAdvice` 在特权 flag 为真时仍按旧语义先 `collectEvidence` 再 `generateAdviceFromEvidence`，否则仅构造轻量 `MemoryGcEvidencePack`（仅 snapshot）。
 
 ### 1.2 离线模式要解决的问题
 

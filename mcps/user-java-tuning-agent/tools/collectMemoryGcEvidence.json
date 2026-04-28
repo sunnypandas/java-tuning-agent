@@ -1,0 +1,63 @@
+{
+  "name": "collectMemoryGcEvidence",
+  "description": "Collect medium-cost memory/GC evidence: optional class histogram, thread dump, and/or heap dump (jcmd GC.heap_dump). 中文：按用户选择采集中等成本内存/GC 证据，可包含类直方图、线程栈和/或 heap dump。 Privileged options require a non-blank confirmationToken; heap dump also requires heapDumpOutputPath (absolute .hprof path, existing parent directory, target file must not already exist). Example: {\"request\":{\"pid\":12345,\"includeClassHistogram\":true,\"includeThreadDump\":false,\"includeHeapDump\":false,\"heapDumpOutputPath\":\"\",\"confirmationToken\":\"user-approved\"}}",
+  "inputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "request": {
+        "type": "object",
+        "properties": {
+          "confirmationToken": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Non-blank caller-provided approval token whenever any privileged include* flag is true."
+          },
+          "heapDumpOutputPath": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Absolute filesystem path for the heap dump file, e.g. C:/tmp/app.hprof; parent directory must exist and target file must not already exist."
+          },
+          "includeClassHistogram": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Run jcmd GC.class_histogram (pause/CPU cost; needs confirmationToken)."
+          },
+          "includeHeapDump": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Run jcmd GC.heap_dump to heapDumpOutputPath (needs confirmationToken and an absolute .hprof path that does not already exist)."
+          },
+          "includeThreadDump": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Run jcmd Thread.print (needs confirmationToken)."
+          },
+          "pid": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Target JVM process id (decimal); must match a PID from listJavaApps."
+          }
+        },
+        "required": [
+          "pid"
+        ],
+        "description": "Evidence selection and privileged-field policy; see MemoryGcEvidenceRequest JSON shape."
+      }
+    },
+    "required": [
+      "request"
+    ],
+    "additionalProperties": false
+  }
+}

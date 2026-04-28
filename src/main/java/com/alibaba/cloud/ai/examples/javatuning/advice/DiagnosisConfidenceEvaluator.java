@@ -15,7 +15,8 @@ public final class DiagnosisConfidenceEvaluator {
 		List<String> reasons = new ArrayList<>();
 		reasons.add("Evidence includes structured jcmd/jstat-derived runtime fields");
 		if (evidence.classHistogram() != null && !evidence.classHistogram().entries().isEmpty()) {
-			reasons.add("Class histogram present: stronger signal for retention-style issues");
+			reasons.add(
+					"Class histogram present: single-snapshot live-object distribution; candidate signal unless corroborated by trend, JFR allocation, or retention evidence");
 		}
 		else {
 			reasons.add("No class histogram: retention conclusions rely on runtime counters only");
@@ -41,6 +42,12 @@ public final class DiagnosisConfidenceEvaluator {
 		if (evidence.gcLogSummary() != null && evidence.gcLogSummary().hasPauseData()) {
 			reasons.add("GC log summary present: pause-history rules were applied");
 		}
+		if (evidence.jfrSummary() != null) {
+			reasons.add("JFR summary present: allocation/contention/execution sample rules were applied");
+		}
+		if (evidence.resourceBudgetEvidence() != null && evidence.resourceBudgetEvidence().hasAnyMemorySignal()) {
+			reasons.add("Resource budget evidence present: cgroup/RSS/native/heap budget rules were applied");
+		}
 		if (!evidence.missingData().isEmpty()) {
 			reasons.add("Collection reported missing fragments: " + String.join(", ", evidence.missingData()));
 		}
@@ -49,7 +56,8 @@ public final class DiagnosisConfidenceEvaluator {
 		}
 		if (evidence.heapShallowSummary() != null && evidence.heapShallowSummary().analysisSucceeded()
 				&& evidence.heapShallowSummary().totalTrackedShallowBytes() > 0L) {
-			reasons.add("Heap dump was indexed (Shark); shallow-by-class leaders were used in heuristics and below in the report");
+			reasons.add(
+					"Heap dump was indexed (Shark); shallow-by-class candidate leaders were used in heuristics and below in the report; shallow bytes are not retained-size proof");
 		}
 		else if (evidence.heapShallowSummary() != null && !evidence.heapShallowSummary().errorMessage().isEmpty()) {
 			reasons.add("Heap dump path was present but shallow summarization failed: " + evidence.heapShallowSummary()
@@ -74,33 +82,34 @@ public final class DiagnosisConfidenceEvaluator {
 			}
 		}
 
-		boolean leak = scratch.findings()
-			.stream()
-			.anyMatch(f -> "Suspected retained-object leak".equals(f.title()));
-		boolean retentionFinding = scratch.findings()
-			.stream()
-			.anyMatch(f -> HeapRetentionInsightsRule.FINDING_TITLE.equals(f.title()));
-		boolean heap = scratch.findings().stream().anyMatch(f -> "High heap pressure".equals(f.title()));
-		boolean deadlock = scratch.findings()
-			.stream()
-			.anyMatch(f -> ThreadDumpInsightsRule.DEADLOCK_FINDING_TITLE.equals(f.title()));
+		boolean likelyLeak = containsFinding(scratch, "Likely retained-object leak");
+		boolean histogramCandidate = containsFinding(scratch, "Dominant class-histogram candidate");
+		boolean shallowCandidate = containsFinding(scratch, "Dominant shallow heap candidate");
+		boolean corroboratedShallow = containsFinding(scratch, "Corroborated shallow heap dominance");
+		boolean retentionFinding = containsFinding(scratch, HeapRetentionInsightsRule.FINDING_TITLE);
+		boolean heap = containsFinding(scratch, "High heap pressure");
+		boolean deadlock = containsFinding(scratch, ThreadDumpInsightsRule.DEADLOCK_FINDING_TITLE);
 
 		String confidence;
 		if (deadlock) {
 			confidence = "high";
 			reasons.add("Java-level deadlock is explicit in the thread dump");
 		}
-		else if (leak && evidence.classHistogram() != null && !evidence.classHistogram().entries().isEmpty()) {
+		else if (likelyLeak || corroboratedShallow) {
 			confidence = "high";
-			reasons.add("Dominant histogram types support a retention hypothesis");
+			reasons.add(
+					"Dominant object signal is corroborated by repeated trend, JFR allocation, or retention/deep evidence");
 		}
 		else if (retentionFinding) {
 			confidence = retentionSucceeded ? "medium" : "low";
 			reasons.add("Retention evidence exists as a holder-oriented retained-style approximation, not MAT-exact retained size");
 		}
+		else if (histogramCandidate || shallowCandidate) {
+			confidence = "medium";
+			reasons.add("Single-snapshot histogram or shallow-by-class candidate needs corroboration before leak/high confidence wording");
+		}
 		else if (heap) {
-			boolean histo = evidence.classHistogram() != null && !evidence.classHistogram().entries().isEmpty();
-			confidence = histo ? "high" : "medium";
+			confidence = "medium";
 			reasons.add("Heap utilization rule fired with measurable utilization");
 		}
 		else if (scratch.findings().isEmpty() && !scratch.missingData().isEmpty()) {
@@ -116,6 +125,10 @@ public final class DiagnosisConfidenceEvaluator {
 			reasons.add("Heuristic rules produced findings without histogram-backed retention proof");
 		}
 		return new ConfidenceResult(confidence, List.copyOf(reasons));
+	}
+
+	private static boolean containsFinding(DiagnosisScratch scratch, String title) {
+		return scratch.findings().stream().anyMatch(f -> title.equals(f.title()));
 	}
 
 	private static String retentionWarnings(List<String> warnings) {

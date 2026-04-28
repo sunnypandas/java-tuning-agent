@@ -1,0 +1,35 @@
+{
+  "name": "submitOfflineHeapDumpChunk",
+  "description": "离线模式：提交 heap dump 的一个分块（Base64）。uploadId 为空时创建新上传会话并使用 chunkTotal 作为总分块数；\nEnglish: Submit one Base64 heap dump chunk; reuse the returned uploadId for later chunks.\n后续调用沿用返回的 uploadId。索引为 0..chunkTotal-1。\n全部 chunk 提交后使用 finalizeOfflineHeapDump 校验 SHA-256 与大小；将返回的绝对路径写入 OfflineBundleDraft.heapDumpAbsolutePath。",
+  "inputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "uploadId": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "description": "已有上传 id；留空则创建新上传。"
+      },
+      "chunkIndex": {
+        "type": "integer",
+        "description": "当前块序号，从 0 开始。"
+      },
+      "chunkTotal": {
+        "type": "integer",
+        "description": "总分块数（创建上传时必填且与各次调用一致）。"
+      },
+      "chunkBase64": {
+        "type": "string",
+        "description": "分块字节的 Base64（标准 RFC4648）。"
+      }
+    },
+    "required": [
+      "chunkIndex",
+      "chunkTotal",
+      "chunkBase64"
+    ],
+    "additionalProperties": false
+  }
+}

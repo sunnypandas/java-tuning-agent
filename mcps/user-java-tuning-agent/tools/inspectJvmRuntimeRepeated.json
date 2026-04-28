@@ -1,0 +1,65 @@
+{
+  "name": "inspectJvmRuntimeRepeated",
+  "description": "Collect repeated safe read-only JVM runtime samples for a PID using bounded jcmd/jstat commands. 中文：按固定间隔采集多次轻量只读样本，用于短窗口趋势判断。 This P0 repeated mode does not collect class histograms, thread dumps, heap dumps, or JFR, and does not require confirmationToken. Example arguments JSON: {\"request\":{\"pid\":12345,\"sampleCount\":3,\"intervalMillis\":10000,\"includeThreadCount\":true,\"includeClassCount\":true,\"confirmationToken\":\"\"}}",
+  "inputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "request": {
+        "type": "object",
+        "properties": {
+          "confirmationToken": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Reserved for future privileged repeated modes; not required for safe read-only P0 sampling."
+          },
+          "includeClassCount": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Whether to include loaded class count when available."
+          },
+          "includeThreadCount": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Whether to include live thread count when available."
+          },
+          "intervalMillis": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Interval between samples in milliseconds; blank uses server default."
+          },
+          "pid": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Target JVM process id."
+          },
+          "sampleCount": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Number of samples; blank uses server default."
+          }
+        },
+        "required": [
+          "pid"
+        ],
+        "description": "RepeatedSamplingRequest JSON: pid, sampleCount, intervalMillis, includeThreadCount, includeClassCount."
+      }
+    },
+    "required": [
+      "request"
+    ],
+    "additionalProperties": false
+  }
+}

@@ -1,0 +1,289 @@
+{
+  "name": "generateOfflineTuningAdvice",
+  "description": "离线模式：从导入材料生成与在线模式相同结构的 TuningAdviceReport（含 formattedSummary）。\nEnglish: Generate the same structured tuning advice report from imported offline evidence.\n需先通过校验或声明降级（proceedWithMissingRequired）。\n若草稿包含类直方图、线程栈或堆路径，须提供非空 confirmationToken（与 collectMemoryGcEvidence / generateTuningAdvice 特权语义一致）。\nanalysisDepth 可为空；为空时按 balanced 处理，只有 deep 会在存在 heapDumpAbsolutePath 时附加 retention 证据。\n草稿字段形状以 MCP inputSchema 为准：classHistogram/threadDump 为 OfflineArtifactSource 对象，只能传 {\"filePath\":\"...\"} 或 {\"inlineText\":\"...\"}，不得传 bare string；\nheapDumpAbsolutePath 为普通字符串路径。若本地文件已存在，优先使用 filePath。\n当 heapDumpAbsolutePath 指向已存在的 .hprof 时，服务端自动用 Shark 做浅层按类索引，并参与规则诊断与报告（见 java-tuning-agent.heap-summary.auto-enabled）。",
+  "inputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "codeContextSummary": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "applicationNames": {
+            "description": "Spring @SpringBootApplication or other main class simple names if known.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "candidatePackages": {
+            "description": "FQCN package prefixes (e.g. com.example.app) to prefer when ranking suspected hotspots.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "configuration": {
+            "type": "object",
+            "description": "Optional key/value configuration snippets relevant to tuning (profiles, pool sizes, etc.)."
+          },
+          "dependencies": {
+            "description": "Optional Maven/Gradle coordinates or dependency names as free-form strings.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "sourceRoots": {
+            "description": "Local source tree roots to search for .java files when mapping class histogram entries.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "applicationNames",
+          "candidatePackages",
+          "configuration",
+          "dependencies",
+          "sourceRoots"
+        ],
+        "description": "可选源码根与包名，用于热点关联。"
+      },
+      "draft": {
+        "type": "object",
+        "properties": {
+          "appLogPathOrText": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "backgroundNotes": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Optional notes keyed by evidence type. Use backgroundNotes.resourceBudget for container/RSS/CPU budget key=value text when no dedicated file exists."
+          },
+          "classHistogram": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Required B4 artifact source. Pass an object with filePath or inlineText; bare string is not allowed. Prefer filePath when the histogram already exists locally.",
+            "properties": {
+              "filePath": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Absolute or host-readable artifact path. Prefer this when the file already exists locally."
+              },
+              "inlineText": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Inline artifact text. Use this only when a file path is unavailable or impractical."
+              }
+            },
+            "additionalProperties": false
+          },
+          "directBufferEvidence": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Optional direct buffer supporting evidence source. Currently retained for manual context/future expansion; primary direct-buffer rules consume nativeMemorySummary NIO data.",
+            "properties": {
+              "filePath": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Absolute or host-readable artifact path. Prefer this when the file already exists locally."
+              },
+              "inlineText": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Inline artifact text. Use this only when a file path is unavailable or impractical."
+              }
+            },
+            "additionalProperties": false
+          },
+          "explicitlyNoAppLog": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "explicitlyNoGcLog": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "explicitlyNoRepeatedSamples": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "gcLogPathOrText": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "heapDumpAbsolutePath": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Required B6 string path. Absolute or host-readable .hprof path; unlike classHistogram/threadDump this is a plain string, not an OfflineArtifactSource object."
+          },
+          "jdkInfoText": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Required B2 text. JDK vendor/version details from the exported environment."
+          },
+          "jvmIdentityText": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Required B1 text. JVM/process identity such as PID, command line, JVM flags, and collection timestamp."
+          },
+          "metaspaceEvidence": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Optional metaspace supporting evidence source. Currently retained for manual context/future expansion; primary metaspace rules consume runtime metaspace and nativeMemorySummary Class data.",
+            "properties": {
+              "filePath": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Absolute or host-readable artifact path. Prefer this when the file already exists locally."
+              },
+              "inlineText": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Inline artifact text. Use this only when a file path is unavailable or impractical."
+              }
+            },
+            "additionalProperties": false
+          },
+          "nativeMemorySummary": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Optional native memory source. Pass filePath or inlineText for VM.native_memory summary output.",
+            "properties": {
+              "filePath": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Absolute or host-readable artifact path. Prefer this when the file already exists locally."
+              },
+              "inlineText": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Inline artifact text. Use this only when a file path is unavailable or impractical."
+              }
+            },
+            "additionalProperties": false
+          },
+          "repeatedSamplesPathOrText": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional repeated samples JSON or host-readable file path. Accepts inspectJvmRuntimeRepeated output shape."
+          },
+          "runtimeSnapshotText": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Required B3 text. Exported runtime snapshot content such as jcmd/jstat summaries."
+          },
+          "threadDump": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Required B5 artifact source. Pass an object with filePath or inlineText; bare string is not allowed. Prefer filePath when the thread dump already exists locally.",
+            "properties": {
+              "filePath": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Absolute or host-readable artifact path. Prefer this when the file already exists locally."
+              },
+              "inlineText": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Inline artifact text. Use this only when a file path is unavailable or impractical."
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "description": "完整 OfflineBundleDraft。关键字段：classHistogram/threadDump 必须是 {\"filePath\":\"...\"} 或 {\"inlineText\":\"...\"}；不要给这两个字段传 bare string。heapDumpAbsolutePath 才是普通字符串路径。"
+      },
+      "environment": {
+        "type": "string",
+        "description": "环境标签，如 prod / local。"
+      },
+      "optimizationGoal": {
+        "type": "string",
+        "description": "优化目标描述。"
+      },
+      "analysisDepth": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "description": "堆分析深度：fast / balanced / deep。为空时按 balanced 处理；只有 deep 会尝试附加 retention 证据。"
+      },
+      "confirmationToken": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "description": "用户同意使用导入的诊断材料时的 token；无直方图/线程/堆时可空。"
+      },
+      "proceedWithMissingRequired": {
+        "type": "boolean",
+        "description": "必选缺失时是否仍生成（降级）。"
+      }
+    },
+    "required": [
+      "draft",
+      "environment",
+      "optimizationGoal",
+      "proceedWithMissingRequired"
+    ],
+    "additionalProperties": false
+  }
+}

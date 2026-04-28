@@ -1,0 +1,18 @@
+{
+  "name": "inspectJvmRuntime",
+  "description": "Collect a safe read-only JVM runtime snapshot for the given PID using jcmd/jstat only (no histogram, thread dump, or heap dump). 中文：对指定 pid 做轻量只读 JVM 快照，不采集直方图、线程栈或堆转储。 Example arguments JSON: {\"pid\": 12345}",
+  "inputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "pid": {
+        "type": "integer",
+        "description": "Target JVM process id (decimal); must match a pid from listJavaApps."
+      }
+    },
+    "required": [
+      "pid"
+    ],
+    "additionalProperties": false
+  }
+}

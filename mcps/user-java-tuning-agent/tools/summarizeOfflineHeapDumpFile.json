@@ -1,0 +1,32 @@
+{
+  "name": "summarizeOfflineHeapDumpFile",
+  "description": "离线模式：在 MCP 服务端本地解析 heap dump 文件（.hprof），生成有字符上限的 Markdown 摘要。\nEnglish: Summarize a local .hprof with bounded Shark shallow-by-class rows without running full advice.\n摘要是 Shark 的浅层按类型合计（实例与数组），不是 MAT retained/dominator 分析；不向模型传输原始二进制。\n可与 finalizeOfflineHeapDump 输出的路径配合使用。",
+  "inputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "heapDumpAbsolutePath": {
+        "type": "string",
+        "description": "已完成写入的 .hprof 绝对路径（可与 OfflineBundleDraft.heapDumpAbsolutePath 相同）。"
+      },
+      "topClassLimit": {
+        "type": [
+          "integer",
+          "null"
+        ],
+        "description": "按浅层字节排序后输出的最大类型条数；留空则用服务端默认（通常 40）。"
+      },
+      "maxOutputChars": {
+        "type": [
+          "integer",
+          "null"
+        ],
+        "description": "Markdown 最大字符数；留空则用服务端默认（通常 32000）。"
+      }
+    },
+    "required": [
+      "heapDumpAbsolutePath"
+    ],
+    "additionalProperties": false
+  }
+}

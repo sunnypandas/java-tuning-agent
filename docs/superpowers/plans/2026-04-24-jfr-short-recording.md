@@ -1685,7 +1685,7 @@ Required fields:
 - `maxSummaryEvents`: parser event cap, typically `200000`
 - `confirmationToken`: non-blank approval token
 
-The tool runs one bounded `jcmd JFR.start ... duration=<Ns> filename=<path>` recording. It does not expose public `JFR.stop` lifecycle management, does not overwrite existing recordings, and does not feed JFR findings into `generateTuningAdvice` yet.
+The tool runs one bounded `jcmd JFR.start ... duration=<Ns> filename=<path>` recording. It does not expose public `JFR.stop` lifecycle management, does not overwrite existing recordings, and can feed JFR findings into advice when its `summary` is supplied as `jfrSummary`.
 ```
 
 Update security notes to mention JFR short recording as privileged.

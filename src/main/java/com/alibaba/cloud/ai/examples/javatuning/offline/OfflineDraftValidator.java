@@ -29,6 +29,9 @@ public class OfflineDraftValidator {
 		if (!missing.isEmpty()) {
 			degradation.add("必选材料不完整，分析置信度将降低。");
 		}
+		if (!draft.nativeMemorySummary().isPresent()) {
+			degradation.add("建议补充 nativeMemorySummary（文件路径或文本），以支持堆外/元空间诊断。");
+		}
 		boolean allowed = proceedWithMissingRequired || missing.isEmpty();
 		String prompt = buildPromptZh(missing, draft);
 		return new OfflineDraftValidationResult(missing, degradation, prompt, allowed, suggestedStep(missing));

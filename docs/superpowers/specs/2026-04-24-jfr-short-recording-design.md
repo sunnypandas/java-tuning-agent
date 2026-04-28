@@ -1,18 +1,18 @@
 # JFR Short Recording Design
 
 **Date:** 2026-04-24
-**Status:** Approved for implementation planning
+**Status:** Historical phase design; current public docs supersede phase-local limits where later integration landed.
 **Audience:** implementers of `java-tuning-agent` runtime collection, JFR parsing, MCP schema, and documentation workflows
 
 ---
 
 ## 1. Context
 
-`java-tuning-agent` currently supports live JVM discovery, lightweight `jcmd` / `jstat`
+At the time of this phase design, `java-tuning-agent` supported live JVM discovery, lightweight `jcmd` / `jstat`
 inspection, repeated safe sampling, privileged memory/GC evidence collection, and offline
 heap analysis. JFR is already named in the README as privileged diagnostics, and
-`RuntimeCollectionPolicy.CollectionRequest` already has an `includeJfr` slot, but the
-public MCP surface does not yet expose JFR collection or summaries.
+`RuntimeCollectionPolicy.CollectionRequest` already had an `includeJfr` slot, but the
+public MCP surface did not yet expose JFR collection or summaries.
 
 The first JFR slice should add practical profiling evidence without turning the project
 into a full recording lifecycle manager. The chosen direction is a short, one-shot JFR
@@ -48,8 +48,8 @@ References:
 
 - Do not add long-running recording lifecycle tools such as public `start`, `check`, `dump`,
   or `stop` MCP operations.
-- Do not attach JFR evidence to `MemoryGcEvidencePack` in this phase.
-- Do not make `generateTuningAdvice` consume JFR summaries in this phase.
+- For the original first phase, leave `MemoryGcEvidencePack` JFR attachment for later integration.
+- For the original first phase, leave `generateTuningAdvice` JFR-summary consumption for later integration.
 - Do not support custom `.jfc` template paths in this phase.
 - Do not enable `path-to-gc-roots`.
 - Do not parse every JFR event category; focus on GC, allocation, thread/lock, and execution

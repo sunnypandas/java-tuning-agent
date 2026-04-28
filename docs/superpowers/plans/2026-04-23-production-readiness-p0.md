@@ -873,10 +873,10 @@ Expected: FAIL because README and Cursor references still have older tool count 
 
 - [ ] **Step 3: Update README live and offline tool sections**
 
-Change the README opening to state the current tool count dynamically expected by the test after Task 4. If the final registered list is 11, use:
+Change the README opening to state the current tool count dynamically expected by the test after Task 4. The current public surface is 13 tools:
 
 ```markdown
-After the server is started over stdio, MCP clients should see **11** tools: five for **live JVM** workflows and six for **offline / imported** bundles.
+After the server is started over stdio, MCP clients should see **13** tools: seven for **live JVM** workflows and six for **offline / imported** bundles.
 ```
 
 Add a live tool row:

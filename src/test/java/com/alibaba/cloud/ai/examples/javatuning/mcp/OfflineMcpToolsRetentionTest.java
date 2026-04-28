@@ -205,7 +205,7 @@ class OfflineMcpToolsRetentionTest {
 	private static OfflineBundleDraft draftWithHeap(String heapDumpAbsolutePath) {
 		return new OfflineBundleDraft("pid=123", "jdk=21", "garbage-first heap total 1K, used 1K",
 				new OfflineArtifactSource(null, null), new OfflineArtifactSource(null, null), heapDumpAbsolutePath,
-				false, false, false, null, null, null, Map.of());
+				false, false, false, null, null, null, null, null, null, Map.of());
 	}
 
 	private static JvmRuntimeSnapshot stubSnapshot(long pid) {

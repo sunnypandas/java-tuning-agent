@@ -80,7 +80,11 @@ public class OfflineAnalysisService {
 		}
 		MemoryGcEvidencePack pack = new MemoryGcEvidencePack(base.snapshot(), base.classHistogram(), base.threadDump(),
 				missing, warnings, heapDumpPath, base.heapShallowSummary(), heapRetentionAnalysis)
-			.withGcLogSummary(base.gcLogSummary());
+			.withGcLogSummary(base.gcLogSummary())
+			.withNativeMemorySummary(base.nativeMemorySummary())
+			.withRepeatedSamplingResult(base.repeatedSamplingResult())
+			.withResourceBudgetEvidence(base.resourceBudgetEvidence())
+			.withDiagnosisWindow(base.diagnosisWindow());
 		return workflowService.generateAdviceFromEvidence(pack, ctx, environment, optimizationGoal);
 	}
 
