@@ -116,6 +116,15 @@ class McpPublicDocumentationContractTest {
 				"`collectMemoryGcEvidence(request)` → `generateTuningAdvice(...)`");
 	}
 
+	@Test
+	void mcpLaunchDocsShouldNotForceSpringKeepAlive() throws Exception {
+		assertThat(Files.readString(Path.of("README.md"))).contains("do not set `spring.main.keep-alive=true`");
+		assertThat(Files.readString(Path.of("pom.xml"))).doesNotContain("spring.main.keep-alive=true");
+		assertThat(Files.readString(Path.of("inspector-mcp-main.json"))).doesNotContain("spring.main.keep-alive=true");
+		assertThat(Files.readString(Path.of("docs/mcp-jvm-tuning-demo-walkthrough.md")))
+			.doesNotContain("spring.main.keep-alive=true");
+	}
+
 	private static List<String> publicDocTexts() throws Exception {
 		return List.of(Files.readString(Path.of("README.md")),
 				Files.readString(Path.of("docs/offline-mode-spec.md")),

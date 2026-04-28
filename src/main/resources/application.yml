@@ -3,7 +3,7 @@ spring:
     name: java-tuning-agent
   main:
     banner-mode: off
-    keep-alive: true
+    keep-alive: false
     web-application-type: none
   ai:
     mcp:

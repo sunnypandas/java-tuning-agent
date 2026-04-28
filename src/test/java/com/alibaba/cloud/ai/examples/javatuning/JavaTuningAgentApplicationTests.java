@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.ai.tool.ToolCallbackProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.core.env.Environment;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -14,6 +15,9 @@ class JavaTuningAgentApplicationTests {
 
 	@Autowired
 	private ToolCallbackProvider toolCallbackProvider;
+
+	@Autowired
+	private Environment environment;
 
 	@Test
 	void contextLoads() {
@@ -26,6 +30,11 @@ class JavaTuningAgentApplicationTests {
 					"collectMemoryGcEvidence", "generateTuningAdvice", "generateTuningAdviceFromEvidence",
 					"validateOfflineAnalysisDraft", "submitOfflineHeapDumpChunk", "finalizeOfflineHeapDump",
 					"generateOfflineTuningAdvice", "summarizeOfflineHeapDumpFile", "analyzeOfflineHeapRetention");
+	}
+
+	@Test
+	void shouldNotForceSpringKeepAliveForStdioMcpLifecycle() {
+		assertThat(environment.getProperty("spring.main.keep-alive", Boolean.class)).isFalse();
 	}
 
 }

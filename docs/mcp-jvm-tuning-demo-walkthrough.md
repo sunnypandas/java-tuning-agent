@@ -39,7 +39,7 @@
         "-Dspring.ai.mcp.server.stdio=true",
         "-Dspring.main.web-application-type=none",
         "-Dspring.main.banner-mode=off",
-        "-Dspring.main.keep-alive=true",
+        "-Dspring.main.keep-alive=false",
         "-jar",
         "C:/Users/panpa/Workspace/java-tuning-agent/target/java-tuning-agent-0.0.1-SNAPSHOT.jar"
       ]

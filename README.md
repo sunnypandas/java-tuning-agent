@@ -159,8 +159,11 @@ The default command whitelist is in [src/main/resources/application.yml](src/mai
 The MCP server is configured as:
 
 - `spring.main.web-application-type=none`
+- `spring.main.keep-alive=false`
 - `spring.ai.mcp.server.stdio=true`
 - `spring.ai.mcp.server.name=java-tuning-agent`
+
+For stdio MCP registrations, do not set `spring.main.keep-alive=true`: the server lifetime should be tied to the MCP client process/stdin. Forcing Spring Boot keep-alive can leave old MCP JVMs running after an LLM CLI session exits.
 
 ## Use from Codex
 
@@ -193,7 +196,7 @@ The `scripts/` directory provides both Windows PowerShell and Unix Bash variants
   - PowerShell: `-SkipHeapDump`
   - Bash: `--skip-heap-dump`
 
-### Stop `java-tuning-agent*.jar` processes
+### Stop stray `java-tuning-agent` processes
 
 - PowerShell: `.\scripts\kill-java-tuning-agent.ps1`
 - Bash: `scripts/kill-java-tuning-agent.sh`
@@ -263,7 +266,7 @@ On Windows, **`java -jar target/java-tuning-agent-*.jar`** keeps that file **loc
 **Recommended local workflow**
 
 1. Point MCP at **`mvn spring-boot:run`** instead of **`java -jar`** so the process loads **`target/classes`** and dependency jars from your local repository, not the repackaged executable jar.
-2. Use the Maven profile **`stdio-mcp-dev`**, which injects the same stdio-related `-D` flags as a jar launch. Example config: [inspector-mcp-dev.json](inspector-mcp-dev.json) (replace `${workspaceFolder}` with your repo path if the client does not expand it).
+2. Use the Maven profile **`stdio-mcp-dev`**, which injects the same stdio-related `-D` flags as a jar launch without forcing Spring Boot keep-alive. Example config: [inspector-mcp-dev.json](inspector-mcp-dev.json) (replace `${workspaceFolder}` with your repo path if the client does not expand it).
 3. While coding, run **`mvn compile`** or **`mvn test`**; restart the MCP server in the IDE to pick up changes. Run **`mvn package`** only when you need a distributable jar **after** stopping every process that was started with **`java -jar .../target/...jar`** (including duplicate MCP workers).
 
 **If you must keep `java -jar`**

@@ -159,7 +159,7 @@
 		<profile>
 			<id>stdio-mcp-dev</id>
 			<properties>
-				<mcp.stdio.jvm.args>-Dspring.ai.mcp.server.stdio=true -Dspring.main.web-application-type=none -Dspring.main.banner-mode=off -Dspring.main.keep-alive=true</mcp.stdio.jvm.args>
+				<mcp.stdio.jvm.args>-Dspring.ai.mcp.server.stdio=true -Dspring.main.web-application-type=none -Dspring.main.banner-mode=off -Dspring.main.keep-alive=false</mcp.stdio.jvm.args>
 			</properties>
 		</profile>
 	</profiles>

@@ -1,20 +1,26 @@
-# Stops every Java process whose command line runs a java-tuning-agent*.jar.
-# Run from project root: .\kill-java-tuning-agent.ps1
+# Stops java-tuning-agent MCP processes started from a jar, main class, or spring-boot:run.
+# Run from project root: .\scripts\kill-java-tuning-agent.ps1
 
 $ErrorActionPreference = 'Stop'
 
-$pattern = 'java-tuning-agent.*\.jar'
+$jarPattern = 'java-tuning-agent.*\.jar'
+$mainClassPattern = 'com\.alibaba\.cloud\.ai\.examples\.javatuning\.JavaTuningAgentApplication'
+$springBootRunPattern = 'spring-boot:run'
 $javaNames = @('java.exe', 'javaw.exe')
 
 $targets = Get-CimInstance Win32_Process |
     Where-Object {
         $javaNames -contains $_.Name -and
         $_.CommandLine -and
-        $_.CommandLine -match $pattern
+        (
+            $_.CommandLine -match $jarPattern -or
+            $_.CommandLine -match $mainClassPattern -or
+            ($_.CommandLine -match $springBootRunPattern -and $_.CommandLine -match 'java-tuning-agent')
+        )
     }
 
 if (-not $targets) {
-    Write-Host 'No running java-tuning-agent JAR processes found.'
+    Write-Host 'No running java-tuning-agent processes found.'
     exit 0
 }
 
