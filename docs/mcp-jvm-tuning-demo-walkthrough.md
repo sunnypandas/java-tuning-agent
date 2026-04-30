@@ -2,7 +2,7 @@
 
 这份文档是一份可直接照着操作的分享脚本，目标是完成三段演示：
 
-1. 先展示当前注册的 MCP，并重点介绍 `java-tuning-agent` 以及它暴露的 tool（**共 13 个**：7 个在线 JVM 链路 + 6 个离线导入；本脚本 **主线演示在线 evidence 复用链路**）
+1. 先展示当前注册的 MCP，并重点介绍 `java-tuning-agent` 以及它暴露的 tool（**共 13 个**：7 个在线 JVM 链路 + 6 个离线导入；本脚本主线演示在线 evidence 复用链路，并补充 repeated sampling / JFR / native memory 场景）
 2. 先手动完成一次在线 JVM tuning 流程
 3. 补充一段离线模式导入材料测试，再用 `.cursor` 里的 skill 演示一次全流程
 
@@ -15,7 +15,7 @@
 1. `MCP 是什么`
   先展示当前客户端里注册了哪些 MCP server，说明 `java-tuning-agent` 只是其中之一
 2. `java-tuning-agent 能做什么`
-  简单介绍在线排查链路的核心 tool（完整能力含离线共 **13** 个，见仓库 [README](../README.md)）
+  简单介绍在线排查链路的 7 个核心 tool（完整能力含离线共 **13** 个，见仓库 [README](../README.md)）
 3. `在线流程怎么落地`
   先手动完成一次在线排查流程
 4. `离线流程怎么落地`
@@ -25,7 +25,7 @@
 
 ### 1. 确认 `java-tuning-agent` MCP 已注册
 
-本仓库当前的 Inspector 配置在 [inspector-mcp-main.json](/c:/Users/panpa/Workspace/java-tuning-agent/inspector-mcp-main.json:1)。
+本仓库当前的 Inspector 配置在 [inspector-mcp-main.json](../inspector-mcp-main.json)。
 
 里面注册的是：
 
@@ -58,33 +58,91 @@
 mvn -f compat/memory-leak-demo/pom.xml spring-boot:run "-Dspring-boot.run.jvmArguments=-Xms128m -Xmx256m -XX:+UseG1GC"
 ```
 
-这个 demo 默认监听 `8091`，并且故意提供几类适合诊断的场景：保留 `byte[]`、高堆占用、可选死锁。
+这个 demo 默认监听 `8091`，并且故意提供几类适合诊断的场景：保留 `byte[]`、高堆占用、direct buffer/native memory、classloader/metaspace、JFR allocation/contention、可选死锁。
+
+如果你要演示 direct/native memory 或 NMT 相关规则，推荐加上 `-XX:NativeMemoryTracking=summary`：
+
+```powershell
+mvn -f compat/memory-leak-demo/pom.xml spring-boot:run "-Dspring-boot.run.jvmArguments=-Xms128m -Xmx256m -XX:+UseG1GC -XX:NativeMemoryTracking=summary"
+```
 
 ### 3. 预先制造一轮可观测现象
 
 为了让后面的 tuning 演示更稳定，建议先打几次流量：
 
+PowerShell:
+
 ```powershell
 curl.exe --% -X POST http://localhost:8091/api/leak/allocate -H "Content-Type: application/json" -d "{\"entries\":120,\"payloadKb\":512,\"tag\":\"round-1\"}"
 ```
+
+macOS/Linux shell:
+
+```bash
+curl -X POST http://localhost:8091/api/leak/allocate -H 'Content-Type: application/json' -d '{"entries":120,"payloadKb":512,"tag":"round-1"}'
+```
+
+PowerShell:
 
 ```powershell
 curl.exe --% -X POST http://localhost:8091/api/leak/raw/allocate -H "Content-Type: application/json" -d "{\"entries\":200,\"payloadKb\":256,\"tag\":\"raw-b\"}"
 ```
 
+macOS/Linux shell:
+
+```bash
+curl -X POST http://localhost:8091/api/leak/raw/allocate -H 'Content-Type: application/json' -d '{"entries":200,"payloadKb":256,"tag":"raw-b"}'
+```
+
+如果你准备展示 native memory / direct buffer：
+
+PowerShell:
+
+```powershell
+curl.exe --% -X POST http://localhost:8091/api/leak/direct/allocate -H "Content-Type: application/json" -d "{\"entries\":128,\"payloadKb\":1024,\"tag\":\"direct-128m\"}"
+```
+
+macOS/Linux shell:
+
+```bash
+curl -X POST http://localhost:8091/api/leak/direct/allocate -H 'Content-Type: application/json' -d '{"entries":128,"payloadKb":1024,"tag":"direct-128m"}'
+```
+
+如果你准备展示 class-count 趋势或 metaspace：
+
+PowerShell:
+
+```powershell
+curl.exe --% -X POST http://localhost:8091/api/leak/classloader/allocate -H "Content-Type: application/json" -d "{\"loaders\":1000,\"tag\":\"proxy-loaders\"}"
+```
+
+macOS/Linux shell:
+
+```bash
+curl -X POST http://localhost:8091/api/leak/classloader/allocate -H 'Content-Type: application/json' -d '{"loaders":1000,"tag":"proxy-loaders"}'
+```
+
 如果你准备在分享里展示 `thread dump` 和死锁识别，再执行一次：
+
+PowerShell:
 
 ```powershell
 curl.exe -X POST http://localhost:8091/api/leak/deadlock/trigger
+```
+
+macOS/Linux shell:
+
+```bash
+curl -X POST http://localhost:8091/api/leak/deadlock/trigger
 ```
 
 ### 4. 确认 `.cursor` 里的 skill 和 rule
 
 本次全流程演示会用到：
 
-- [java-tuning-agent-workflow skill](/c:/Users/panpa/Workspace/java-tuning-agent/.cursor/skills/java-tuning-agent-workflow/SKILL.md:1)
-- [tool 参数参考](/c:/Users/panpa/Workspace/java-tuning-agent/.cursor/skills/java-tuning-agent-workflow/reference.md:1)
-- [项目规则](/c:/Users/panpa/Workspace/java-tuning-agent/.cursor/rules/java-tuning-agent-mcp.mdc:1)
+- [java-tuning-agent-workflow skill](../.cursor/skills/java-tuning-agent-workflow/SKILL.md)
+- [tool 参数参考](../.cursor/skills/java-tuning-agent-workflow/reference.md)
+- [项目规则](../.cursor/rules/java-tuning-agent-mcp.mdc)
 
 你可以顺手提一句：这个 skill 约束了 Agent 必须按固定流程调用在线工具，并在采集证据后复用同一份 evidence 生成建议（离线另有六条工具链），而不是随便跳步骤。
 
@@ -94,7 +152,7 @@ curl.exe -X POST http://localhost:8091/api/leak/deadlock/trigger
 
 在你使用的 MCP 客户端里打开 server 列表。
 
-如果你用的是 MCP Inspector，就加载 [inspector-mcp-main.json](/c:/Users/panpa/Workspace/java-tuning-agent/inspector-mcp-main.json:1)，然后展示当前 server。
+如果你用的是 MCP Inspector，就加载 [inspector-mcp-main.json](../inspector-mcp-main.json)，然后展示当前 server。
 
 ### 讲解词
 
@@ -104,29 +162,47 @@ curl.exe -X POST http://localhost:8091/api/leak/deadlock/trigger
 > 当前客户端里可以注册多个 MCP server，`java-tuning-agent` 只是其中一个。  
 > 它的定位不是改代码，而是把本机 JVM 的诊断能力包装成标准 MCP tool，让 Agent 可以按流程调用。
 
-## Part 2: 介绍 `java-tuning-agent`（在线四条主线）
+## Part 2: 介绍 `java-tuning-agent`（在线 7 个 tool）
 
 完整注册表里还有 **6 个离线 tool**（草稿校验、heap 分块上传与 finalize、离线 `generateOfflineTuningAdvice`、可选 `summarizeOfflineHeapDumpFile` / `analyzeOfflineHeapRetention`），本段不展开，详见 [README](../README.md) 与 [offline-mode-spec.md](../offline-mode-spec.md)。
 
 ### 讲解重点
 
-在线排查的主线建议按这个顺序讲：
+在线排查建议按“先轻、后重、再解释”的顺序讲：
 
 
-| Tool                      | 作用 / Role        | 现场怎么讲                                      |
-| ------------------------- | ---------------- | ------------------------------------------ |
-| `listJavaApps`            | 列出当前用户可见的 JVM 进程 / discover local JVMs | 先找到“要分析谁”                                  |
-| `inspectJvmRuntime`       | 做一次轻量只读快照 / safe readonly snapshot | 先看基础运行状态                                   |
-| `collectMemoryGcEvidence` | 采集中等成本证据 / collect memory-GC evidence | 需要时再拿 histogram、thread dump、heap dump      |
+| Tool                               | 作用 / Role                                     | 现场怎么讲                                                 |
+| ---------------------------------- | --------------------------------------------- | ----------------------------------------------------- |
+| `listJavaApps`                     | 列出当前用户可见的 JVM 进程 / discover local JVMs        | 先找到“要分析谁”                                             |
+| `inspectJvmRuntime`                | 做一次轻量只读快照 / safe readonly snapshot            | 先看基础运行状态                                              |
+| `inspectJvmRuntimeRepeated`        | 做短窗口多次轻量采样 / repeated readonly samples        | 看趋势，而不是只看单点                                           |
+| `collectMemoryGcEvidence`          | 采集中等成本证据 / collect memory-GC evidence         | 需要时再拿 histogram、thread dump、heap dump                 |
+| `recordJvmFlightRecording`         | 录制短 JFR 并解析摘要 / short JFR recording           | 需要 allocation、contention、CPU 样本时再开 JFR                |
+| `generateTuningAdvice`             | 一步式采集并生成结论 / one-shot advice                  | 适合快速试用，不适合已经采过 evidence 的场景                           |
 | `generateTuningAdviceFromEvidence` | 从已采集证据产出结构化结论 / advise from existing evidence | 最后把同一份 evidence 归纳成 findings、recommendations、hotspots |
+
 
 若现场有人问 **heap dump**：补充说明采集到 `.hprof` 后，服务端在默认配置下会用 **Shark** 做**浅层**按类摘要并写进报告（非 MAT dominator）；详见 README。
 
 ### 讲解词
 
 > 这条主线对应的是一个很自然的排查链路：
-> 先找进程，再看快照，再按需补证据，最后生成分析结论。  
+> 先找进程，再看快照和趋势，再按需补 histogram、thread dump、heap dump 或 JFR，最后生成分析结论。  
 > 所以它不是一个“单点工具”，而是一条可组合、可编排的 tuning workflow。
+
+### demo 场景和 tool 对照
+
+
+| demo 场景                   | 触发接口                                  | 最适合展示的 MCP 能力                                                                    |
+| ------------------------- | ------------------------------------- | -------------------------------------------------------------------------------- |
+| retained records          | `POST /api/leak/allocate`             | class histogram、source hotspot、heap pressure                                     |
+| raw bytes                 | `POST /api/leak/raw/allocate`         | `[B` 直方图、heap dump shallow summary                                               |
+| direct buffer             | `POST /api/leak/direct/allocate`      | native memory / direct buffer evidence，建议启用 NMT                                  |
+| classloader growth        | `POST /api/leak/classloader/allocate` | `inspectJvmRuntimeRepeated` 的 class-count 趋势、metaspace/NMT                       |
+| young GC churn            | `POST /api/leak/churn`                | repeated sampling 的 YGC 趋势                                                       |
+| JFR allocation/contention | `POST /api/leak/jfr-workload`         | `recordJvmFlightRecording` 的 allocation / monitor contention / execution samples |
+| deadlock                  | `POST /api/leak/deadlock/trigger`     | thread dump deadlock hints                                                       |
+
 
 ## Part 3: 手动完成一次 JVM tuning 流程
 
@@ -216,16 +292,103 @@ C:/Users/panpa/AppData/Local/Temp/java-tuning-agent-heap-<pid>.hprof
 - `heapDumpPath`
 - `missingData`
 - `warnings`
+- `nativeMemorySummary`（启用 NMT 时更有价值）
+- `resourceBudgetEvidence`
 
 如果你前面已经触发了 `deadlock/trigger`，这里通常能看到死锁提示。  
-如果你前面已经打过 `allocate` 和 `raw/allocate`，这里通常能看到 `byte[]` 或相关对象占用较高。
+如果你前面已经打过 `allocate` 和 `raw/allocate`，这里通常能看到 `byte[]` 或相关对象占用较高。  
+如果你前面已经打过 `direct/allocate` 并且 JVM 启用了 `-XX:NativeMemoryTracking=summary`，这里可以重点看 direct/native memory 相关 evidence。
 
 #### 讲解词
 
 > 这一步的用户意图不是“我要调一个证据采集 tool”，而是“当前快照还不够，我需要更强的证据来判断问题在哪里”。  
 > 这也正好体现了这个 agent 的边界感：先轻量观察，再按需升级证据。
 
-### Step 4. 最后让系统给出结构化分析结论
+### Step 4. 可选：展示趋势采样和 JFR
+
+如果你想展示第一阶段之后新增的在线能力，可以在生成最终结论前补这两段。
+
+#### repeated sampling：看短窗口趋势
+
+适合配合 `/api/leak/churn` 或 `/api/leak/classloader/allocate`。
+
+触发 classloader 场景：
+
+PowerShell:
+
+```powershell
+curl.exe --% -X POST http://localhost:8091/api/leak/classloader/allocate -H "Content-Type: application/json" -d "{\"loaders\":1000,\"tag\":\"proxy-loaders\"}"
+```
+
+macOS/Linux shell:
+
+```bash
+curl -X POST http://localhost:8091/api/leak/classloader/allocate -H 'Content-Type: application/json' -d '{"loaders":1000,"tag":"proxy-loaders"}'
+```
+
+然后调用 `inspectJvmRuntimeRepeated`，示例参数：
+
+```json
+{
+  "request": {
+    "pid": 24980,
+    "sampleCount": 3,
+    "intervalMillis": 5000,
+    "includeThreadCount": true,
+    "includeClassCount": true,
+    "confirmationToken": ""
+  }
+}
+```
+
+重点展示：
+
+- `samples`
+- `loadedClassCount`
+- `youngGcCount`
+- `oldUsagePercent`
+- `warnings` / `missingData`
+
+#### JFR：看 allocation、contention、CPU sample
+
+先在 MCP 客户端里调用 `recordJvmFlightRecording`。示例参数：
+
+```json
+{
+  "request": {
+    "pid": 24980,
+    "durationSeconds": 30,
+    "settings": "profile",
+    "jfrOutputPath": "/tmp/memory-leak-demo-24980.jfr",
+    "maxSummaryEvents": 200000,
+    "confirmationToken": "user-approved"
+  }
+}
+```
+
+JFR 录制窗口打开后，在另一个终端立刻打 workload，让它落在录制时间内：
+
+PowerShell:
+
+```powershell
+curl.exe --% -X POST http://localhost:8091/api/leak/jfr-workload -H "Content-Type: application/json" -d "{\"durationSeconds\":20,\"workerThreads\":4,\"payloadBytes\":4096}"
+```
+
+macOS/Linux shell:
+
+```bash
+curl -X POST http://localhost:8091/api/leak/jfr-workload -H 'Content-Type: application/json' -d '{"durationSeconds":20,"workerThreads":4,"payloadBytes":4096}'
+```
+
+重点展示：
+
+- `jfrPath`
+- `summary.allocationSummary`
+- `summary.threadSummary`
+- `summary.executionSampleSummary`
+- 后续 report 中的 `JFR shows allocation hotspots` / `JFR shows thread contention pressure`
+
+### Step 5. 最后让系统给出结构化分析结论
 
 #### 你可以这样触发
 
@@ -256,6 +419,9 @@ C:/Users/panpa/AppData/Local/Temp/java-tuning-agent-heap-<pid>.hprof
 - `old gen` 占比偏高
 - class histogram 里 `byte[]` 很突出
 - 如果提前触发过死锁，thread dump 会明确给出 deadlock hints
+- 如果启用了 NMT 并触发 direct buffer，报告可以利用 native/direct buffer evidence
+- 如果补了 repeated sampling，报告可以利用趋势 evidence
+- 如果补了 JFR summary，报告会出现 JFR allocation/contention/execution sample 相关 findings
 - `sourceRoots` 提供后，报告会尝试把热点类映射回源码文件
 
 ### 可选补充说明
@@ -287,9 +453,42 @@ C:/Users/panpa/AppData/Local/Temp/java-tuning-agent-heap-<pid>.hprof
 5. `analyzeOfflineHeapRetention`（可选，做 holder/retention 方向证据）
 6. `generateOfflineTuningAdvice`
 
-### Step 1. 先构建离线草稿并做一次校验
+### Step 0. 推荐先用脚本导出离线 bundle
 
-先准备一个 `draft`（最小建议先填 B1-B6）：
+如果目标 JVM 当前能被本机 `jcmd` 访问，优先用仓库脚本导出材料。现在脚本会生成：
+
+- B1-B6 必选材料：`b1-jvm-identity.txt`、`b2-jdk-vm-version.txt`、`b3-runtime-snapshot.txt`、`b4-class-histogram.txt`、`b5-thread-dump.txt`、`b6-heap-dump.hprof`
+- R1-R3 推荐项：`r1-gc-log.txt` / `r1-gc-log-NOT_COLLECTED.txt`、`r2-app-log.txt` / `r2-app-log-NOT_COLLECTED.txt`、`r3-repeated-samples.json`
+- 增强证据：`optional-native-memory-summary.txt` 或 `optional-native-memory-summary-SKIPPED.txt`、`optional-resource-budget.txt`
+- 可直接作为草稿起点的 `offline-draft-template.json`
+
+macOS/Linux shell:
+
+```bash
+scripts/export-jvm-diagnostics.sh --export-dir /tmp/memory-leak-demo-offline --process-id <pid> --gc-log-path <optional-gc-log> --app-log-path <optional-app-log>
+```
+
+PowerShell:
+
+```powershell
+.\scripts\export-jvm-diagnostics.ps1 -ExportDir 'C:\tmp\memory-leak-demo-offline' -ProcessId <pid> -GcLogPath '<optional-gc-log>' -AppLogPath '<optional-app-log>'
+```
+
+如果只是快速验证离线草稿校验，可以先跳过 heap dump：
+
+```bash
+scripts/export-jvm-diagnostics.sh --export-dir /tmp/memory-leak-demo-offline --process-id <pid> --skip-heap-dump --sample-count 1 --sample-interval-seconds 0
+```
+
+```powershell
+.\scripts\export-jvm-diagnostics.ps1 -ExportDir 'C:\tmp\memory-leak-demo-offline' -ProcessId <pid> -SkipHeapDump -SampleCount 1 -SampleIntervalSeconds 0
+```
+
+跳过 heap dump 时，`offline-draft-template.json` 里的 `heapDumpAbsolutePath` 会为空；后续要么补一个 `.hprof` 路径，要么在离线 advice 阶段设置 `proceedWithMissingRequired=true` 降级继续。
+
+### Step 1. 构建离线草稿并做一次校验
+
+如果已经使用 export 脚本，优先打开 `offline-draft-template.json`，取其中的 `draft` 传给 `validateOfflineAnalysisDraft`。如果没有脚本导出，也可以手工准备一个 `draft`（最小建议先填 B1-B6）：
 
 - `jvmIdentityText`（B1）
 - `jdkInfoText`（B2）
@@ -309,7 +508,7 @@ C:/Users/panpa/AppData/Local/Temp/java-tuning-agent-heap-<pid>.hprof
 - `nativeMemorySummary`：`VM.native_memory summary` / `summary.diff` 的 `filePath` 或 `inlineText`，用于 native / direct buffer / metaspace 规则
 - `backgroundNotes.resourceBudget`：容器内存、RSS、CPU quota 等 key=value 预算信息；格式错误会降级，不阻断离线分析
 
-首次校验建议 `proceedWithMissingRequired=false`，先看缺失项：
+首次校验建议 `proceedWithMissingRequired=false`，先看缺失项。手工草稿示例：
 
 ```json
 {
@@ -374,7 +573,7 @@ C:/Users/panpa/AppData/Local/Temp/java-tuning-agent-heap-<pid>.hprof
     "dependencies": [],
     "configuration": {},
     "applicationNames": ["MemoryLeakDemoApplication"],
-    "sourceRoots": ["C:/Users/panpa/Workspace/java-tuning-agent/compat/memory-leak-demo/src/main/java"],
+    "sourceRoots": ["compat/memory-leak-demo"],
     "candidatePackages": ["com.alibaba.cloud.ai.compat.memoryleakdemo"]
   },
   "draft": { "...": "使用上一步确认后的完整 draft" },
@@ -429,7 +628,9 @@ Agent 应该会按固定顺序走：
 2. 再拿轻量快照
 3. 询问你是否要补更强的证据
 4. 再做证据采集
-5. 最后生成结构化分析结论
+5. 复用 evidence 生成结构化分析结论
+
+如果你要展示 repeated sampling、JFR 或 direct/native memory，可以在手动流程里演示；当前 skill 主线仍建议保持“识别进程、轻量快照、证据采集、结论生成”的稳定路径，便于现场复现。
 
 如果你希望补更完整的证据，直接回复：
 
@@ -461,11 +662,11 @@ Agent 应该会按固定顺序走：
 如果你想把全程压缩成一段比较自然的分享，可以照下面的节奏：
 
 1. “先看 MCP 列表，我们的 `java-tuning-agent` 是其中一个 server。”
-2. “在线排查链路负责找 JVM、看快照、补证据、复用同一份 evidence 出结论（整站共 13 个 tool）。”
-3. “我先手动演示一遍，但会用用户语言来描述诉求，而不是直接念 tool 名字。”
-4. “接着演示离线模式：校验草稿、可选上传 heap dump、最后生成离线结论。”
-5. “现在再用 skill 跑一次在线流程，你会发现 Agent 已经会自己按这条流程去编排。”
-6. “这就是把 JVM tuning 经验沉淀成 MCP tool 和 skill 之后的价值。”
+2. “在线排查链路负责找 JVM、看快照、看趋势、补证据、录 JFR、复用同一份 evidence 出结论（整站共 13 个 tool）。”
+3. “我先手动演示一遍主线，再补 direct buffer、classloader 和 JFR 这些扩展场景。”
+4. “接着演示离线模式：校验草稿、可选上传 heap dump、可选 deep retention，最后生成离线结论。”
+5. “现在再用 skill 跑一次在线主线，你会发现 Agent 已经会自己按这条流程去编排。”
+6. “这就是把 JVM tuning 经验沉淀成 MCP tool、demo 场景和 skill 之后的价值。”
 
 ## Troubleshooting During Demo
 
@@ -481,20 +682,82 @@ Agent 应该会按固定顺序走：
 
 重新打一轮流量：
 
+PowerShell:
+
 ```powershell
 curl.exe --% -X POST http://localhost:8091/api/leak/allocate -H "Content-Type: application/json" -d "{\"entries\":120,\"payloadKb\":512,\"tag\":\"round-2\"}"
 ```
+
+macOS/Linux shell:
+
+```bash
+curl -X POST http://localhost:8091/api/leak/allocate -H 'Content-Type: application/json' -d '{"entries":120,"payloadKb":512,"tag":"round-2"}'
+```
+
+PowerShell:
 
 ```powershell
 curl.exe --% -X POST http://localhost:8091/api/leak/raw/allocate -H "Content-Type: application/json" -d "{\"entries\":200,\"payloadKb\":256,\"tag\":\"raw-b-2\"}"
 ```
 
+macOS/Linux shell:
+
+```bash
+curl -X POST http://localhost:8091/api/leak/raw/allocate -H 'Content-Type: application/json' -d '{"entries":200,"payloadKb":256,"tag":"raw-b-2"}'
+```
+
+如果你要看 native/direct buffer：
+
+PowerShell:
+
+```powershell
+curl.exe --% -X POST http://localhost:8091/api/leak/direct/allocate -H "Content-Type: application/json" -d "{\"entries\":128,\"payloadKb\":1024,\"tag\":\"direct-128m-2\"}"
+```
+
+macOS/Linux shell:
+
+```bash
+curl -X POST http://localhost:8091/api/leak/direct/allocate -H 'Content-Type: application/json' -d '{"entries":128,"payloadKb":1024,"tag":"direct-128m-2"}'
+```
+
+如果你要看 class-count/metaspace 趋势：
+
+PowerShell:
+
+```powershell
+curl.exe --% -X POST http://localhost:8091/api/leak/classloader/allocate -H "Content-Type: application/json" -d "{\"loaders\":1000,\"tag\":\"proxy-loaders-2\"}"
+```
+
+macOS/Linux shell:
+
+```bash
+curl -X POST http://localhost:8091/api/leak/classloader/allocate -H 'Content-Type: application/json' -d '{"loaders":1000,"tag":"proxy-loaders-2"}'
+```
+
+### 没有 native memory / direct buffer 证据
+
+确认 demo JVM 启动参数里包含：
+
+```text
+-XX:NativeMemoryTracking=summary
+```
+
+NMT 必须在目标 JVM 启动时打开；已经运行中的进程不能靠 MCP 后补这个开关。
+
 ### 看不到死锁
 
 重新触发一次：
 
+PowerShell:
+
 ```powershell
 curl.exe -X POST http://localhost:8091/api/leak/deadlock/trigger
+```
+
+macOS/Linux shell:
+
+```bash
+curl -X POST http://localhost:8091/api/leak/deadlock/trigger
 ```
 
 如果它提示已经触发过，就重启 `memory-leak-demo` 再来一次。
@@ -509,3 +772,24 @@ Remove-Item -Force -LiteralPath "C:\Users\panpa\AppData\Local\Temp\java-tuning-a
 ```
 
 分享前最好把这里的 PID 替换成现场实际值，或者直接把文件名改成你演示时真实生成的那个。
+
+如果同一个 JVM 里跑过多个场景，也可以先清掉 retained stores 再继续：
+
+PowerShell:
+
+```powershell
+curl.exe -X POST http://localhost:8091/api/leak/clear
+curl.exe -X POST http://localhost:8091/api/leak/raw/clear
+curl.exe -X POST http://localhost:8091/api/leak/direct/clear
+curl.exe -X POST http://localhost:8091/api/leak/classloader/clear
+```
+
+macOS/Linux shell:
+
+```bash
+curl -X POST http://localhost:8091/api/leak/clear
+curl -X POST http://localhost:8091/api/leak/raw/clear
+curl -X POST http://localhost:8091/api/leak/direct/clear
+curl -X POST http://localhost:8091/api/leak/classloader/clear
+```
+

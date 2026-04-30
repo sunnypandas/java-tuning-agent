@@ -5,7 +5,7 @@
       "command": "mvn",
       "args": [
         "-f",
-        "${workspaceFolder}/pom.xml",
+        "/Users/panpan/Workspace/java-tuning-agent/pom.xml",
         "spring-boot:run",
         "-P",
         "stdio-mcp-dev",

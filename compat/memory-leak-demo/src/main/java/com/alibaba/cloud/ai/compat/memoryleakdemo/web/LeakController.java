@@ -4,8 +4,13 @@ import java.util.Optional;
 
 import com.alibaba.cloud.ai.compat.memoryleakdemo.churn.EphemeralChurnService;
 import com.alibaba.cloud.ai.compat.memoryleakdemo.churn.EphemeralChurnService.ChurnResult;
+import com.alibaba.cloud.ai.compat.memoryleakdemo.churn.JfrWorkloadService;
+import com.alibaba.cloud.ai.compat.memoryleakdemo.churn.JfrWorkloadService.JfrWorkloadResult;
 import com.alibaba.cloud.ai.compat.memoryleakdemo.deadlock.DeadlockDemoTrigger;
 import com.alibaba.cloud.ai.compat.memoryleakdemo.leak.AllocationSummary;
+import com.alibaba.cloud.ai.compat.memoryleakdemo.leak.ClassloaderPressureStore;
+import com.alibaba.cloud.ai.compat.memoryleakdemo.leak.ClassloaderSummary;
+import com.alibaba.cloud.ai.compat.memoryleakdemo.leak.DirectBufferStore;
 import com.alibaba.cloud.ai.compat.memoryleakdemo.leak.LeakStore;
 import com.alibaba.cloud.ai.compat.memoryleakdemo.leak.RetainedByteArrayStore;
 import jakarta.validation.Valid;
@@ -24,20 +29,32 @@ public class LeakController {
 
 	private static final String CHURN_HINT = "Agent young-GC churn rule needs very high YGC; repeat churn, use smaller heap, or run for a long soak.";
 
+	private static final String JFR_WORKLOAD_HINT = "Start recordJvmFlightRecording first, then call this endpoint while the recording window is open.";
+
 	private final LeakStore leakStore;
 
 	private final RetainedByteArrayStore retainedByteArrayStore;
 
+	private final DirectBufferStore directBufferStore;
+
+	private final ClassloaderPressureStore classloaderPressureStore;
+
 	private final EphemeralChurnService churnService;
+
+	private final JfrWorkloadService jfrWorkloadService;
 
 	private final Optional<DeadlockDemoTrigger> deadlockDemoTrigger;
 
 	public LeakController(LeakStore leakStore, RetainedByteArrayStore retainedByteArrayStore,
-			EphemeralChurnService churnService,
+			DirectBufferStore directBufferStore, ClassloaderPressureStore classloaderPressureStore,
+			EphemeralChurnService churnService, JfrWorkloadService jfrWorkloadService,
 			@Autowired(required = false) DeadlockDemoTrigger deadlockDemoTrigger) {
 		this.leakStore = leakStore;
 		this.retainedByteArrayStore = retainedByteArrayStore;
+		this.directBufferStore = directBufferStore;
+		this.classloaderPressureStore = classloaderPressureStore;
 		this.churnService = churnService;
+		this.jfrWorkloadService = jfrWorkloadService;
 		this.deadlockDemoTrigger = Optional.ofNullable(deadlockDemoTrigger);
 	}
 
@@ -75,11 +92,52 @@ public class LeakController {
 		return toClear(summary);
 	}
 
+	@PostMapping("/direct/allocate")
+	public LeakStatsResponse allocateDirect(@Valid @RequestBody AllocateRequest request) {
+		AllocationSummary summary = directBufferStore.allocate(request.entries(), request.payloadKb(), request.tag());
+		return toStats(summary);
+	}
+
+	@GetMapping("/direct/stats")
+	public LeakStatsResponse directStats() {
+		return toStats(directBufferStore.currentSummary());
+	}
+
+	@PostMapping("/direct/clear")
+	public ClearResponse clearDirect() {
+		AllocationSummary summary = directBufferStore.clear();
+		return toClear(summary);
+	}
+
+	@PostMapping("/classloader/allocate")
+	public ClassloaderStatsResponse allocateClassloaders(@Valid @RequestBody ClassloaderRequest request) {
+		return toClassloaderStats(classloaderPressureStore.allocate(request.loaders(), request.tag()));
+	}
+
+	@GetMapping("/classloader/stats")
+	public ClassloaderStatsResponse classloaderStats() {
+		return toClassloaderStats(classloaderPressureStore.currentSummary());
+	}
+
+	@PostMapping("/classloader/clear")
+	public ClassloaderClearResponse clearClassloaders() {
+		ClassloaderSummary summary = classloaderPressureStore.clear();
+		return new ClassloaderClearResponse(summary.clearedLoaders(), summary.retainedLoaders());
+	}
+
 	@PostMapping("/churn")
 	public ChurnResponse churn(@Valid @RequestBody ChurnRequest request) {
 		ChurnResult result = churnService.run(request.iterations(), request.payloadBytes());
 		return new ChurnResponse(result.iterations(), result.payloadBytes(), result.elapsedMs(), result.approxAllocatedMb(),
 				CHURN_HINT);
+	}
+
+	@PostMapping("/jfr-workload")
+	public JfrWorkloadResponse jfrWorkload(@Valid @RequestBody JfrWorkloadRequest request) {
+		JfrWorkloadResult result = jfrWorkloadService.run(request.durationSeconds(), request.workerThreads(),
+				request.payloadBytes());
+		return new JfrWorkloadResponse(result.durationSeconds(), result.workerThreads(), result.payloadBytes(),
+				result.allocationLoops(), result.contentionLoops(), JFR_WORKLOAD_HINT);
 	}
 
 	@PostMapping("/deadlock/trigger")
@@ -117,5 +175,10 @@ public class LeakController {
 
 	private static ClearResponse toClear(AllocationSummary summary) {
 		return new ClearResponse(summary.clearedEntries(), summary.clearedBytesEstimate(), summary.retainedEntries());
+	}
+
+	private static ClassloaderStatsResponse toClassloaderStats(ClassloaderSummary summary) {
+		return new ClassloaderStatsResponse(summary.retainedLoaders(), summary.generatedProxyClasses(),
+				summary.allocationRequests(), summary.recentAllocations());
 	}
 }

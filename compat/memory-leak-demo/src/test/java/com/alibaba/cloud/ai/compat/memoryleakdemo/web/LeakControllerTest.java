@@ -139,6 +139,54 @@ class LeakControllerTest {
 	}
 
 	@Test
+	void directAllocateAndClearShouldExposeOffHeapStats() throws Exception {
+		mockMvc.perform(post("/api/leak/direct/allocate")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+						{"entries":3,"payloadKb":4,"tag":"direct-demo"}
+						"""))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.retainedEntries").value(3))
+			.andExpect(jsonPath("$.retainedBytesEstimate").value(12288))
+			.andExpect(jsonPath("$.allocationRequests").value(1));
+
+		mockMvc.perform(get("/api/leak/direct/stats"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.retainedEntries").value(3))
+			.andExpect(jsonPath("$.recentAllocations[0].tag").value("direct-demo"));
+
+		mockMvc.perform(post("/api/leak/direct/clear"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.clearedEntries").value(3))
+			.andExpect(jsonPath("$.clearedBytesEstimate").value(12288))
+			.andExpect(jsonPath("$.remainingEntries").value(0));
+	}
+
+	@Test
+	void classloaderAllocateAndClearShouldExposeGeneratedClassStats() throws Exception {
+		mockMvc.perform(post("/api/leak/classloader/allocate")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+						{"loaders":4,"tag":"proxy-loaders"}
+						"""))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.retainedLoaders").value(4))
+			.andExpect(jsonPath("$.generatedProxyClasses").value(4))
+			.andExpect(jsonPath("$.allocationRequests").value(1))
+			.andExpect(jsonPath("$.recentAllocations[0].tag").value("proxy-loaders"));
+
+		mockMvc.perform(get("/api/leak/classloader/stats"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.retainedLoaders").value(4))
+			.andExpect(jsonPath("$.generatedProxyClasses").value(4));
+
+		mockMvc.perform(post("/api/leak/classloader/clear"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.clearedLoaders").value(4))
+			.andExpect(jsonPath("$.remainingLoaders").value(0));
+	}
+
+	@Test
 	void churnShouldReturnTiming() throws Exception {
 		mockMvc.perform(post("/api/leak/churn")
 				.contentType(MediaType.APPLICATION_JSON)
@@ -152,12 +200,33 @@ class LeakControllerTest {
 	}
 
 	@Test
+	void jfrWorkloadShouldReturnAWindowForFlightRecording() throws Exception {
+		mockMvc.perform(post("/api/leak/jfr-workload")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+						{"durationSeconds":1,"workerThreads":2,"payloadBytes":2048}
+						"""))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.durationSeconds").value(1))
+			.andExpect(jsonPath("$.workerThreads").value(2))
+			.andExpect(jsonPath("$.payloadBytes").value(2048))
+			.andExpect(jsonPath("$.allocationLoops").isNumber())
+			.andExpect(jsonPath("$.contentionLoops").isNumber())
+			.andExpect(jsonPath("$.hint").exists());
+	}
+
+	@Test
 	void validationGuideShouldExposeScenarios() throws Exception {
 		mockMvc.perform(get("/api/leak/validation-guide"))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.springApplicationName").value("memory-leak-demo"))
 			.andExpect(jsonPath("$.scenarios[0].id").value("retained-records-heap-pressure"))
-			.andExpect(jsonPath("$.scenarios[4].id").value("young-gc-churn"));
+			.andExpect(jsonPath("$.scenarios[4].id").value("young-gc-churn"))
+			.andExpect(jsonPath("$.scenarios[5].id").value("direct-buffer-native-memory"))
+			.andExpect(jsonPath("$.scenarios[6].id").value("classloader-metaspace-growth"))
+			.andExpect(jsonPath("$.scenarios[7].id").value("jfr-allocation-contention-window"))
+			.andExpect(jsonPath("$.mcpHints[?(@ =~ /.*recordJvmFlightRecording.*/)]").exists())
+			.andExpect(jsonPath("$.mcpHints[?(@ =~ /.*inspectJvmRuntimeRepeated.*/)]").exists());
 	}
 
 	@Test

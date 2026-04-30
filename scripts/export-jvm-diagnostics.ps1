@@ -19,6 +19,21 @@
 .PARAMETER SkipHeapDump
   Omit GC.heap_dump (no b6-heap-dump.hprof).
 
+.PARAMETER GcLogPath
+  Optional GC log file to copy into r1-gc-log.txt.
+
+.PARAMETER AppLogPath
+  Optional application log file to copy into r2-app-log.txt.
+
+.PARAMETER SampleCount
+  Repeated readonly samples to export into r3-repeated-samples.json. Default: 3.
+
+.PARAMETER SampleIntervalSeconds
+  Seconds between repeated samples. Default: 2.
+
+.PARAMETER SkipRepeatedSamples
+  Omit r3-repeated-samples.json.
+
 .EXAMPLE
   .\scripts\export-jvm-diagnostics.ps1 -ExportDir 'D:\exports\case-001' -ProcessId 12345
 
@@ -37,7 +52,17 @@ param(
     [Parameter(Mandatory = $false, HelpMessage = 'Omitted = list jcmd -l / jps -lvm and pick interactively')]
     [int]$ProcessId = 0,
 
-    [switch]$SkipHeapDump
+    [switch]$SkipHeapDump,
+
+    [string]$GcLogPath = '',
+
+    [string]$AppLogPath = '',
+
+    [int]$SampleCount = 3,
+
+    [int]$SampleIntervalSeconds = 2,
+
+    [switch]$SkipRepeatedSamples
 )
 
 Set-StrictMode -Version Latest
@@ -220,12 +245,274 @@ function Resolve-InteractivePid {
     }
 }
 
+function Copy-OptionalArtifact {
+    param(
+        [string]$SourcePath,
+        [Parameter(Mandatory = $true)][string]$TargetPath,
+        [Parameter(Mandatory = $true)][string]$AbsentPath,
+        [Parameter(Mandatory = $true)][string]$Label
+    )
+    if (-not [string]::IsNullOrWhiteSpace($SourcePath)) {
+        if (-not (Test-Path -LiteralPath $SourcePath -PathType Leaf)) {
+            throw "$Label path does not exist or is not a regular file: $SourcePath"
+        }
+        Copy-Item -LiteralPath $SourcePath -Destination $TargetPath -Force
+        return $true
+    }
+    @(
+        "$Label was not provided to this export script.",
+        'Pass the source file with the corresponding -*Path option if available.'
+    ) | Set-Content -LiteralPath $AbsentPath -Encoding utf8
+    return $false
+}
+
+function Get-EpochMilliseconds {
+    return [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+}
+
+function Convert-KbToBytes {
+    param([string]$Value)
+    return [int64]$Value * 1024L
+}
+
+function Parse-HeapInfoSample {
+    param([string]$Text)
+    $memory = [ordered]@{
+        heapUsedBytes = 0
+        heapCommittedBytes = 0
+        heapMaxBytes = 0
+    }
+    if ($Text -match '(?i)garbage-first heap\s+total reserved\s+(\d+)K,\s*committed\s+(\d+)K,\s*used\s+(\d+)K') {
+        $memory.heapMaxBytes = Convert-KbToBytes $Matches[1]
+        $memory.heapCommittedBytes = Convert-KbToBytes $Matches[2]
+        $memory.heapUsedBytes = Convert-KbToBytes $Matches[3]
+    }
+    elseif ($Text -match '(?i)garbage-first heap total\s+(\d+)K,\s*used\s+(\d+)K') {
+        $memory.heapCommittedBytes = Convert-KbToBytes $Matches[1]
+        $memory.heapUsedBytes = Convert-KbToBytes $Matches[2]
+    }
+    if ($Text -match '(?i)Metaspace\s+used\s+(\d+)K,\s*committed\s+(\d+)K,\s*reserved\s+(\d+)K') {
+        $memory.metaspaceUsedBytes = Convert-KbToBytes $Matches[1]
+    }
+    return $memory
+}
+
+function Parse-GcUtilSample {
+    param([string]$Text)
+    $lines = @($Text -split "`r?`n" | Where-Object { $_.Trim() })
+    if ($lines.Count -lt 2) {
+        return [ordered]@{
+            collector = 'unknown'
+            youngGcCount = 0
+            youngGcTimeMs = 0
+            fullGcCount = 0
+            fullGcTimeMs = 0
+            oldUsagePercent = $null
+        }
+    }
+    $values = @($lines[-1].Trim() -split '\s+')
+    function Read-LongAt([int]$Index) {
+        if ($values.Count -le $Index -or $values[$Index] -eq '-') { return 0L }
+        return [int64][double]$values[$Index]
+    }
+    function Read-MillisAt([int]$Index) {
+        if ($values.Count -le $Index -or $values[$Index] -eq '-') { return 0L }
+        return [int64][Math]::Round(([double]$values[$Index]) * 1000.0)
+    }
+    $old = $null
+    if ($values.Count -gt 3 -and $values[3] -ne '-') {
+        $old = [double]$values[3]
+    }
+    return [ordered]@{
+        collector = 'unknown'
+        youngGcCount = Read-LongAt 6
+        youngGcTimeMs = Read-MillisAt 7
+        fullGcCount = Read-LongAt 8
+        fullGcTimeMs = Read-MillisAt 9
+        oldUsagePercent = $old
+    }
+}
+
+function Parse-LoadedClassCount {
+    param([string]$Text)
+    $afterHeader = $false
+    foreach ($line in ($Text -split "`r?`n")) {
+        $t = $line.Trim()
+        if ($t.StartsWith('Loaded') -and $t.Contains('Bytes')) {
+            $afterHeader = $true
+            continue
+        }
+        if ($afterHeader -and $t -match '^(\d+)\s+') {
+            return [int64]$Matches[1]
+        }
+    }
+    return $null
+}
+
+function Parse-LiveThreadCount {
+    param([string]$Text)
+    if ($Text -match '(?m)^java\.threads\.live(?:\s+|\s*=\s*)(\d+)\s*$') {
+        return [int64]$Matches[1]
+    }
+    return $null
+}
+
+function Export-RepeatedSamples {
+    param([Parameter(Mandatory = $true)][string]$OutFile)
+    $started = Get-EpochMilliseconds
+    $samples = New-Object System.Collections.Generic.List[object]
+    $warnings = New-Object System.Collections.Generic.List[string]
+    $missing = New-Object System.Collections.Generic.List[string]
+    for ($i = 0; $i -lt $SampleCount; $i++) {
+        if ($i -gt 0 -and $SampleIntervalSeconds -gt 0) {
+            Start-Sleep -Seconds $SampleIntervalSeconds
+        }
+        $sampleWarnings = New-Object System.Collections.Generic.List[string]
+        $heap = Invoke-ToolTextRaw -ExePath $jcmd -ToolArgs @($pidStr, 'GC.heap_info')
+        $gc = Invoke-ToolTextRaw -ExePath $jstat -ToolArgs @('-gcutil', $pidStr)
+        $class = Invoke-ToolTextRaw -ExePath $jstat -ToolArgs @('-class', $pidStr)
+        $perf = Invoke-ToolTextRaw -ExePath $jcmd -ToolArgs @($pidStr, 'PerfCounter.print')
+        if ($heap.Code -ne 0) { [void]$sampleWarnings.Add('GC.heap_info failed') }
+        if ($gc.Code -ne 0) { [void]$sampleWarnings.Add('jstat -gcutil failed') }
+        if ($class.Code -ne 0) { [void]$sampleWarnings.Add('jstat -class failed') }
+        if ($perf.Code -ne 0) { [void]$sampleWarnings.Add('PerfCounter.print failed') }
+        foreach ($warning in $sampleWarnings) {
+            [void]$warnings.Add($warning)
+        }
+        [void]$samples.Add([ordered]@{
+                sampledAtEpochMs = Get-EpochMilliseconds
+                memory = Parse-HeapInfoSample $heap.Text
+                gc = Parse-GcUtilSample $gc.Text
+                threadCount = Parse-LiveThreadCount $perf.Text
+                loadedClassCount = Parse-LoadedClassCount $class.Text
+                warnings = @($sampleWarnings)
+            })
+    }
+    if ($samples.Count -lt 2) {
+        [void]$missing.Add('repeatedTrendAnalysis')
+    }
+    $payload = [ordered]@{
+        pid = $resolvedPid
+        samples = @($samples)
+        warnings = @($warnings)
+        missingData = @($missing)
+        startedAtEpochMs = $started
+        elapsedMs = [Math]::Max(0, (Get-EpochMilliseconds) - $started)
+    }
+    $payload | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $OutFile -Encoding utf8
+}
+
+function Export-NativeMemorySummary {
+    param(
+        [Parameter(Mandatory = $true)][string]$OutFile,
+        [Parameter(Mandatory = $true)][string]$SkippedFile
+    )
+    $summary = Invoke-ToolTextRaw -ExePath $jcmd -ToolArgs @($pidStr, 'VM.native_memory', 'summary')
+    if ($summary.Code -ne 0 -or [string]::IsNullOrWhiteSpace($summary.Text) -or $summary.Text -match '(?i)Native Memory Tracking.*(disabled|not enabled)') {
+        @(
+            'VM.native_memory summary was not available.',
+            'Start the target JVM with -XX:NativeMemoryTracking=summary to collect this evidence.',
+            '',
+            'jcmd output:',
+            $summary.Text
+        ) | Set-Content -LiteralPath $SkippedFile -Encoding utf8
+        return $false
+    }
+    $baseline = Invoke-ToolTextRaw -ExePath $jcmd -ToolArgs @($pidStr, 'VM.native_memory', 'baseline')
+    Start-Sleep -Seconds 1
+    $diff = Invoke-ToolTextRaw -ExePath $jcmd -ToolArgs @($pidStr, 'VM.native_memory', 'summary.diff')
+    $lines = New-Object System.Collections.Generic.List[string]
+    [void]$lines.Add('VM.native_memory summary')
+    [void]$lines.Add($summary.Text.TrimEnd())
+    if ($baseline.Code -eq 0 -and $diff.Code -eq 0 -and -not [string]::IsNullOrWhiteSpace($diff.Text)) {
+        [void]$lines.Add('')
+        [void]$lines.Add('VM.native_memory summary.diff')
+        [void]$lines.Add($diff.Text.TrimEnd())
+    }
+    $lines | Set-Content -LiteralPath $OutFile -Encoding utf8
+    return $true
+}
+
+function Export-ResourceBudget {
+    param([Parameter(Mandatory = $true)][string]$OutFile)
+    $lines = New-Object System.Collections.Generic.List[string]
+    [void]$lines.Add('# Optional resource-budget evidence for OfflineBundleDraft.backgroundNotes.resourceBudget')
+    try {
+        $proc = Get-Process -Id $resolvedPid -ErrorAction Stop
+        [void]$lines.Add("processRssBytes=$($proc.WorkingSet64)")
+    }
+    catch {
+        [void]$lines.Add('# processRssBytes unavailable')
+    }
+    $lines | Set-Content -LiteralPath $OutFile -Encoding utf8
+}
+
+function New-ArtifactSource {
+    param([string]$Path)
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        return [ordered]@{ filePath = ''; inlineText = '' }
+    }
+    return [ordered]@{ filePath = $Path; inlineText = '' }
+}
+
+function Read-TextOrEmpty {
+    param([string]$Path)
+    if (Test-Path -LiteralPath $Path -PathType Leaf) {
+        return [System.IO.File]::ReadAllText($Path)
+    }
+    return ''
+}
+
+function Write-OfflineDraftTemplate {
+    param([Parameter(Mandatory = $true)][string]$OutFile)
+    $heapPath = ''
+    $heapCandidate = Join-Path $root 'b6-heap-dump.hprof'
+    if (Test-Path -LiteralPath $heapCandidate -PathType Leaf) {
+        $heapPath = [System.IO.Path]::GetFullPath($heapCandidate)
+    }
+    $nativePath = ''
+    $nativeCandidate = Join-Path $root 'optional-native-memory-summary.txt'
+    if (Test-Path -LiteralPath $nativeCandidate -PathType Leaf) {
+        $nativePath = [System.IO.Path]::GetFullPath($nativeCandidate)
+    }
+    $gcLogOut = Join-Path $root 'r1-gc-log.txt'
+    $appLogOut = Join-Path $root 'r2-app-log.txt'
+    $repeatedOut = Join-Path $root 'r3-repeated-samples.json'
+    $resourceBudget = Read-TextOrEmpty (Join-Path $root 'optional-resource-budget.txt')
+    $draft = [ordered]@{
+        jvmIdentityText = Read-TextOrEmpty (Join-Path $root 'b1-jvm-identity.txt')
+        jdkInfoText = Read-TextOrEmpty (Join-Path $root 'b2-jdk-vm-version.txt')
+        runtimeSnapshotText = Read-TextOrEmpty (Join-Path $root 'b3-runtime-snapshot.txt')
+        classHistogram = New-ArtifactSource ([System.IO.Path]::GetFullPath((Join-Path $root 'b4-class-histogram.txt')))
+        threadDump = New-ArtifactSource ([System.IO.Path]::GetFullPath((Join-Path $root 'b5-thread-dump.txt')))
+        heapDumpAbsolutePath = $heapPath
+        explicitlyNoGcLog = -not (Test-Path -LiteralPath $gcLogOut -PathType Leaf)
+        explicitlyNoAppLog = -not (Test-Path -LiteralPath $appLogOut -PathType Leaf)
+        explicitlyNoRepeatedSamples = -not (Test-Path -LiteralPath $repeatedOut -PathType Leaf)
+        nativeMemorySummary = New-ArtifactSource $nativePath
+        gcLogPathOrText = $(if (Test-Path -LiteralPath $gcLogOut -PathType Leaf) { [System.IO.Path]::GetFullPath($gcLogOut) } else { '' })
+        appLogPathOrText = $(if (Test-Path -LiteralPath $appLogOut -PathType Leaf) { [System.IO.Path]::GetFullPath($appLogOut) } else { '' })
+        repeatedSamplesPathOrText = $(if (Test-Path -LiteralPath $repeatedOut -PathType Leaf) { [System.IO.Path]::GetFullPath($repeatedOut) } else { '' })
+        backgroundNotes = $(if ($resourceBudget.Trim()) { @{ resourceBudget = $resourceBudget } } else { @{} })
+    }
+    [ordered]@{
+        draft = $draft
+        proceedWithMissingRequired = $false
+    } | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $OutFile -Encoding utf8
+}
+
 $jcmd = Resolve-JdkTool -Name 'jcmd'
 $jstat = Resolve-JdkTool -Name 'jstat'
 $jps = Resolve-JdkTool -Name 'jps'
 
 if ($ProcessId -lt 0) {
     throw 'ProcessId cannot be negative.'
+}
+if ($SampleCount -lt 1) {
+    throw 'SampleCount must be a positive integer.'
+}
+if ($SampleIntervalSeconds -lt 0) {
+    throw 'SampleIntervalSeconds must be zero or greater.'
 }
 $resolvedPid = 0
 if ($ProcessId -gt 0) {
@@ -257,6 +544,11 @@ processId:       $resolvedPid
 pidSource:       $(if ($ProcessId -gt 0) { 'parameter' } else { 'interactive' })
 host:            $env:COMPUTERNAME
 skipHeapDump:    $SkipHeapDump
+sampleCount:     $SampleCount
+sampleIntervalS: $SampleIntervalSeconds
+skipRepeated:    $SkipRepeatedSamples
+gcLogPath:       $GcLogPath
+appLogPath:      $AppLogPath
 jcmd:            $jcmd
 jstat:           $jstat
 jps:             $jps
@@ -325,6 +617,24 @@ else {
         "Manual: jcmd $pidStr GC.heap_dump <absolute-path>.hprof"
     )
 }
+
+# --- Recommended / enhanced offline evidence ---
+[void](Copy-OptionalArtifact -SourcePath $GcLogPath -TargetPath (Join-Path $root 'r1-gc-log.txt') -AbsentPath (Join-Path $root 'r1-gc-log-NOT_COLLECTED.txt') -Label 'GC log')
+[void](Copy-OptionalArtifact -SourcePath $AppLogPath -TargetPath (Join-Path $root 'r2-app-log.txt') -AbsentPath (Join-Path $root 'r2-app-log-NOT_COLLECTED.txt') -Label 'application log')
+
+if (-not $SkipRepeatedSamples) {
+    Export-RepeatedSamples -OutFile (Join-Path $root 'r3-repeated-samples.json')
+}
+else {
+    Set-Content -LiteralPath (Join-Path $root 'r3-repeated-samples-SKIPPED.txt') -Encoding utf8 -Value @(
+        'Repeated samples were skipped (-SkipRepeatedSamples).',
+        'Manual: run inspectJvmRuntimeRepeated or rerun this script without -SkipRepeatedSamples.'
+    )
+}
+
+[void](Export-NativeMemorySummary -OutFile (Join-Path $root 'optional-native-memory-summary.txt') -SkippedFile (Join-Path $root 'optional-native-memory-summary-SKIPPED.txt'))
+Export-ResourceBudget -OutFile (Join-Path $root 'optional-resource-budget.txt')
+Write-OfflineDraftTemplate -OutFile (Join-Path $root 'offline-draft-template.json')
 
 Write-Host ''
 Write-Host 'Export finished:' -ForegroundColor Green
