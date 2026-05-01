@@ -129,12 +129,21 @@ public class SystemCommandExecutor implements CommandExecutor {
 
 	private static void destroyProcess(Process process) {
 		ProcessHandle handle = process.toHandle();
-		handle.descendants().forEach(ProcessHandle::destroyForcibly);
+		destroyDescendants(handle);
 		process.destroyForcibly();
 		if (isWindows()) {
 			runTaskKill(process.pid());
 		}
 		awaitProcessExit(handle, TimeUnit.SECONDS.toMillis(5));
+	}
+
+	private static void destroyDescendants(ProcessHandle handle) {
+		try {
+			handle.descendants().forEach(ProcessHandle::destroyForcibly);
+		}
+		catch (RuntimeException ignored) {
+			// Some restricted hosts deny descendant enumeration; still kill the main process below.
+		}
 	}
 
 	private static boolean awaitProcessExit(ProcessHandle handle, long timeoutMs) {

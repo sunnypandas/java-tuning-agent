@@ -37,7 +37,7 @@ class SharkHeapRetentionAnalyzerTest {
 			.anySatisfy(limit -> assertThat(limit).contains("Retained bytes"));
 		assertThat(result.summaryMarkdown()).contains("Heap retention analysis");
 		assertThat(result.summaryMarkdown()).contains("reachable subgraph");
-		assertThat(result.summaryMarkdown()).contains("not full dominator retained-size");
+		assertThat(result.summaryMarkdown()).contains("not MAT exact retained size");
 		assertThat(result.retentionSummary().summaryMarkdown()).isEqualTo(result.summaryMarkdown());
 	}
 
