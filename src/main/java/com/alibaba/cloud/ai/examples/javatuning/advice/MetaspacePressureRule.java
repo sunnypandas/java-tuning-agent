@@ -14,6 +14,12 @@ public final class MetaspacePressureRule implements DiagnosisRule {
 		Long classCommitted = summary != null ? summary.classCommittedBytes() : null;
 		boolean largeMetaspace = metaspaceUsed >= 512L * 1024L * 1024L;
 		boolean classPressure = classCommitted != null && classCommitted >= 512L * 1024L * 1024L;
+		boolean classloaderSignal = hasClassloaderHeapSignal(evidence);
+		boolean classCountGrowth = hasClassCountGrowth(evidence);
+		if (summary == null && (largeMetaspace || classloaderSignal || classCountGrowth)) {
+			addNextStepIfMissing(scratch,
+					"Collect NMT Class category to distinguish class metadata pressure from heap retention.");
+		}
 		if (!largeMetaspace && !classPressure) {
 			return;
 		}
@@ -23,6 +29,31 @@ public final class MetaspacePressureRule implements DiagnosisRule {
 		scratch.addRecommendation(new TuningRecommendation("Inspect classloader lifecycle and metaspace sizing", "jvm-gc",
 				"-XX:MaxMetaspaceSize=<size>", "Avoid class metadata growth surprises and reduce classloader leaks",
 				"Hard caps can fail fast if real class footprint exceeds budget", "Need classloader ownership mapping"));
+	}
+
+	private static boolean hasClassloaderHeapSignal(MemoryGcEvidencePack evidence) {
+		return evidence.classHistogram() != null && evidence.classHistogram()
+			.entries()
+			.stream()
+			.anyMatch(entry -> entry.className() != null
+					&& (entry.className().contains("ClassloaderPressureStore$DemoProxyClassLoader")
+							|| entry.className().contains("ClassLoader")));
+	}
+
+	private static boolean hasClassCountGrowth(MemoryGcEvidencePack evidence) {
+		if (evidence.repeatedSamplingResult() == null || evidence.repeatedSamplingResult().samples().size() < 2) {
+			return false;
+		}
+		var samples = evidence.repeatedSamplingResult().samples();
+		Long first = samples.get(0).loadedClassCount();
+		Long last = samples.get(samples.size() - 1).loadedClassCount();
+		return first != null && last != null && last - first >= 500L;
+	}
+
+	private static void addNextStepIfMissing(DiagnosisScratch scratch, String step) {
+		if (!scratch.nextSteps().contains(step)) {
+			scratch.addNextStep(step);
+		}
 	}
 
 	private long mb(long bytes) {

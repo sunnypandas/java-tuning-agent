@@ -36,8 +36,8 @@ public final class HeapRetentionInsightsRule implements DiagnosisRule {
 		boolean strongerRetainedStyleSignal = isStrongerRetainedStyleSignal(retention);
 		String evidenceText = buildEvidenceText(retention, holder, strongerRetainedStyleSignal);
 		String impact = strongerRetainedStyleSignal
-				? "A holder-oriented retained-style approximation suggests long-lived reachability and is worth reviewing against allocation history or cache lifecycle."
-				: "A retention hint suggests long-lived reachability, but the result is approximate and should be validated before changing code.";
+				? "A completed dominator-style pass gives a holder-oriented retained-style approximation; it is still approximate, but stronger than a single histogram and worth reviewing against allocation history or cache lifecycle."
+				: "A bounded retention hint suggests long-lived reachability, but the result is approximate and should be validated before changing code.";
 
 		scratch.addFinding(new TuningFinding(FINDING_TITLE, "medium", evidenceText, "retention-hint", impact));
 		scratch.addRecommendation(new TuningRecommendation(
@@ -50,6 +50,10 @@ public final class HeapRetentionInsightsRule implements DiagnosisRule {
 		String nextStep = "Review " + holder.holderType() + " -> " + safe(holder.exampleFieldPath())
 				+ " and compare against allocation history or cache lifecycle; treat this as retained-style approximation evidence.";
 		scratch.addNextStep(nextStep);
+		if (!retention.warnings().isEmpty()) {
+			scratch.addNextStep("Account for retention analysis caveats before ranking fixes: "
+					+ limitWarnings(retention.warnings()));
+		}
 		if (!strongerRetainedStyleSignal) {
 			scratch.addNextStep("Treat the warning text as a fallback limit: Shark-style results show reachability hints, not MAT-exact retained size.");
 		}
@@ -83,9 +87,16 @@ public final class HeapRetentionInsightsRule implements DiagnosisRule {
 			sb.append(" retainedBytesApprox=unavailable");
 		}
 		sb.append(" note=").append(strongerRetainedStyleSignal
-				? "holder-oriented retained-style approximation evidence from a completed dominator-style pass"
-				: "retention hint from an approximate or fallback analysis");
+				? "holder-oriented retained-style approximation evidence from a completed dominator-style pass; not MAT exact retained size"
+				: retentionNote(retention));
 		return sb.toString();
+	}
+
+	private static String retentionNote(HeapRetentionAnalysisResult retention) {
+		if ("dominator-style".equalsIgnoreCase(retention.engine())) {
+			return "bounded dominator approximation with caveats; retainedBytesApprox is not MAT exact retained size";
+		}
+		return "retention hint from an approximate or fallback analysis; reachable subgraph estimate is not MAT exact retained size";
 	}
 
 	private static String limitWarnings(List<String> warnings) {

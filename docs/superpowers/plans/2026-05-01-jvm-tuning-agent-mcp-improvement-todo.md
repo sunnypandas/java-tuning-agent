@@ -84,7 +84,7 @@ Task 1 and Task 2 are highest priority because they directly prevent incorrect c
 
 ### Task 1: Add Offline Target Consistency Guard
 
-**Status:** `[ ]`
+**Status:** `[x]`
 
 **Why:** The offline validator accepted a complete bundle for the wrong JVM. A complete but wrong bundle is worse than an incomplete bundle because it produces confident-looking advice for the wrong source tree.
 
@@ -97,7 +97,7 @@ Task 1 and Task 2 are highest priority because they directly prevent incorrect c
 - Test: `src/test/java/com/alibaba/cloud/ai/examples/javatuning/offline/OfflineTargetConsistencyAnalyzerTest.java`
 - Test: `src/test/java/com/alibaba/cloud/ai/examples/javatuning/offline/OfflineAnalysisServiceTest.java`
 
-- [ ] **Step 1: Write analyzer tests for matching target**
+- [x] **Step 1: Write analyzer tests for matching target**
 
 Create `OfflineTargetConsistencyAnalyzerTest` with a test that builds an `OfflineBundleDraft` containing:
 
@@ -119,7 +119,7 @@ assertThat(result.extractedJavaCommand()).contains("MemoryLeakDemoApplication");
 assertThat(result.extractedPids()).contains(1961L);
 ```
 
-- [ ] **Step 2: Write analyzer tests for mismatched target**
+- [x] **Step 2: Write analyzer tests for mismatched target**
 
 Add a second test where `jvmIdentityText` and `runtimeSnapshotText` contain `com.alibaba.cloud.ai.examples.javatuning.JavaTuningAgentApplication`, while `CodeContextSummary.applicationNames` still contains `MemoryLeakDemoApplication`.
 
@@ -132,7 +132,7 @@ assertThat(result.warnings()).anyMatch(w -> w.contains("MemoryLeakDemoApplicatio
 assertThat(result.warnings()).anyMatch(w -> w.contains("JavaTuningAgentApplication"));
 ```
 
-- [ ] **Step 3: Implement `OfflineTargetConsistencyResult`**
+- [x] **Step 3: Implement `OfflineTargetConsistencyResult`**
 
 Use a compact immutable record:
 
@@ -151,7 +151,7 @@ public record OfflineTargetConsistencyResult(
 }
 ```
 
-- [ ] **Step 4: Implement `OfflineTargetConsistencyAnalyzer`**
+- [x] **Step 4: Implement `OfflineTargetConsistencyAnalyzer`**
 
 Extractor behavior:
 
@@ -169,7 +169,7 @@ Warnings should be explicit and actionable:
 Offline evidence target appears to be com.alibaba.cloud.ai.examples.javatuning.JavaTuningAgentApplication, but source context expects MemoryLeakDemoApplication / com.alibaba.cloud.ai.compat.memoryleakdemo.
 ```
 
-- [ ] **Step 5: Integrate into `OfflineAnalysisService.generateOfflineAdvice`**
+- [x] **Step 5: Integrate into `OfflineAnalysisService.generateOfflineAdvice`**
 
 After validation and before `evidenceAssembler.build(draft)`, run the analyzer with the normalized `CodeContextSummary`.
 
@@ -179,7 +179,7 @@ If `targetMatched=false`:
 - Add `offlineTargetConsistency` to `missingData()` only if the mismatch is strong.
 - Do not fail by default in this task, to avoid a breaking schema/behavior change.
 
-- [ ] **Step 6: Surface warnings in `validateOfflineAnalysisDraft` when context is unavailable**
+- [x] **Step 6: Surface warnings in `validateOfflineAnalysisDraft` when context is unavailable**
 
 Keep `validateOfflineAnalysisDraft` structural. Add PID consistency checks that do not require code context:
 
@@ -188,7 +188,7 @@ Keep `validateOfflineAnalysisDraft` structural. Add PID consistency checks that 
 
 Add these to `degradationWarnings`, not `missingRequired`.
 
-- [ ] **Step 7: Run tests**
+- [x] **Step 7: Run tests**
 
 Run:
 
@@ -198,7 +198,7 @@ mvn -q -Dtest=OfflineDraftValidatorTest,OfflineTargetConsistencyAnalyzerTest,Off
 
 Expected: all selected tests pass.
 
-- [ ] **Step 8: Update docs**
+- [x] **Step 8: Update docs**
 
 Update:
 
@@ -218,7 +218,7 @@ State that offline bundles now warn when runtime identity and supplied source co
 
 ### Task 2: Fix JFR Recording Completion Wait
 
-**Status:** `[ ]`
+**Status:** `[x]`
 
 **Why:** `jcmd JFR.start duration=30s filename=...` can return immediately while recording continues in the target JVM. The current tool can report `jfrFile` missing even though the file appears after the duration window.
 
@@ -229,7 +229,7 @@ State that offline bundles now warn when runtime identity and supplied source co
 - Test: `src/test/java/com/alibaba/cloud/ai/examples/javatuning/runtime/SafeJvmRuntimeCollectorJfrTest.java`
 - Docs: `README.md`
 
-- [ ] **Step 1: Add failing JFR test for early-returning `JFR.start`**
+- [x] **Step 1: Add failing JFR test for early-returning `JFR.start`**
 
 In `SafeJvmRuntimeCollectorJfrTest`, add a test named:
 
@@ -251,11 +251,11 @@ assertThat(result.missingData()).isEmpty();
 assertThat(result.warnings()).doesNotContain("JFR recording command finished but file was not found");
 ```
 
-- [ ] **Step 2: Refactor the test collector sleeper**
+- [x] **Step 2: Refactor the test collector sleeper**
 
 Current tests pass `SafeJvmRuntimeCollector::sleepUncheckedForTests`. Add a small test sleeper helper that records requested sleep durations and creates the target file when the collector waits for at least the remaining duration.
 
-- [ ] **Step 3: Change wait budget calculation**
+- [x] **Step 3: Change wait budget calculation**
 
 In `SafeJvmRuntimeCollector.recordJfr`, after `record = executor.execute(...)`, compute:
 
@@ -274,7 +274,7 @@ waitForStableFile(output, fileWaitBudgetMs)
 
 instead of only waiting for `completionGraceMs`.
 
-- [ ] **Step 4: Make the warning more accurate**
+- [x] **Step 4: Make the warning more accurate**
 
 If the file is still missing after the full wait budget, include duration and path:
 
@@ -286,7 +286,7 @@ JFR recording file was not found after waiting for durationSeconds=<N> plus comp
 
 Do not add `JFR.check` in this task unless the simple wait budget still fails tests. Keep the implementation minimal.
 
-- [ ] **Step 6: Run tests**
+- [x] **Step 6: Run tests**
 
 Run:
 
@@ -306,7 +306,7 @@ Expected: all JFR request and collector tests pass.
 
 ### Task 3: Add Evidence Merge Ergonomics
 
-**Status:** `[ ]`
+**Status:** `[x]`
 
 **Why:** Users often gather evidence in multiple calls: snapshot, repeated sampling, JFR, histogram, thread dump, heap dump. The final advice should not require the agent to manually reconstruct or remember every object.
 
@@ -319,7 +319,7 @@ Expected: all JFR request and collector tests pass.
 - Test: `src/test/java/com/alibaba/cloud/ai/examples/javatuning/runtime/MemoryGcEvidenceMergerTest.java`
 - Test: `src/test/java/com/alibaba/cloud/ai/examples/javatuning/mcp/McpToolSchemaContractTest.java`
 
-- [ ] **Step 1: Write merger tests**
+- [x] **Step 1: Write merger tests**
 
 Create tests for:
 
@@ -329,13 +329,13 @@ Create tests for:
 - Merging warnings and missing data removes duplicates while preserving order.
 - Diagnosis windows merge into a single window covering the earliest start and latest end.
 
-- [ ] **Step 2: Implement `MemoryGcEvidenceMerger`**
+- [x] **Step 2: Implement `MemoryGcEvidenceMerger`**
 
 API:
 
 ```java
 public final class MemoryGcEvidenceMerger {
-	public MemoryGcEvidencePack merge(
+	public static MemoryGcEvidencePack merge(
 			MemoryGcEvidencePack base,
 			RepeatedSamplingResult repeated,
 			JfrSummary jfr,
@@ -353,7 +353,7 @@ Rules:
 - Do not overwrite existing non-null evidence unless the caller explicitly passes a richer value and tests cover it.
 - Combine warning/missing lists without duplicates.
 
-- [ ] **Step 3: Improve `generateTuningAdviceFromEvidence` signature**
+- [x] **Step 3: Improve `generateTuningAdviceFromEvidence` signature**
 
 Add optional MCP params to `JavaTuningMcpTools.generateTuningAdviceFromEvidence`:
 
@@ -364,9 +364,9 @@ Add optional MCP params to `JavaTuningMcpTools.generateTuningAdviceFromEvidence`
 
 Use the merger before calling `workflowService.generateAdviceFromEvidence`.
 
-This changes the tool schema. Update generated descriptors and docs in Task 9.
+This changes the tool schema. Update generated descriptors (synced for `generateTuningAdviceFromEvidence` in this task) and refresh narrative docs in Task 9.
 
-- [ ] **Step 4: Keep backwards compatibility**
+- [x] **Step 4: Keep backwards compatibility**
 
 Existing calls with only:
 
@@ -381,7 +381,7 @@ Existing calls with only:
 
 must still work.
 
-- [ ] **Step 5: Run tests**
+- [x] **Step 5: Run tests**
 
 Run:
 
@@ -401,7 +401,7 @@ Expected: all selected tests pass. If schema snapshot tests fail, regenerate des
 
 ### Task 4: Upgrade Hotspot Correlation Beyond Histogram Classes
 
-**Status:** `[ ]`
+**Status:** `[x]`
 
 **Why:** Histogram classes often show `byte[]` or `int[]`, but source-level hotspots live in holders such as `AllocationRecord.payload`, `InMemoryLeakStore.retainedRecords`, or deadlock stack frames.
 
@@ -413,7 +413,7 @@ Expected: all selected tests pass. If schema snapshot tests fail, regenerate des
 - Modify: `src/main/java/com/alibaba/cloud/ai/examples/javatuning/advice/SuspectedCodeHotspot.java` only if the current record cannot express evidence source cleanly.
 - Test: `src/test/java/com/alibaba/cloud/ai/examples/javatuning/source/SourceHotspotCorrelationServiceTest.java`
 
-- [ ] **Step 1: Write tests for retention path to source file**
+- [x] **Step 1: Write tests for retention path to source file**
 
 Build a synthetic `HeapRetentionAnalysisResult` with representative chain:
 
@@ -432,7 +432,7 @@ evidenceLink contains heap-retention
 confidence is high or medium-high
 ```
 
-- [ ] **Step 2: Write tests for thread dump stack to source file**
+- [x] **Step 2: Write tests for thread dump stack to source file**
 
 Build a `ThreadDumpSummary` with deadlock hints containing:
 
@@ -448,7 +448,7 @@ evidenceLink contains Thread.print
 confidence = high
 ```
 
-- [ ] **Step 3: Write tests for JFR stack to source file**
+- [x] **Step 3: Write tests for JFR stack to source file**
 
 Build a `JfrSummary` with execution samples containing:
 
@@ -463,7 +463,7 @@ className = com.alibaba.cloud.ai.compat.memoryleakdemo.churn.JfrWorkloadService
 evidenceLink contains JFR
 ```
 
-- [ ] **Step 4: Implement `SourceHotspotCorrelationService`**
+- [x] **Step 4: Implement `SourceHotspotCorrelationService`**
 
 Merge hotspot candidates from:
 
@@ -482,7 +482,7 @@ Ranking order:
 
 Deduplicate by normalized FQCN. Keep the first strongest evidence reason.
 
-- [ ] **Step 5: Replace direct finder call in `JavaTuningWorkflowService`**
+- [x] **Step 5: Replace direct finder call in `JavaTuningWorkflowService`**
 
 Current logic calls:
 
@@ -492,7 +492,7 @@ sourceHotspotFinder.hotspotsFromHistogram(...)
 
 Replace with the new correlation service so `generateAdviceFromEvidence` considers the full evidence pack.
 
-- [ ] **Step 6: Run tests**
+- [x] **Step 6: Run tests**
 
 Run:
 
@@ -512,7 +512,7 @@ Expected: existing histogram mapping still works, and new retention/thread/JFR h
 
 ### Task 5: Make Offline Snapshot Parsing Robust To Extra Text
 
-**Status:** `[ ]`
+**Status:** `[x]`
 
 **Why:** A compressed runtime snapshot containing `heap.max=6442450944` caused generation to fail. Offline parsing should degrade on unknown lines instead of aborting the whole report.
 
@@ -523,7 +523,7 @@ Expected: existing histogram mapping still works, and new retention/thread/JFR h
 - Modify: `src/main/java/com/alibaba/cloud/ai/examples/javatuning/runtime/JstatGcUtilParser.java`
 - Test: `src/test/java/com/alibaba/cloud/ai/examples/javatuning/offline/OfflineJvmSnapshotAssemblerTest.java`
 
-- [ ] **Step 1: Add failing parser test**
+- [x] **Step 1: Add failing parser test**
 
 Add a test with `runtimeSnapshotText` containing:
 
@@ -540,7 +540,7 @@ Expected:
 - `missingData` contains a parser warning if exact heap parsing fails.
 - Snapshot still includes any fields that can be parsed.
 
-- [ ] **Step 2: Wrap parser failures per section**
+- [x] **Step 2: Wrap parser failures per section**
 
 In `OfflineJvmSnapshotAssembler`, catch `RuntimeException` per parser invocation and append warning text like:
 
@@ -550,11 +550,11 @@ Unable to parse GC.heap_info section: <message>
 
 Do not abort the whole assembler unless every required runtime field is missing.
 
-- [ ] **Step 3: Avoid `NumberFormatException` leakage**
+- [x] **Step 3: Avoid `NumberFormatException` leakage**
 
 Any parser that reads tokens from human text should return empty/partial results on malformed tokens instead of throwing `NumberFormatException` to the MCP caller.
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 Run:
 
@@ -573,7 +573,7 @@ Expected: malformed extra lines degrade to warnings, valid standard exports stil
 
 ### Task 6: Clarify Deep Retention Semantics And Confidence
 
-**Status:** `[ ]`
+**Status:** `[x]`
 
 **Why:** Deep retention is valuable but approximate. Reports should clearly distinguish MAT-exact retained size, bounded dominator-style retained approximation, and Shark path hints.
 
@@ -585,7 +585,7 @@ Expected: malformed extra lines degrade to warnings, valid standard exports stil
 - Test: `src/test/java/com/alibaba/cloud/ai/examples/javatuning/advice/HeapRetentionInsightsRuleTest.java`
 - Test: `src/test/java/com/alibaba/cloud/ai/examples/javatuning/offline/HeapRetentionAnalysisOrchestratorTest.java`
 
-- [ ] **Step 1: Add test for warning-aware severity**
+- [x] **Step 1: Add test for warning-aware severity**
 
 If `engine=dominator-style` and warnings include local node budget truncation, keep the finding severity at `medium` but allow other corroborated leak rules to be `high`.
 
@@ -597,11 +597,11 @@ bounded dominator approximation
 warnings=<truncated warning sample>
 ```
 
-- [ ] **Step 2: Add test for clean deep pass**
+- [x] **Step 2: Add test for clean deep pass**
 
 If `engine=dominator-style` and warnings are empty, `HeapRetentionInsightsRule` should mark the holder evidence as stronger. It can still say approximate, but the impact text should be more confident.
 
-- [ ] **Step 3: Improve Markdown wording**
+- [x] **Step 3: Improve Markdown wording**
 
 Use consistent phrases:
 
@@ -611,7 +611,7 @@ Use consistent phrases:
 
 Avoid saying only `retained bytes` without the approximation qualifier.
 
-- [ ] **Step 4: Include business holder mapping when available**
+- [x] **Step 4: Include business holder mapping when available**
 
 When a retention chain contains `AllocationRecord.payload`, show:
 
@@ -621,7 +621,7 @@ Likely source holder: com.alibaba.cloud.ai.compat.memoryleakdemo.leak.Allocation
 
 This can be implemented directly in Task 4's correlation service or as a small addition here.
 
-- [ ] **Step 5: Run tests**
+- [x] **Step 5: Run tests**
 
 Run:
 
@@ -640,7 +640,7 @@ Expected: all selected tests pass and deep report wording is explicit about appr
 
 ### Task 7: Add Better NMT / Native Memory Guidance
 
-**Status:** `[ ]`
+**Status:** `[x]`
 
 **Why:** Missing native evidence is common. The report should tell users exactly how to rerun with NMT and what to collect, especially for direct buffer or metaspace scenarios.
 
@@ -653,7 +653,7 @@ Expected: all selected tests pass and deep report wording is explicit about appr
 - Modify: `docs/mcp-jvm-tuning-demo-walkthrough.md`
 - Test: `src/test/java/com/alibaba/cloud/ai/examples/javatuning/advice/EvidenceGapRuleTest.java`
 
-- [ ] **Step 1: Add missing NMT next-step test**
+- [x] **Step 1: Add missing NMT next-step test**
 
 When `missingData` contains `nativeMemorySummary`, expected next steps include:
 
@@ -663,7 +663,7 @@ Collect jcmd <pid> VM.native_memory summary
 Use collectMemoryGcEvidence or offline nativeMemorySummary
 ```
 
-- [ ] **Step 2: Add direct buffer guidance**
+- [x] **Step 2: Add direct buffer guidance**
 
 If class histogram or heap shallow summary shows `java.nio.ByteBuffer[]` but `nativeMemorySummary` is missing, add a targeted next step:
 
@@ -671,7 +671,7 @@ If class histogram or heap shallow summary shows `java.nio.ByteBuffer[]` but `na
 Direct buffer pressure cannot be confirmed without NMT NIO category; rerun with -XX:NativeMemoryTracking=summary.
 ```
 
-- [ ] **Step 3: Add metaspace/classloader guidance**
+- [x] **Step 3: Add metaspace/classloader guidance**
 
 If class count grows, `ClassloaderPressureStore$DemoProxyClassLoader` appears, or metaspace is high, and native summary is missing, add:
 
@@ -679,7 +679,7 @@ If class count grows, `ClassloaderPressureStore$DemoProxyClassLoader` appears, o
 Collect NMT Class category to distinguish class metadata pressure from heap retention.
 ```
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 Run:
 
@@ -698,7 +698,7 @@ Expected: missing NMT guidance appears only when relevant and does not duplicate
 
 ### Task 8: Add Offline Heap Dump Upload Cleanup And Disk Hygiene
 
-**Status:** `[ ]`
+**Status:** `[x]`
 
 **Why:** Offline heap dump chunks and finalized dumps can be large. Repeated demos or shared machines need a cleanup story.
 
@@ -710,7 +710,7 @@ Expected: missing NMT guidance appears only when relevant and does not duplicate
 - Test: `src/test/java/com/alibaba/cloud/ai/examples/javatuning/offline/HeapDumpChunkRepositoryTest.java`
 - Docs: `README.md`
 
-- [ ] **Step 1: Add repository tests for TTL cleanup**
+- [x] **Step 1: Add repository tests for TTL cleanup**
 
 Test cases:
 
@@ -718,7 +718,7 @@ Test cases:
 - Recent incomplete upload is kept.
 - Finalized heap dump is not deleted unless cleanup is explicitly configured to include finalized files.
 
-- [ ] **Step 2: Add configuration properties**
+- [x] **Step 2: Add configuration properties**
 
 Add properties:
 
@@ -732,7 +732,7 @@ java-tuning-agent:
 
 Bind them in the existing configuration class or a dedicated properties record.
 
-- [ ] **Step 3: Implement cleanup method**
+- [x] **Step 3: Implement cleanup method**
 
 Add:
 
@@ -747,13 +747,13 @@ The result should include:
 - retained upload count
 - warnings
 
-- [ ] **Step 4: Decide MCP exposure**
+- [x] **Step 4: Decide MCP exposure**
 
 Prefer adding cleanup to existing lifecycle if possible. If adding a new MCP tool, document that the public surface becomes 14 tools and update every contract. If avoiding a new tool, run cleanup opportunistically when creating a new upload.
 
 Recommended first implementation: opportunistic cleanup in `createUpload`.
 
-- [ ] **Step 5: Run tests**
+- [x] **Step 5: Run tests**
 
 Run:
 
@@ -772,7 +772,7 @@ Expected: cleanup behavior is deterministic and does not delete finalized dumps 
 
 ### Task 9: Refresh Docs, Skill, Generated Schemas, And Demo Script
 
-**Status:** `[ ]`
+**Status:** `[x]`
 
 **Why:** This project relies on MCP schema descriptors, README, demo docs, and the Cursor skill staying in sync. Any tool signature or behavior change must be visible to future agents.
 
@@ -786,7 +786,7 @@ Expected: cleanup behavior is deterministic and does not delete finalized dumps 
 - Test: `src/test/java/com/alibaba/cloud/ai/examples/javatuning/mcp/McpToolSchemaContractTest.java`
 - Test: `src/test/java/com/alibaba/cloud/ai/examples/javatuning/mcp/McpPublicDocumentationContractTest.java`
 
-- [ ] **Step 1: Regenerate MCP descriptors if schemas changed**
+- [x] **Step 1: Regenerate MCP descriptors if schemas changed**
 
 Use the existing export runner or project command used by this repository. If unsure, inspect `src/main/java/com/alibaba/cloud/ai/examples/javatuning/mcp/export/McpToolSchemaExportRunner.java` and existing test instructions.
 
@@ -795,7 +795,7 @@ Expected changed files:
 - `mcps/user-java-tuning-agent/tools/generateTuningAdviceFromEvidence.json` if Task 3 changes the signature.
 - Other tool descriptors only if tasks changed tool parameters or added tools.
 
-- [ ] **Step 2: Update README**
+- [x] **Step 2: Update README**
 
 Add sections for:
 
@@ -807,7 +807,7 @@ Add sections for:
 - NMT missing evidence guidance.
 - Offline heap upload cleanup.
 
-- [ ] **Step 3: Update the workflow skill**
+- [x] **Step 3: Update the workflow skill**
 
 In `.cursor/skills/java-tuning-agent-workflow/SKILL.md`, update:
 
@@ -815,7 +815,7 @@ In `.cursor/skills/java-tuning-agent-workflow/SKILL.md`, update:
 - JFR recording: if a recording returns missing file, the tool should normally have waited; manual polling should be a fallback, not the expected path.
 - Evidence reuse: pass repeated/JFR/resource evidence into advice instead of summarizing manually.
 
-- [ ] **Step 4: Update demo walkthrough**
+- [x] **Step 4: Update demo walkthrough**
 
 In `docs/mcp-jvm-tuning-demo-walkthrough.md`, add a short section after offline export:
 
@@ -830,7 +830,7 @@ Also add an example of `analysisDepth=deep` producing:
 Object[] -> AllocationRecord.payload -> byte[]
 ```
 
-- [ ] **Step 5: Run documentation and schema tests**
+- [x] **Step 5: Run documentation and schema tests**
 
 Run:
 
@@ -876,14 +876,14 @@ Before claiming completion:
 
 ## Current Overall Status
 
-- [ ] Task 1: Offline target consistency guard
-- [ ] Task 2: JFR completion wait fix
-- [ ] Task 3: Evidence merge ergonomics
-- [ ] Task 4: Multi-source hotspot correlation
-- [ ] Task 5: Robust offline snapshot parsing
-- [ ] Task 6: Deep retention semantics and confidence wording
-- [ ] Task 7: NMT/native guidance
-- [ ] Task 8: Offline heap dump upload cleanup
-- [ ] Task 9: Docs, skill, generated schemas, and demo refresh
+- [x] Task 1: Offline target consistency guard
+- [x] Task 2: JFR completion wait fix
+- [x] Task 3: Evidence merge ergonomics
+- [x] Task 4: Multi-source hotspot correlation
+- [x] Task 5: Robust offline snapshot parsing
+- [x] Task 6: Deep retention semantics and confidence wording
+- [x] Task 7: NMT/native guidance
+- [x] Task 8: Offline heap dump upload cleanup
+- [x] Task 9: Docs, skill, generated schemas, and demo refresh
 
-No implementation has been completed in this document yet; it is the handoff plan for future implementation work.
+All tasks in this improvement plan have been completed and verified.

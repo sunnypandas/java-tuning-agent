@@ -342,10 +342,15 @@ public class SafeJvmRuntimeCollector implements JvmRuntimeCollector {
 			return jfrResult(normalized.pid(), null, 0L, startedAt, commandsRun, null, warnings, missingData);
 		}
 
-		if (!waitForStableFile(output, jfrRecordingProperties.completionGraceMs())) {
+		long durationMs = normalized.durationSeconds() * 1000L;
+		long elapsedByCommandMs = Math.max(0L, record.elapsedMs());
+		long remainingRecordingMs = Math.max(0L, durationMs - elapsedByCommandMs);
+		long fileWaitBudgetMs = remainingRecordingMs + jfrRecordingProperties.completionGraceMs();
+		if (!waitForStableFile(output, fileWaitBudgetMs)) {
 			missingData.add("jfrFile");
 			missingData.add("jfrSummary");
-			warnings.add("JFR recording command finished but file was not found at " + output);
+			warnings.add(jfrMissingFileWarning(output, normalized.durationSeconds(),
+					jfrRecordingProperties.completionGraceMs()));
 			return jfrResult(normalized.pid(), null, 0L, startedAt, commandsRun, null, warnings, missingData);
 		}
 
@@ -533,6 +538,11 @@ public class SafeJvmRuntimeCollector implements JvmRuntimeCollector {
 		if (value != null) {
 			text.append(key).append('=').append(value).append('\n');
 		}
+	}
+
+	private static String jfrMissingFileWarning(Path output, int durationSeconds, long completionGraceMs) {
+		return "JFR recording file was not found after waiting for durationSeconds=" + durationSeconds
+				+ " plus completionGraceMs=" + completionGraceMs + " at " + output;
 	}
 
 	private List<String> jfrHelpCommand(String pidValue) {

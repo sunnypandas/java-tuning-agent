@@ -66,6 +66,34 @@ class HeapRetentionInsightsRuleTest {
 	}
 
 	@Test
+	void shouldKeepMediumSeverityAndSurfaceBudgetWarningsForTruncatedDominatorPass() {
+		List<String> warnings = List.of("Ancestor tracing hit the local node budget; retained-style bytes may be understated.",
+				"Path search hit the local node budget for 3 candidate(s); some holder or chain evidence was dropped.");
+		MemoryGcEvidencePack evidence = evidencePack(sampleRetentionResult("dominator-style", warnings));
+		DiagnosisScratch scratch = new DiagnosisScratch();
+
+		new HeapRetentionInsightsRule().evaluate(evidence, CodeContextSummary.empty(), scratch);
+
+		TuningFinding finding = scratch.findings().get(0);
+		assertThat(finding.severity()).isEqualTo("medium");
+		assertThat(finding.evidence()).contains("retainedBytesApprox=12582912")
+			.contains("bounded dominator approximation")
+			.contains("warnings=Ancestor tracing hit the local node budget");
+		assertThat(scratch.nextSteps()).anyMatch(step -> step.contains("Ancestor tracing hit the local node budget"));
+	}
+
+	@Test
+	void shouldUseMoreConfidentImpactForCleanDominatorPass() {
+		MemoryGcEvidencePack evidence = evidencePack(sampleRetentionResult("dominator-style", List.of()));
+		DiagnosisScratch scratch = new DiagnosisScratch();
+
+		new HeapRetentionInsightsRule().evaluate(evidence, CodeContextSummary.empty(), scratch);
+
+		assertThat(scratch.findings().get(0).impact()).contains("completed dominator-style pass")
+			.contains("approximate");
+	}
+
+	@Test
 	void shouldSkipWhenRetentionAnalysisIsMissingOrFailed() {
 		DiagnosisScratch missingScratch = new DiagnosisScratch();
 		DiagnosisScratch failedScratch = new DiagnosisScratch();

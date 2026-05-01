@@ -16,21 +16,25 @@ After the server is started over stdio, MCP clients should see **13** tools: sev
 | `recordJvmFlightRecording` | Record one short Java Flight Recorder session for a PID and return the `.jfr` path plus a bounded summary of GC, allocation, thread/lock, and execution sample events；短时 JFR 录制，需 `confirmationToken` 与绝对 `jfrOutputPath`。 |
 | `collectMemoryGcEvidence` | Collect **medium-cost** evidence (class histogram; optional thread dump; optional **`GC.heap_dump`** to an absolute `.hprof` path) when `confirmationToken` is supplied for privileged options；按用户授权采集中等成本内存/GC 证据。 Returned pack includes **`heapDumpPath`** when the dump file exists. When **`java-tuning-agent.heap-summary.auto-enabled`** is `true` (default) and the `.hprof` file is present, the pack also includes a **Shark-based shallow heap summary** (`heapShallowSummary`) used by the diagnosis engine and appended to `formattedSummary` (see below). |
 | `generateTuningAdvice` | Run the **rule-based memory/GC diagnosis engine** for the PID and `CodeContextSummary`；从 PID 与源码上下文生成结构化调优建议。 Default: lightweight snapshot only; optional **`collectClassHistogram`** + **`confirmationToken`** runs histogram first (same policy as `collectMemoryGcEvidence`). Callers may also pass optional `baselineEvidence`, `jfrSummary`, `repeatedSamplingResult`, and `resourceBudgetEvidence` collected in the same diagnosis window. Response includes **`formattedSummary`**: stable Markdown of the full report (`##` / `###`, lists, fenced `text` blocks for evidence), **plus** optional diagnosis context, key deltas, and heap dump shallow summary sections when the corresponding evidence is present. Hosts should **paste it into the message as renderable Markdown**—**not** wrapped in an outer code fence—so structure shows; avoid paraphrasing away **`suspectedCodeHotspots`**. |
-| `generateTuningAdviceFromEvidence` | Run the same diagnosis/report path from an existing **`MemoryGcEvidencePack`**；复用已有证据包生成建议。 Use this immediately after `collectMemoryGcEvidence` so histogram/thread/heap evidence is **not collected again** and the report matches the evidence the user already saw. |
+| `generateTuningAdviceFromEvidence` | Run the same diagnosis/report path from an existing **`MemoryGcEvidencePack`**；复用已有证据包生成建议。 Use this immediately after `collectMemoryGcEvidence` so histogram/thread/heap evidence is **not collected again** and the report matches the evidence the user already saw. Optional `baselineEvidence`, `jfrSummary`, `repeatedSamplingResult`, and `resourceBudgetEvidence` parameters are merged only when matching fields are absent from the supplied pack. |
 
 Native evidence (P1): `collectMemoryGcEvidence` now also attempts read-only `jcmd VM.native_memory` help/summary probes and surfaces a structured `nativeMemorySummary` (total reserved/committed, `NIO` direct category, `Class` category). If NMT is disabled, unavailable, or blocked by attach permissions, the pack degrades with explicit `warnings` and `missingData` instead of failing the whole request.
 Native collection is capability-aware but not collector-gated: collector/JDK signals are warnings only, while actual NMT availability is determined by command support, permissions, and target JVM NMT state.
+
+When `nativeMemorySummary` is missing, reports now include command-level next steps: restart the target JVM with `-XX:NativeMemoryTracking=summary`, collect `jcmd <pid> VM.native_memory summary`, then rerun `collectMemoryGcEvidence` or provide offline `nativeMemorySummary`. Direct-buffer hints specifically ask for the NMT `NIO` category; metaspace/classloader hints ask for the NMT `Class` category so class metadata pressure is not confused with heap retention.
 
 ### Offline / imported bundle tools
 
 | Tool | Role / 说明 |
 |------|-------------|
 | `validateOfflineAnalysisDraft` | Validate an `OfflineBundleDraft` (B1–B6, recommended “absent” flags, degradation)；校验离线诊断草稿并返回缺失项/降级提示。 |
-| `submitOfflineHeapDumpChunk` | Upload one Base64 chunk of a large `.hprof` (with `uploadId` / `chunkIndex` / `chunkTotal`)；提交大型 heap dump 的 Base64 分块。 |
+| `submitOfflineHeapDumpChunk` | Upload one Base64 chunk of a large `.hprof` (with `uploadId` / `chunkIndex` / `chunkTotal`)；提交大型 heap dump 的 Base64 分块。 Starting a new upload opportunistically cleans expired chunk sessions using the configured TTL. |
 | `finalizeOfflineHeapDump` | Merge chunks, verify SHA-256 and size, return absolute path for `heapDumpAbsolutePath`；合并并校验分块，返回可写入草稿的绝对路径。 |
 | `generateOfflineTuningAdvice` | Assemble `MemoryGcEvidencePack` from the draft and run the same `generateAdviceFromEvidence` path as online；从导入材料生成与在线一致的结构化报告。 If `gcLogPathOrText` is present, JDK unified GC pause lines are parsed into `gcLogSummary` and used by pause-history rules; `repeatedSamplesPathOrText` accepts `inspectJvmRuntimeRepeated` output and feeds trend rules; `backgroundNotes.resourceBudget` accepts key=value container/RSS/CPU budget evidence and degrades on malformed values. If `heapDumpAbsolutePath` points to an existing file and heap summary auto-mode is on, the server **indexes the dump with Shark** and feeds **`heapShallowSummary`** into rules and `formattedSummary`; with `analysisDepth=deep`, it also attempts holder-oriented retention evidence and degrades honestly on fallback/failure. |
 | `summarizeOfflineHeapDumpFile` | **Optional** ad-hoc call: return Markdown + structured top shallow-by-class rows for a local `.hprof` without running the full advice pipeline；独立预览本地 heap dump 的浅层按类摘要。 |
 | `analyzeOfflineHeapRetention` | Analyze an existing `.hprof` for holder-oriented retention evidence；面向 holder/引用链/GC root 的 retention 证据分析，`analysisDepth=deep` attempts retained-style analysis and falls back honestly. |
+
+Offline validation and advice now include target-consistency checks. The validator warns when B1/B3/B4/B5 PID markers disagree, and offline advice adds an `offlineTargetConsistency` gap plus warning when the imported `java_command` does not match the supplied `CodeContextSummary.applicationNames` or `candidatePackages`. This is intended to catch complete-but-wrong bundles before a report is attributed to the wrong source tree.
 
 **Diagnosis engine note:** Findings and recommendations are produced by **deterministic Java rules** (`MemoryGcDiagnosisEngine`), including optional **heap shallow dominance** when `heapShallowSummary` is present—not by the LLM. The model’s role is tool orchestration and explanation. Shallow totals are **not** MAT retained-size / dominator analysis.
 
@@ -41,6 +45,13 @@ Native collection is capability-aware but not collector-gated: collector/JDK sig
 | `java-tuning-agent.heap-summary.auto-enabled` | `true` | When `true`, automatically run Shark indexing when a `.hprof` path is valid (online after `GC.heap_dump`, or offline draft path). Set `false` to skip indexing (large dumps / CI). |
 | `java-tuning-agent.offline.heap-summary.default-top-classes` | `40` | Max types in the shallow leader table (Markdown + structured entries). |
 | `java-tuning-agent.offline.heap-summary.default-max-output-chars` | `32000` | Max Markdown characters for the summary block. |
+
+**Configuration (offline heap upload cleanup):**
+
+| Property | Default | Meaning |
+|----------|---------|--------|
+| `java-tuning-agent.offline.heap-dump-upload.ttl-seconds` | `86400` | Age threshold for opportunistic cleanup before a new chunk upload starts. |
+| `java-tuning-agent.offline.heap-dump-upload.cleanup-finalized` | `false` | When `false`, cleanup removes only incomplete upload chunk directories; set `true` to also remove old finalized `.hprof` files under the repository-managed final directory. |
 
 **Configuration (command + sampling):**
 
@@ -82,7 +93,7 @@ You can set these in `application.yml`, environment variables, or JVM system pro
 
 5. **Java API:** **`TuningAdviceRequest`** with optional **`classHistogramHint`** still works via **`JavaTuningWorkflowService.generateAdvice`** (no extra `jcmd` when you already have a histogram). `JavaTuningWorkflowService.generateAdviceFromEvidence` is the direct Java equivalent of `generateTuningAdviceFromEvidence`. See [docs/superpowers/specs/2026-04-11-memory-gc-diagnosis-agent-design.md](docs/superpowers/specs/2026-04-11-memory-gc-diagnosis-agent-design.md) §16.
 
-6. **Source-aware hotspots:** Populate **`CodeContextSummary.sourceRoots`** (e.g. `compat/memory-leak-demo` or `.../src/main/java`). With a histogram in the same diagnosis request, **`suspectedCodeHotspot`** entries may include **`fileHint`** paths to matching `.java` files.
+6. **Source-aware hotspots:** Populate **`CodeContextSummary.sourceRoots`** (e.g. `compat/memory-leak-demo` or `.../src/main/java`). The workflow now correlates source hints from class histograms, thread stacks, JFR summaries, and heap-retention holder/chain evidence, so **`suspectedCodeHotspot`** entries may include **`fileHint`** paths and holder-field clues such as `AllocationRecord.payload` when the evidence supports them.
 
 ## JFR short profiling flow
 
@@ -97,13 +108,15 @@ Required fields:
 - `maxSummaryEvents`: parser event cap, typically `200000`
 - `confirmationToken`: non-blank approval token
 
-The tool runs one bounded `jcmd JFR.start ... duration=<Ns> filename=<path>` recording. It does not expose public `JFR.stop` lifecycle management, does not overwrite existing recordings, and can feed parsed findings into advice via `jfrSummary` / `generateTuningAdviceFromEvidence`.
+The tool runs one bounded `jcmd JFR.start ... duration=<Ns> filename=<path>` recording. On some JVMs this command returns promptly while the JVM keeps recording until it writes the `.jfr` output; the collector waits for that file's size to stabilize until the remaining requested `durationSeconds` window expires (estimated from elapsed `JFR.start` wall time when it returns early) plus `java-tuning-agent.jfr.completion-grace-ms` before reporting `jfrFile` missing.
+
+It does not expose public `JFR.stop` lifecycle management, does not overwrite existing recordings, and can feed parsed findings into advice via `jfrSummary` / `generateTuningAdviceFromEvidence`.
 
 ## Structured report (`TuningAdviceReport`)
 
 - **`findings`**: rule-based or inferred memory/GC findings (`TuningFinding`: title, severity, evidence, reasoning type, impact).  
 - **`recommendations`**: JVM/app actions (`TuningRecommendation`).  
-- **`suspectedCodeHotspots`**: class-level hints with optional file paths (`SuspectedCodeHotspot`).  
+- **`suspectedCodeHotspots`**: class-level hints with optional file paths (`SuspectedCodeHotspot`), correlated across histogram, thread dump, JFR, and retention evidence when available.  
 - **`missingData`**: explicit gaps (e.g. histogram not collected).  
 - **`nextSteps`**: suggested follow-up evidence or validation.  
 - **`confidence`**: `high` \| `medium` \| `low`.  
@@ -141,6 +154,7 @@ Compatibility behavior:
 - Unknown collector or unknown/legacy JDK -> warn and keep probing NMT if `jcmd` exposes it
 - CMS on newer JDKs -> warn about inconsistent collector/JDK signals; NMT itself is still probed independently
 - NMT absence, disabled target NMT, or attach/permission failure -> degrade with warnings + `missingData` (`nativeMemorySummary`)
+- Missing NMT in direct-buffer or classloader/metaspace scenarios -> next steps name the exact restart flag and `jcmd <pid> VM.native_memory summary` command to collect `NIO` / `Class` categories.
 
 ### Offline native inputs (P1)
 

@@ -53,9 +53,13 @@ public class OfflineJvmSnapshotAssembler {
 		String flagsJoined = String.join(" ", vmFlags);
 
 		String heapSection = extractHeapSection(runtimeSnapshotText);
-		JvmMemorySnapshot memory = heapInfoParser.parse(heapSection);
+		JvmMemorySnapshot memory = parseHeapInfo(heapSection, warnings);
 		if (!heapSection.isBlank() && memory.heapUsedBytes() == 0L && memory.heapCommittedBytes() == 0L) {
-			warnings.add("Heap parse from offline runtime text produced zero used/committed bytes");
+			warnings.add("Unable to parse GC.heap_info section: produced zero used/committed bytes");
+		}
+		if (containsHeapMaxKeyValue(runtimeSnapshotText) && memory.heapMaxBytes() == 0L) {
+			warnings.add(
+					"Unable to parse GC.heap_info section: heap.max key/value line is not a standard GC.heap_info field");
 		}
 
 		Long xmsBytes = parseFlagSize(flagsJoined, FLAG_XMS_PATTERN);
@@ -67,7 +71,7 @@ public class OfflineJvmSnapshotAssembler {
 
 		String gcSection = extractGcUtilSection(runtimeSnapshotText);
 		String collector = inferCollector(jvmIdentityText, runtimeSnapshotText);
-		JvmGcSnapshot gcParsed = gcUtilParser.parse(gcSection.isBlank() ? runtimeSnapshotText : gcSection);
+		JvmGcSnapshot gcParsed = parseGcUtil(gcSection.isBlank() ? runtimeSnapshotText : gcSection, warnings);
 		JvmGcSnapshot gc = new JvmGcSnapshot(collector, gcParsed.youngGcCount(), gcParsed.youngGcTimeMs(),
 				gcParsed.fullGcCount(), gcParsed.fullGcTimeMs(), gcParsed.oldUsagePercent());
 
@@ -75,6 +79,26 @@ public class OfflineJvmSnapshotAssembler {
 
 		return new JvmRuntimeSnapshot(pid, structuredMemory, gc, vmFlags, jvmVersion, null, null, metadata,
 				List.copyOf(warnings));
+	}
+
+	private JvmMemorySnapshot parseHeapInfo(String heapSection, List<String> warnings) {
+		try {
+			return heapInfoParser.parse(heapSection);
+		}
+		catch (RuntimeException ex) {
+			warnings.add("Unable to parse GC.heap_info section: " + ex.getMessage());
+			return new JvmMemorySnapshot(0L, 0L, 0L, null, null, null, null, null);
+		}
+	}
+
+	private JvmGcSnapshot parseGcUtil(String gcSection, List<String> warnings) {
+		try {
+			return gcUtilParser.parse(gcSection);
+		}
+		catch (RuntimeException ex) {
+			warnings.add("Unable to parse jstat -gcutil section: " + ex.getMessage());
+			return new JvmGcSnapshot("unknown", 0L, 0L, 0L, 0L, null);
+		}
 	}
 
 	private long parsePid(String jvmIdentityText, List<String> warnings) {
@@ -167,6 +191,11 @@ public class OfflineJvmSnapshotAssembler {
 			}
 		}
 		return "";
+	}
+
+	private boolean containsHeapMaxKeyValue(String runtimeSnapshotText) {
+		return runtimeSnapshotText != null
+				&& Pattern.compile("(?im)^\\s*heap\\.max\\s*=").matcher(runtimeSnapshotText).find();
 	}
 
 	private Long parseFlagSize(String flags, Pattern pattern) {

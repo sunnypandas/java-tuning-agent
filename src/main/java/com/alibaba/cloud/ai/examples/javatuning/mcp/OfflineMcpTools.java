@@ -58,6 +58,7 @@ public class OfflineMcpTools {
 			离线模式：提交 heap dump 的一个分块（Base64）。uploadId 为空时创建新上传会话并使用 chunkTotal 作为总分块数；
 			English: Submit one Base64 heap dump chunk; reuse the returned uploadId for later chunks.
 			后续调用沿用返回的 uploadId。索引为 0..chunkTotal-1。
+			创建新上传会话前会按 java-tuning-agent.offline.heap-dump-upload TTL 做机会性清理；不会新增 public MCP tool。
 			全部 chunk 提交后使用 finalizeOfflineHeapDump 校验 SHA-256 与大小；将返回的绝对路径写入 OfflineBundleDraft.heapDumpAbsolutePath。""")
 	public HeapDumpChunkSubmissionResult submitOfflineHeapDumpChunk(
 			@ToolParam(required = false, description = "已有上传 id；留空则创建新上传。") String uploadId,

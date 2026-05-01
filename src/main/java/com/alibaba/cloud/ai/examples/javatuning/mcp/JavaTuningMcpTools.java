@@ -14,6 +14,7 @@ import com.alibaba.cloud.ai.examples.javatuning.runtime.JfrRecordingResult;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.JfrSummary;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.JvmRuntimeCollector;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.JvmRuntimeSnapshot;
+import com.alibaba.cloud.ai.examples.javatuning.runtime.MemoryGcEvidenceMerger;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.MemoryGcEvidencePack;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.MemoryGcEvidenceRequest;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.RepeatedSamplingRequest;
@@ -140,17 +141,25 @@ public class JavaTuningMcpTools {
 			中文：复用已有 MemoryGcEvidencePack 生成调优建议，不再次采集 jcmd/jstat、histogram、thread dump 或 heap dump。 \
 			This is the advise-from-evidence path: it does not collect jcmd/jstat data, does not run GC.class_histogram, Thread.print, or GC.heap_dump, and does not require confirmationToken. \
 			Use this after collectMemoryGcEvidence when the user already saw/approved the evidence pack, especially for class histogram, thread dump, or heap dump evidence. \
+			Optional repeatedSamplingResult, jfrSummary, resourceBudgetEvidence, and baselineEvidence are merged into the supplied evidence when matching fields are null (same rules as generateTuningAdvice supplemental fields). \
 			Returns the same TuningAdviceReport JSON as generateTuningAdvice, including formattedSummary Markdown; hosts should render formattedSummary without an outer Markdown fence.""")
 	public TuningAdviceReport generateTuningAdviceFromEvidence(
 			@ToolParam(description = "Existing MemoryGcEvidencePack JSON, typically the exact collectMemoryGcEvidence response to reuse without recollection.") MemoryGcEvidencePack evidence,
 			@ToolParam(description = "CodeContextSummary JSON: dependencies, configuration, applicationNames, sourceRoots, candidatePackages.") CodeContextSummary codeContextSummary,
 			@ToolParam(description = "Deployment or runtime label, e.g. prod, stage, local.") String environment,
-			@ToolParam(description = "What to optimize for: latency, throughput, footprint, diagnose leak, etc.") String optimizationGoal) {
+			@ToolParam(description = "What to optimize for: latency, throughput, footprint, diagnose leak, etc.") String optimizationGoal,
+			@ToolParam(required = false, description = "Optional RepeatedSamplingResult to merge before diagnosis when evidence.repeatedSamplingResult is null.") RepeatedSamplingResult repeatedSamplingResult,
+			@ToolParam(required = false, description = "Optional JfrSummary to merge before diagnosis when evidence.jfrSummary is null.") JfrSummary jfrSummary,
+			@ToolParam(required = false, description = "Optional ResourceBudgetEvidence to merge when evidence.resourceBudgetEvidence is null.") ResourceBudgetEvidence resourceBudgetEvidence,
+			@ToolParam(required = false, description = "Optional baseline MemoryGcEvidencePack for Key Deltas when evidence.baselineEvidence is null.") MemoryGcEvidencePack baselineEvidence) {
 		Objects.requireNonNull(evidence, "evidence must not be null");
 		Objects.requireNonNull(codeContextSummary, "codeContextSummary must not be null");
 		environment = environment == null ? "" : environment;
 		optimizationGoal = optimizationGoal == null ? "" : optimizationGoal;
-		return workflowService.generateAdviceFromEvidence(evidence, codeContextSummary, environment, optimizationGoal);
+		MemoryGcEvidencePack mergedEvidence = MemoryGcEvidenceMerger.merge(evidence, repeatedSamplingResult,
+				jfrSummary, resourceBudgetEvidence, baselineEvidence);
+		return workflowService.generateAdviceFromEvidence(mergedEvidence, codeContextSummary, environment,
+				optimizationGoal);
 	}
 
 	public TuningAdviceReport generateTuningAdvice(CodeContextSummary codeContextSummary, long pid, String environment,

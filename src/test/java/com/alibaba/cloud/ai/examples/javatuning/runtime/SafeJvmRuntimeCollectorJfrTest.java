@@ -4,6 +4,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.function.LongConsumer;
 
 import com.alibaba.cloud.ai.examples.javatuning.offline.SharkHeapDumpSummarizer;
 import org.junit.jupiter.api.Test;
@@ -85,25 +89,83 @@ class SafeJvmRuntimeCollectorJfrTest {
 				"JFR.start\nSyntax", false, false, 5L, ""));
 		executor.results.add(new CommandExecutionResult(List.of("jcmd", "123", "JFR.start"), 0, "Started recording",
 				false, false, 10L, ""));
-		SafeJvmRuntimeCollector collector = testCollector(executor);
+		// Bounded duration (minimum allowed) keeps the inevitable wait-before-failing window manageable.
+		SafeJvmRuntimeCollector collector = testCollector(executor, SafeJvmRuntimeCollectorJfrTest::sleepQuietly);
 
 		JfrRecordingResult result = collector
-			.recordJfr(new JfrRecordingRequest(123L, 10, "profile", output.toString(), 100, "confirmed"));
+			.recordJfr(new JfrRecordingRequest(123L, 5, "profile", output.toString(), 100, "confirmed"));
 
 		assertThat(result.jfrPath()).isNull();
 		assertThat(result.summary()).isNull();
 		assertThat(result.missingData()).contains("jfrFile", "jfrSummary");
-		assertThat(result.warnings()).anyMatch(w -> w.contains("file was not found"));
+		assertThat(result.warnings())
+			.anyMatch(w -> w.contains("durationSeconds=") && w.contains("completionGraceMs="));
+		assertThat(result.warnings()).anyMatch(w -> w.contains(String.valueOf(output)));
+	}
+
+	@Test
+	void shouldWaitForRecordingDurationWhenJfrStartReturnsBeforeFileExists() {
+		RecordingCommandExecutor executor = new RecordingCommandExecutor();
+		Path output = tempDir.resolve("deferred.jfr").toAbsolutePath().normalize();
+		executor.results.add(new CommandExecutionResult(List.of("jcmd", "123", "help", "JFR.start"), 0,
+				"JFR.start\nSyntax", false, false, 5L, ""));
+		executor.results.add(new CommandExecutionResult(List.of("jcmd", "123", "JFR.start"), 0, "Started recording",
+				false, false, 10L, ""));
+		ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+		try {
+			scheduler.schedule(() -> {
+				try {
+					Files.writeString(output, "not-a-real-jfr-but-parser-is-stubbed");
+				}
+				catch (Exception ex) {
+					throw new IllegalStateException(ex);
+				}
+			}, 120, TimeUnit.MILLISECONDS);
+			JfrSummary summary = emptySummary();
+			SafeJvmRuntimeCollector collector = testCollector(executor,
+					(p, maxEvents) -> summary, SafeJvmRuntimeCollectorJfrTest::sleepQuietly);
+
+			JfrRecordingResult result = collector.recordJfr(
+					new JfrRecordingRequest(123L, 12, "profile", output.toString(), 100, "confirmed"));
+
+			assertThat(result.jfrPath()).isEqualTo(output.toString());
+			assertThat(result.missingData()).isEmpty();
+			assertThat(result.warnings()).doesNotContain("JFR recording command finished but file was not found");
+			assertThat(result.summary()).isSameAs(summary);
+		}
+		finally {
+			scheduler.shutdownNow();
+		}
 	}
 
 	private static SafeJvmRuntimeCollector testCollector(CommandExecutor executor) {
-		return testCollector(executor, (path, maxEvents) -> emptySummary());
+		return testCollector(executor, (path, maxEvents) -> emptySummary(),
+				SafeJvmRuntimeCollector::sleepUncheckedForTests);
+	}
+
+	private static SafeJvmRuntimeCollector testCollector(CommandExecutor executor, LongConsumer sleeper) {
+		return testCollector(executor, (path, maxEvents) -> emptySummary(), sleeper);
 	}
 
 	private static SafeJvmRuntimeCollector testCollector(CommandExecutor executor, JfrSummaryParserAdapter parser) {
+		return testCollector(executor, parser, SafeJvmRuntimeCollector::sleepUncheckedForTests);
+	}
+
+	private static SafeJvmRuntimeCollector testCollector(CommandExecutor executor, JfrSummaryParserAdapter parser,
+			LongConsumer sleeper) {
 		return new SafeJvmRuntimeCollector(executor, RuntimeCollectionPolicy.safeReadonly(), TEST_HEAP_SUMMARIZER,
 				false, RepeatedSamplingProperties.defaults(), new JfrRecordingProperties(30, 5, 300, 0L, 200_000, 10),
-				parser, SafeJvmRuntimeCollector::sleepUncheckedForTests);
+				parser, sleeper);
+	}
+
+	private static void sleepQuietly(long millis) {
+		try {
+			Thread.sleep(millis);
+		}
+		catch (InterruptedException ex) {
+			Thread.currentThread().interrupt();
+			throw new IllegalStateException(ex);
+		}
 	}
 
 	private static JfrSummary emptySummary() {

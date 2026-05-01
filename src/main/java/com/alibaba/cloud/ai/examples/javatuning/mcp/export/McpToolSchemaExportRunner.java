@@ -112,10 +112,23 @@ public class McpToolSchemaExportRunner implements ApplicationRunner {
 				properties.set("resourceBudgetEvidence",
 						nullableObjectProperty("Optional cgroup/RSS/CPU and heap/native/thread-stack budget evidence."));
 			}
-			case "generateTuningAdviceFromEvidence" -> schema.withObject("/properties")
-				.set("evidence", memoryGcEvidencePackSchema(
+			case "generateTuningAdviceFromEvidence" -> {
+				ObjectNode propertiesNode = schema.withObject("/properties");
+				propertiesNode.set("evidence", memoryGcEvidencePackSchema(
 						"Existing MemoryGcEvidencePack JSON, typically the exact collectMemoryGcEvidence response to reuse without recollection.",
 						true));
+				markOptional(schema, "repeatedSamplingResult", "jfrSummary", "resourceBudgetEvidence", "baselineEvidence");
+				propertiesNode.set("baselineEvidence", nullableMemoryGcEvidencePackSchema(
+						"Optional baseline MemoryGcEvidencePack for Key Deltas when omitted from merged evidence.pack fields.",
+						false));
+				propertiesNode.set("jfrSummary", nullableObjectProperty(
+						"Optional JfrSummary to merge when evidence.jfrSummary is null (omit or null)."));
+				propertiesNode.set("repeatedSamplingResult",
+						nullableObjectProperty(
+								"Optional inspectJvmRuntimeRepeated result to merge when evidence.repeatedSamplingResult is null (omit or null)."));
+				propertiesNode.set("resourceBudgetEvidence", nullableObjectProperty(
+						"Optional cgroup/RSS/CPU budget evidence to merge when evidence.resourceBudgetEvidence is null (omit or null)."));
+			}
 			case "validateOfflineAnalysisDraft" -> relaxOfflineDraft(property(schema, "draft"));
 			case "submitOfflineHeapDumpChunk" -> markOptional(schema, "uploadId");
 			case "generateOfflineTuningAdvice" -> {

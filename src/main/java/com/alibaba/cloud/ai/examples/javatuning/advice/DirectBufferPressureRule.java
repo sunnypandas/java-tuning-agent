@@ -8,6 +8,11 @@ public final class DirectBufferPressureRule implements DiagnosisRule {
 	@Override
 	public void evaluate(MemoryGcEvidencePack evidence, CodeContextSummary context, DiagnosisScratch scratch) {
 		NativeMemorySummary summary = evidence.nativeMemorySummary();
+		if (summary == null && hasDirectBufferHeapSignal(evidence)) {
+			addNextStepIfMissing(scratch,
+					"Direct buffer pressure cannot be confirmed without NMT NIO category; rerun with -XX:NativeMemoryTracking=summary.");
+			return;
+		}
 		if (summary == null || summary.directCommittedBytes() == null || summary.totalCommittedBytes() <= 0L) {
 			return;
 		}
@@ -22,6 +27,31 @@ public final class DirectBufferPressureRule implements DiagnosisRule {
 		scratch.addRecommendation(new TuningRecommendation("Cap and observe direct buffer usage", "native-memory",
 				"-XX:MaxDirectMemorySize=<size>", "Reduce off-heap spikes and stabilize RSS",
 				"Too-low cap may increase IO copy overhead", "Validate with throughput and latency tests"));
+	}
+
+	private static boolean hasDirectBufferHeapSignal(MemoryGcEvidencePack evidence) {
+		boolean histogramSignal = evidence.classHistogram() != null && evidence.classHistogram()
+			.entries()
+			.stream()
+			.anyMatch(entry -> isDirectBufferClass(entry.className()));
+		boolean shallowSignal = evidence.heapShallowSummary() != null && evidence.heapShallowSummary()
+			.topByShallowBytes()
+			.stream()
+			.anyMatch(entry -> isDirectBufferClass(entry.className()));
+		return histogramSignal || shallowSignal;
+	}
+
+	private static boolean isDirectBufferClass(String className) {
+		if (className == null) {
+			return false;
+		}
+		return className.contains("java.nio.ByteBuffer") || className.contains("java.nio.DirectByteBuffer");
+	}
+
+	private static void addNextStepIfMissing(DiagnosisScratch scratch, String step) {
+		if (!scratch.nextSteps().contains(step)) {
+			scratch.addNextStep(step);
+		}
 	}
 
 	private long mb(long bytes) {

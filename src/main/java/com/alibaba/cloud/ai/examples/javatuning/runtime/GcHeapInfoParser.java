@@ -16,6 +16,10 @@ public class GcHeapInfoParser {
 	private static final Pattern HEAP_PATTERN_G1_LEGACY = Pattern
 		.compile("(?i)garbage-first heap total\\s+(\\d+)K,\\s*used\\s+(\\d+)K");
 
+	/** Compact exported line: {@code G1 heap committed NK used NK}. */
+	private static final Pattern HEAP_PATTERN_G1_COMPACT = Pattern
+		.compile("(?i)G1\\s+heap\\s+committed\\s+(\\d+)K\\s+used\\s+(\\d+)K");
+
 	private static final Pattern METASPACE_PATTERN = Pattern
 		.compile("(?i)Metaspace\\s+used\\s+(\\d+)K,\\s*committed\\s+(\\d+)K,\\s*reserved\\s+(\\d+)K");
 
@@ -54,6 +58,12 @@ public class GcHeapInfoParser {
 				heapUsedBytes = toBytes(heapLegacy.group(2));
 				continue;
 			}
+			Matcher heapCompact = HEAP_PATTERN_G1_COMPACT.matcher(line);
+			if (heapCompact.find()) {
+				heapCommittedBytes = toBytes(heapCompact.group(1));
+				heapUsedBytes = toBytes(heapCompact.group(2));
+				continue;
+			}
 			if (line.toLowerCase().contains("g1 old generation")) {
 				inOldGeneration = true;
 				continue;
@@ -84,7 +94,12 @@ public class GcHeapInfoParser {
 	}
 
 	private long toBytes(String value) {
-		return Long.parseLong(value) * 1024L;
+		try {
+			return Long.parseLong(value) * 1024L;
+		}
+		catch (NumberFormatException ex) {
+			return 0L;
+		}
 	}
 
 }

@@ -33,6 +33,8 @@ Use when the user analyzes **production-exported** files (histogram, thread dump
 
 **Draft:** Build an `OfflineBundleDraft` JSON in chat (authoritative copy lives in the conversation). Fixed order for gathering input: B1 JVM 标识 → B2 JDK 信息 → B3 运行时快照文本 → B4 类直方图（文件路径或粘贴）→ B5 线程 dump → B6 堆转储路径或分块上传结果.
 
+**Target consistency:** Before presenting offline conclusions, confirm B1/B3 `java_command` and PID markers match the intended application/source context. `validateOfflineAnalysisDraft` now warns when B1/B3/B4/B5 PID markers disagree. `generateOfflineTuningAdvice` also adds an `offlineTargetConsistency` missing-data marker plus warning when imported runtime identity does not match `CodeContextSummary.applicationNames` / `candidatePackages`. Treat that warning as a stop-and-verify signal; do not attribute findings to the provided source tree until the user confirms the bundle target.
+
 **Schema-first rule:** For offline bundle JSON shape, treat the MCP tool description and generated `inputSchema` as the source of truth. Do **not** infer nested field shapes from prose alone or from memory.
 
 **Artifact-source rule:** `classHistogram` and `threadDump` are **not** bare strings. They must be `OfflineArtifactSource` objects:
@@ -48,7 +50,7 @@ When a local file already exists, prefer `filePath` over `inlineText`.
 
 若必选缺失，调用 `validateOfflineAnalysisDraft(draft, proceedWithMissingRequired=false)` 获取 `missingRequired` 与中文 `nextPromptZh`；用户确认降级时改 `proceedWithMissingRequired=true`。
 
-**Large heap:** `submitOfflineHeapDumpChunk` — first call leave `uploadId` empty and set `chunkTotal`; reuse returned `uploadId` for chunks `0 .. chunkTotal-1` (Base64). Then `finalizeOfflineHeapDump(uploadId, sha256Hex, sizeBytes)` → put `finalizeHeapDumpPath` into `draft.heapDumpAbsolutePath`.
+**Large heap:** `submitOfflineHeapDumpChunk` — first call leave `uploadId` empty and set `chunkTotal`; reuse returned `uploadId` for chunks `0 .. chunkTotal-1` (Base64). Starting a new upload triggers opportunistic TTL cleanup for stale incomplete uploads (`java-tuning-agent.offline.heap-dump-upload.ttl-seconds`, default 86400); finalized dumps are retained unless `cleanup-finalized=true`. Then `finalizeOfflineHeapDump(uploadId, sha256Hex, sizeBytes)` → put `finalizeHeapDumpPath` into `draft.heapDumpAbsolutePath`.
 
 **Heap dump shallow analysis (automatic):** When `heapDumpAbsolutePath` points to an **existing** `.hprof` file and **`java-tuning-agent.heap-summary.auto-enabled`** is `true` (default), the server **indexes the dump with Shark** (LeakCanary), fills **`heapShallowSummary`** on the evidence pack, runs rules that consume it (e.g. shallow dominance), and **appends** a bounded Markdown table **after** the main report sections inside `formattedSummary`. This is **shallow-by-class** statistics only—not MAT retained-size analysis. Raw binary is **not** sent to the LLM. To **only** preview a summary without running the full offline advice pipeline, call **`summarizeOfflineHeapDumpFile`** (returns Markdown + structured top rows).
 
@@ -148,6 +150,8 @@ Use `recordJvmFlightRecording` only after explicit user approval. Ask for an abs
 
 Required request fields are `pid`, `durationSeconds`, `settings`, `jfrOutputPath`, `maxSummaryEvents`, and `confirmationToken`. The file must not already exist. Inspect result fields `jfrPath`, `fileSizeBytes`, `summary.eventCounts`, `summary.gcSummary`, `summary.allocationSummary`, `summary.threadSummary`, `summary.executionSampleSummary`, `warnings`, and `missingData`.
 
+The collector normally waits for the requested duration window plus the configured completion grace when `JFR.start` returns before the file appears. If `jfrFile` is still missing, treat manual polling as a fallback/incident note, not the expected happy path.
+
 ### Structured UI approval (preferred)
 
 When the agent can emit a **structured question** (e.g. Cursor **AskQuestion**):
@@ -197,6 +201,7 @@ If the user later specifies a different directory, override this default for tha
 
 - Pass the exact `MemoryGcEvidencePack` returned by step 3 as `evidence`; do not reconstruct or recollect it.
 - This tool does **not** call `jcmd`, `jstat`, `GC.class_histogram`, `Thread.print`, or `GC.heap_dump`, and it has no `confirmationToken` field.
+- If you collected repeated sampling, JFR, resource budget, or baseline evidence separately, pass it through this tool's optional fields instead of summarizing it manually; the service merges those fields only when the evidence pack does not already contain them.
 - If step 3 was snapshot-only, this still produces lightweight advice from that evidence pack.
 - If step 3 included histogram/thread/heap, this produces richer advice from the same pack without repeating privileged collection or reusing the same `.hprof` output path.
 - Always set **`optimizationGoal`** and **`environment`** explicitly. Fill **`codeContextSummary`** per intent A or B; use empty arrays/objects where unknown.

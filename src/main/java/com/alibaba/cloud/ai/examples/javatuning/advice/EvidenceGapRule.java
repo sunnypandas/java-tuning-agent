@@ -10,6 +10,14 @@ public final class EvidenceGapRule implements DiagnosisRule {
 
 	@Override
 	public void evaluate(MemoryGcEvidencePack evidence, CodeContextSummary context, DiagnosisScratch scratch) {
+		if (evidence.missingData().contains("nativeMemorySummary")) {
+			long pid = evidence.snapshot() == null ? 0L : evidence.snapshot().pid();
+			addNextStepIfMissing(scratch, "Restart with -XX:NativeMemoryTracking=summary");
+			addNextStepIfMissing(scratch, "Collect jcmd " + (pid > 0L ? Long.toString(pid) : "<pid>")
+					+ " VM.native_memory summary");
+			addNextStepIfMissing(scratch,
+					"Use collectMemoryGcEvidence or offline nativeMemorySummary to include NMT totals in advice");
+		}
 		JvmMemorySnapshot memory = evidence.snapshot().memory();
 		if (memory == null || memory.heapMaxBytes() <= 0L) {
 			return;
@@ -30,5 +38,11 @@ public final class EvidenceGapRule implements DiagnosisRule {
 				"Collect class histogram with explicit confirmation to distinguish churn vs retained growth");
 		scratch.addNextStep(
 				"Optional with confirmation: collect thread dump to check for deadlocks and BLOCKED threads");
+	}
+
+	private static void addNextStepIfMissing(DiagnosisScratch scratch, String step) {
+		if (!scratch.nextSteps().contains(step)) {
+			scratch.addNextStep(step);
+		}
 	}
 }

@@ -11,8 +11,6 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.tool.ToolCallbackProvider;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -20,11 +18,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Ensures MCP clients can call tools using only {@link org.springframework.ai.tool.definition.ToolDefinition}
  * metadata (description + inputSchema), without reading this repository's source.
  */
-@SpringBootTest
 class McpToolSchemaContractTest {
 
-	@Autowired
-	private ToolCallbackProvider toolCallbackProvider;
+	private final ToolCallbackProvider toolCallbackProvider = McpToolCallbackProviderTestSupport.create();
 
 	private final ObjectMapper mapper = new ObjectMapper();
 
@@ -126,6 +122,8 @@ class McpToolSchemaContractTest {
 					assertThat(schema.path("properties").path("environment").path("type").asText()).isEqualTo("string");
 					assertThat(schema.path("properties").path("optimizationGoal").path("type").asText())
 						.isEqualTo("string");
+					assertThat(requiredFields(schema)).doesNotContain("repeatedSamplingResult", "jfrSummary",
+							"resourceBudgetEvidence", "baselineEvidence");
 					assertThat(properties.has("pid")).isFalse();
 					assertThat(properties.has("collectClassHistogram")).isFalse();
 					assertThat(properties.has("collectThreadDump")).isFalse();
@@ -268,7 +266,10 @@ class McpToolSchemaContractTest {
 		assertThat(fromEvidenceProperties.has("confirmationToken")).isFalse();
 		assertThat(fromEvidenceTool.path("description").asText()).contains("does not collect")
 			.contains("does not require confirmationToken");
-
+		assertThat(typeAllows(fromEvidenceProperties.path("baselineEvidence"), "null")).isTrue();
+		assertThat(typeAllows(fromEvidenceProperties.path("jfrSummary"), "null")).isTrue();
+		assertThat(typeAllows(fromEvidenceProperties.path("repeatedSamplingResult"), "null")).isTrue();
+		assertThat(typeAllows(fromEvidenceProperties.path("resourceBudgetEvidence"), "null")).isTrue();
 		JsonNode collectRequestSchema = publishedInputSchema("collectMemoryGcEvidence").path("properties")
 			.path("request");
 		assertThat(requiredFields(collectRequestSchema)).contains("pid")

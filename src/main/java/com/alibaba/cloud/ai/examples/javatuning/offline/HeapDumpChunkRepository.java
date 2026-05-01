@@ -7,9 +7,15 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
 import java.util.HexFormat;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -20,6 +26,8 @@ import java.util.concurrent.ConcurrentHashMap;
 public class HeapDumpChunkRepository {
 
 	private final Path baseDir;
+	private final Duration uploadTtl;
+	private final boolean cleanupFinalized;
 	private final Map<String, UploadState> uploads = new ConcurrentHashMap<>();
 
 	private static final class UploadState {
@@ -33,7 +41,13 @@ public class HeapDumpChunkRepository {
 	}
 
 	public HeapDumpChunkRepository(Path baseDir) {
+		this(baseDir, Duration.ofSeconds(86_400), false);
+	}
+
+	public HeapDumpChunkRepository(Path baseDir, Duration uploadTtl, boolean cleanupFinalized) {
 		this.baseDir = Objects.requireNonNull(baseDir, "baseDir");
+		this.uploadTtl = uploadTtl == null || uploadTtl.isNegative() ? Duration.ofSeconds(86_400) : uploadTtl;
+		this.cleanupFinalized = cleanupFinalized;
 	}
 
 	/**
@@ -43,6 +57,7 @@ public class HeapDumpChunkRepository {
 		if (totalChunks <= 0) {
 			throw new IllegalArgumentException("totalChunks must be positive, got: " + totalChunks);
 		}
+		cleanupExpiredUploads(Instant.now());
 		String uploadId = UUID.randomUUID().toString();
 		Path uploadDir = baseDir.resolve("uploads").resolve(uploadId);
 		try {
@@ -60,6 +75,19 @@ public class HeapDumpChunkRepository {
 			throw new IllegalStateException("Upload id collision: " + uploadId);
 		}
 		return uploadId;
+	}
+
+	public HeapDumpCleanupResult cleanupExpiredUploads(Instant now) {
+		Instant effectiveNow = now == null ? Instant.now() : now;
+		Instant cutoff = effectiveNow.minus(uploadTtl);
+		List<String> warnings = new ArrayList<>();
+		CleanupCounters counters = new CleanupCounters();
+		cleanupIncompleteUploads(cutoff, counters, warnings);
+		if (cleanupFinalized) {
+			cleanupFinalizedDumps(cutoff, counters, warnings);
+		}
+		return new HeapDumpCleanupResult(counters.deletedUploadCount, counters.deletedBytes,
+				counters.retainedUploadCount, warnings);
 	}
 
 	/**
@@ -159,5 +187,114 @@ public class HeapDumpChunkRepository {
 				Files.deleteIfExists(p);
 			}
 		}
+	}
+
+	private void cleanupIncompleteUploads(Instant cutoff, CleanupCounters counters, List<String> warnings) {
+		Path uploadsDir = baseDir.resolve("uploads");
+		if (!Files.isDirectory(uploadsDir)) {
+			return;
+		}
+		Set<String> seen = new HashSet<>();
+		try (var stream = Files.list(uploadsDir)) {
+			for (Path uploadDir : stream.filter(Files::isDirectory).toList()) {
+				String uploadId = uploadDir.getFileName().toString();
+				seen.add(uploadId);
+				if (lastModified(uploadDir).isAfter(cutoff)) {
+					counters.retainedUploadCount++;
+					continue;
+				}
+				long bytes = directorySize(uploadDir);
+				try {
+					deleteDirectory(uploadDir);
+					uploads.remove(uploadId);
+					counters.deletedUploadCount++;
+					counters.deletedBytes += bytes;
+				}
+				catch (IOException ex) {
+					warnings.add("Unable to delete expired heap dump upload " + uploadId + ": " + ex.getMessage());
+					counters.retainedUploadCount++;
+				}
+			}
+		}
+		catch (IOException ex) {
+			warnings.add("Unable to scan heap dump upload directory: " + ex.getMessage());
+		}
+		for (String uploadId : uploads.keySet()) {
+			if (!seen.contains(uploadId)) {
+				uploads.remove(uploadId);
+			}
+		}
+	}
+
+	private void cleanupFinalizedDumps(Instant cutoff, CleanupCounters counters, List<String> warnings) {
+		Path finalDir = baseDir.resolve("final");
+		if (!Files.isDirectory(finalDir)) {
+			return;
+		}
+		try (var stream = Files.list(finalDir)) {
+			for (Path file : stream.filter(Files::isRegularFile).toList()) {
+				if (lastModified(file).isAfter(cutoff)) {
+					counters.retainedUploadCount++;
+					continue;
+				}
+				long bytes = safeSize(file);
+				try {
+					Files.deleteIfExists(file);
+					counters.deletedUploadCount++;
+					counters.deletedBytes += bytes;
+				}
+				catch (IOException ex) {
+					warnings.add("Unable to delete finalized heap dump " + file + ": " + ex.getMessage());
+					counters.retainedUploadCount++;
+				}
+			}
+		}
+		catch (IOException ex) {
+			warnings.add("Unable to scan finalized heap dump directory: " + ex.getMessage());
+		}
+	}
+
+	private static Instant lastModified(Path root) {
+		try (var stream = Files.walk(root)) {
+			return stream.map(HeapDumpChunkRepository::safeLastModified)
+				.max(Instant::compareTo)
+				.orElse(Instant.EPOCH);
+		}
+		catch (IOException ex) {
+			return Instant.EPOCH;
+		}
+	}
+
+	private static Instant safeLastModified(Path path) {
+		try {
+			return Files.getLastModifiedTime(path).toInstant();
+		}
+		catch (IOException ex) {
+			return Instant.EPOCH;
+		}
+	}
+
+	private static long directorySize(Path root) {
+		try (var stream = Files.walk(root)) {
+			return stream.filter(Files::isRegularFile).mapToLong(HeapDumpChunkRepository::safeSize).sum();
+		}
+		catch (IOException ex) {
+			return 0L;
+		}
+	}
+
+	private static long safeSize(Path path) {
+		try {
+			return Files.size(path);
+		}
+		catch (IOException ex) {
+			return 0L;
+		}
+	}
+
+	private static final class CleanupCounters {
+		long deletedUploadCount;
+		long deletedBytes;
+		long retainedUploadCount;
 	}
 }

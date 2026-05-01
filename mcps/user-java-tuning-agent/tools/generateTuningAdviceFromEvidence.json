@@ -1,6 +1,6 @@
 {
   "name": "generateTuningAdviceFromEvidence",
-  "description": "Generate structured tuning advice from an existing MemoryGcEvidencePack and code context. 中文：复用已有 MemoryGcEvidencePack 生成调优建议，不再次采集 jcmd/jstat、histogram、thread dump 或 heap dump。 This is the advise-from-evidence path: it does not collect jcmd/jstat data, does not run GC.class_histogram, Thread.print, or GC.heap_dump, and does not require confirmationToken. Use this after collectMemoryGcEvidence when the user already saw/approved the evidence pack, especially for class histogram, thread dump, or heap dump evidence. Returns the same TuningAdviceReport JSON as generateTuningAdvice, including formattedSummary Markdown; hosts should render formattedSummary without an outer Markdown fence.",
+  "description": "Generate structured tuning advice from an existing MemoryGcEvidencePack and code context. 中文：复用已有 MemoryGcEvidencePack 生成调优建议，不再次采集 jcmd/jstat、histogram、thread dump 或 heap dump。 This is the advise-from-evidence path: it does not collect jcmd/jstat data, does not run GC.class_histogram, Thread.print, or GC.heap_dump, and does not require confirmationToken. Use this after collectMemoryGcEvidence when the user already saw/approved the evidence pack, especially for class histogram, thread dump, or heap dump evidence. Optional repeatedSamplingResult, jfrSummary, resourceBudgetEvidence, and baselineEvidence are merged into the supplied evidence when matching fields are null (same rules as generateTuningAdvice supplemental fields). Returns the same TuningAdviceReport JSON as generateTuningAdvice, including formattedSummary Markdown; hosts should render formattedSummary without an outer Markdown fence.",
   "inputSchema": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "type": "object",
@@ -169,6 +169,139 @@
       "optimizationGoal": {
         "type": "string",
         "description": "What to optimize for: latency, throughput, footprint, diagnose leak, etc."
+      },
+      "repeatedSamplingResult": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "description": "Optional inspectJvmRuntimeRepeated result to merge when evidence.repeatedSamplingResult is null (omit or null)."
+      },
+      "jfrSummary": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "description": "Optional JfrSummary to merge when evidence.jfrSummary is null (omit or null)."
+      },
+      "resourceBudgetEvidence": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "description": "Optional cgroup/RSS/CPU budget evidence to merge when evidence.resourceBudgetEvidence is null (omit or null)."
+      },
+      "baselineEvidence": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "description": "Optional baseline MemoryGcEvidencePack for Key Deltas when omitted from merged evidence.pack fields.",
+        "properties": {
+          "snapshot": {
+            "type": "object",
+            "description": "JvmRuntimeSnapshot captured in the evidence pack."
+          },
+          "classHistogram": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Optional ClassHistogramSummary already collected."
+          },
+          "threadDump": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Optional ThreadDumpSummary already collected."
+          },
+          "missingData": {
+            "type": "array",
+            "description": "Explicit evidence gaps.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "warnings": {
+            "type": "array",
+            "description": "Collection or import warnings.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "heapDumpPath": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Existing heap dump path from the evidence pack, if one was already produced."
+          },
+          "heapShallowSummary": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Optional shallow heap summary already attached to the evidence pack."
+          },
+          "nativeMemorySummary": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Optional native memory summary already attached to the evidence pack."
+          },
+          "heapRetentionAnalysis": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Optional heap retention analysis already attached to the evidence pack."
+          },
+          "repeatedSamplingResult": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Optional repeated sampling result already attached to the evidence pack."
+          },
+          "gcLogSummary": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Optional GC log summary already attached to the evidence pack."
+          },
+          "jfrSummary": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Optional JFR summary already attached to the evidence pack."
+          },
+          "baselineEvidence": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Optional baseline MemoryGcEvidencePack for Key Deltas."
+          },
+          "diagnosisWindow": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Optional diagnosis window metadata."
+          },
+          "resourceBudgetEvidence": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Optional resource budget evidence already attached to the evidence pack."
+          }
+        },
+        "additionalProperties": true
       }
     },
     "required": [

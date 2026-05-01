@@ -23,4 +23,34 @@ class JstatGcUtilParserTest {
 		assertThat(parsed.oldUsagePercent()).isEqualTo(78.90d);
 	}
 
+	@Test
+	void shouldIgnoreMalformedGcUtilTokens() {
+		String output = """
+				targetPid: 1961
+				jstat -gcutil: YGC FGC YGCT nope FGC 0 FGCT 0.000
+				""";
+
+		JvmGcSnapshot parsed = new JstatGcUtilParser().parse(output);
+
+		assertThat(parsed.youngGcCount()).isZero();
+		assertThat(parsed.youngGcTimeMs()).isZero();
+		assertThat(parsed.fullGcCount()).isZero();
+		assertThat(parsed.fullGcTimeMs()).isZero();
+	}
+
+	@Test
+	void shouldParseCompactGcUtilLine() {
+		String output = """
+				targetPid: 1961
+				jstat -gcutil: YGC 8 YGCT 0.015 FGC 0 FGCT 0.000
+				""";
+
+		JvmGcSnapshot parsed = new JstatGcUtilParser().parse(output);
+
+		assertThat(parsed.youngGcCount()).isEqualTo(8L);
+		assertThat(parsed.youngGcTimeMs()).isEqualTo(15L);
+		assertThat(parsed.fullGcCount()).isZero();
+		assertThat(parsed.fullGcTimeMs()).isZero();
+	}
+
 }

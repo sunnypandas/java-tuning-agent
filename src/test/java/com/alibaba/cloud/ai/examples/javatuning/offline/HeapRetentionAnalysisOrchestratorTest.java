@@ -9,31 +9,21 @@ import com.alibaba.cloud.ai.examples.javatuning.runtime.HeapRetentionSummary;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.BDDMockito.given;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
 
 class HeapRetentionAnalysisOrchestratorTest {
 
 	@Test
 	void deepRequestsTryHeavyAnalyzerBeforeFallingBackToShark() {
-		HeapRetentionAnalyzer heavy = mock(HeapRetentionAnalyzer.class);
-		HeapRetentionAnalyzer shark = mock(HeapRetentionAnalyzer.class);
-		given(heavy.analyze(any(), any(), any(), any(), any(), any()))
-			.willReturn(new HeapRetentionAnalysisResult(false, "dominator-style", List.of("heavy failed"),
-					"out of memory", HeapRetentionSummary.empty(), ""));
-		given(shark.analyze(any(), any(), any(), eq("deep"), any(), any()))
-			.willReturn(sampleSharkFallbackResult());
+		RecordingAnalyzer heavy = RecordingAnalyzer.returning(new HeapRetentionAnalysisResult(false,
+				"dominator-style", List.of("heavy failed"), "out of memory", HeapRetentionSummary.empty(), ""));
+		RecordingAnalyzer shark = RecordingAnalyzer.returning(sampleSharkFallbackResult());
 
 		var orchestrator = new HeapRetentionAnalysisOrchestrator(shark, heavy);
 
 		var result = orchestrator.analyze(Path.of("C:/tmp/demo.hprof"), 10, 12000, "deep", List.of(), List.of());
 
-		verify(heavy).analyze(any(), any(), any(), eq("deep"), any(), any());
-		verify(shark).analyze(any(), any(), any(), eq("deep"), any(), any());
+		assertThat(heavy.calls()).containsExactly("deep");
+		assertThat(shark.calls()).containsExactly("deep");
 		assertThat(result.engine()).isEqualTo("shark");
 		assertThat(result.warnings()).anyMatch(it -> it.contains("fallback"));
 		assertThat(result.retentionSummary().warnings()).anyMatch(it -> it.contains("fallback"));
@@ -41,19 +31,15 @@ class HeapRetentionAnalysisOrchestratorTest {
 
 	@Test
 	void deepRequestsFallbackToSharkWhenHeavyAnalyzerThrows() {
-		HeapRetentionAnalyzer heavy = mock(HeapRetentionAnalyzer.class);
-		HeapRetentionAnalyzer shark = mock(HeapRetentionAnalyzer.class);
-		given(heavy.analyze(any(), any(), any(), any(), any(), any()))
-			.willThrow(new IllegalStateException("boom"));
-		given(shark.analyze(any(), any(), any(), eq("deep"), any(), any()))
-			.willReturn(sampleSharkFallbackResult());
+		RecordingAnalyzer heavy = RecordingAnalyzer.throwing(new IllegalStateException("boom"));
+		RecordingAnalyzer shark = RecordingAnalyzer.returning(sampleSharkFallbackResult());
 
 		var orchestrator = new HeapRetentionAnalysisOrchestrator(shark, heavy);
 
 		var result = orchestrator.analyze(Path.of("C:/tmp/demo.hprof"), 10, 12000, "deep", List.of(), List.of());
 
-		verify(heavy).analyze(any(), any(), any(), eq("deep"), any(), any());
-		verify(shark).analyze(any(), any(), any(), eq("deep"), any(), any());
+		assertThat(heavy.calls()).containsExactly("deep");
+		assertThat(shark.calls()).containsExactly("deep");
 		assertThat(result.engine()).isEqualTo("shark");
 		assertThat(result.warnings()).anyMatch(it -> it.contains("fallback"));
 		assertThat(result.warnings()).anyMatch(it -> it.contains("boom"));
@@ -63,34 +49,30 @@ class HeapRetentionAnalysisOrchestratorTest {
 
 	@Test
 	void fastRequestsStayOnSharkAndSkipHeavyAnalyzer() {
-		HeapRetentionAnalyzer heavy = mock(HeapRetentionAnalyzer.class);
-		HeapRetentionAnalyzer shark = mock(HeapRetentionAnalyzer.class);
-		given(shark.analyze(any(), any(), any(), eq("fast"), any(), any()))
-			.willReturn(sampleSharkFallbackResult());
+		RecordingAnalyzer heavy = RecordingAnalyzer.returning(sampleSharkFallbackResult());
+		RecordingAnalyzer shark = RecordingAnalyzer.returning(sampleSharkFallbackResult());
 
 		var orchestrator = new HeapRetentionAnalysisOrchestrator(shark, heavy);
 
 		var result = orchestrator.analyze(Path.of("C:/tmp/demo.hprof"), 10, 12000, "fast", List.of(), List.of());
 
-		verify(shark).analyze(any(), any(), any(), eq("fast"), any(), any());
-		verify(heavy, never()).analyze(any(), any(), any(), any(), any(), any());
+		assertThat(shark.calls()).containsExactly("fast");
+		assertThat(heavy.calls()).isEmpty();
 		assertThat(result.engine()).isEqualTo("shark");
 	}
 
 	@Test
 	void balancedRequestsStayOnSharkAndSkipHeavyAnalyzer() {
-		HeapRetentionAnalyzer heavy = mock(HeapRetentionAnalyzer.class);
-		HeapRetentionAnalyzer shark = mock(HeapRetentionAnalyzer.class);
-		given(shark.analyze(any(), any(), any(), eq("balanced"), any(), any()))
-			.willReturn(sampleSharkFallbackResult());
+		RecordingAnalyzer heavy = RecordingAnalyzer.returning(sampleSharkFallbackResult());
+		RecordingAnalyzer shark = RecordingAnalyzer.returning(sampleSharkFallbackResult());
 
 		var orchestrator = new HeapRetentionAnalysisOrchestrator(shark, heavy);
 
 		var result = orchestrator.analyze(Path.of("C:/tmp/demo.hprof"), 10, 12000, "balanced", List.of(),
 				List.of());
 
-		verify(shark).analyze(any(), any(), any(), eq("balanced"), any(), any());
-		verify(heavy, never()).analyze(any(), any(), any(), any(), any(), any());
+		assertThat(shark.calls()).containsExactly("balanced");
+		assertThat(heavy.calls()).isEmpty();
 		assertThat(result.engine()).isEqualTo("shark");
 	}
 
@@ -99,6 +81,43 @@ class HeapRetentionAnalysisOrchestratorTest {
 				new HeapRetentionSummary(List.of(), List.of(), List.of(), List.of(),
 						new HeapRetentionConfidence("medium", List.of(), List.of()), "summary", true, List.of(), ""),
 				"summary");
+	}
+
+	private static final class RecordingAnalyzer implements HeapRetentionAnalyzer {
+
+		private final HeapRetentionAnalysisResult result;
+
+		private final RuntimeException failure;
+
+		private final java.util.List<String> calls = new java.util.ArrayList<>();
+
+		private RecordingAnalyzer(HeapRetentionAnalysisResult result, RuntimeException failure) {
+			this.result = result;
+			this.failure = failure;
+		}
+
+		static RecordingAnalyzer returning(HeapRetentionAnalysisResult result) {
+			return new RecordingAnalyzer(result, null);
+		}
+
+		static RecordingAnalyzer throwing(RuntimeException failure) {
+			return new RecordingAnalyzer(null, failure);
+		}
+
+		@Override
+		public HeapRetentionAnalysisResult analyze(Path heapDumpPath, Integer topObjectLimit, Integer maxOutputChars,
+				String analysisDepth, List<String> focusTypes, List<String> focusPackages) {
+			calls.add(analysisDepth);
+			if (failure != null) {
+				throw failure;
+			}
+			return result;
+		}
+
+		List<String> calls() {
+			return List.copyOf(calls);
+		}
+
 	}
 
 }

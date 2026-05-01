@@ -3,11 +3,13 @@ package com.alibaba.cloud.ai.examples.javatuning.config;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
 
 import com.alibaba.cloud.ai.examples.javatuning.advice.MemoryGcDiagnosisEngine;
 import com.alibaba.cloud.ai.examples.javatuning.agent.JavaTuningWorkflowService;
 import com.alibaba.cloud.ai.examples.javatuning.source.LocalSourceHotspotFinder;
+import com.alibaba.cloud.ai.examples.javatuning.source.SourceHotspotCorrelationService;
 import com.alibaba.cloud.ai.examples.javatuning.discovery.CommandJavaProcessDiscoveryService;
 import com.alibaba.cloud.ai.examples.javatuning.discovery.JavaProcessDiscoveryService;
 import com.alibaba.cloud.ai.examples.javatuning.discovery.ProcessDisplayNameResolver;
@@ -102,9 +104,14 @@ public class JavaTuningAgentConfig {
 	}
 
 	@Bean
+	SourceHotspotCorrelationService sourceHotspotCorrelationService(LocalSourceHotspotFinder localSourceHotspotFinder) {
+		return new SourceHotspotCorrelationService(localSourceHotspotFinder);
+	}
+
+	@Bean
 	JavaTuningWorkflowService javaTuningWorkflowService(JvmRuntimeCollector collector,
-			MemoryGcDiagnosisEngine diagnosisEngine, LocalSourceHotspotFinder localSourceHotspotFinder) {
-		return new JavaTuningWorkflowService(collector, diagnosisEngine, localSourceHotspotFinder);
+			MemoryGcDiagnosisEngine diagnosisEngine, SourceHotspotCorrelationService sourceHotspotCorrelationService) {
+		return new JavaTuningWorkflowService(collector, diagnosisEngine, sourceHotspotCorrelationService);
 	}
 
 	@Bean
@@ -133,7 +140,9 @@ public class JavaTuningAgentConfig {
 
 	@Bean
 	HeapDumpChunkRepository heapDumpChunkRepository(
-			@Value("${java-tuning-agent.offline.chunk-base-dir:}") String configuredDir) {
+			@Value("${java-tuning-agent.offline.chunk-base-dir:}") String configuredDir,
+			@Value("${java-tuning-agent.offline.heap-dump-upload.ttl-seconds:86400}") long ttlSeconds,
+			@Value("${java-tuning-agent.offline.heap-dump-upload.cleanup-finalized:false}") boolean cleanupFinalized) {
 		Path base = configuredDir.isBlank()
 				? Path.of(System.getProperty("java.io.tmpdir"), "java-tuning-agent-offline-chunks")
 				: Path.of(configuredDir);
@@ -143,7 +152,7 @@ public class JavaTuningAgentConfig {
 		catch (IOException e) {
 			throw new IllegalStateException("Cannot create offline chunk base dir: " + base, e);
 		}
-		return new HeapDumpChunkRepository(base);
+		return new HeapDumpChunkRepository(base, Duration.ofSeconds(Math.max(0L, ttlSeconds)), cleanupFinalized);
 	}
 
 	@Bean

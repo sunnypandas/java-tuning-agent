@@ -19,14 +19,13 @@ import com.alibaba.cloud.ai.examples.javatuning.runtime.JvmMemorySnapshot;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.JvmRuntimeCollector;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.JvmRuntimeSnapshot;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.MemoryGcEvidencePack;
+import com.alibaba.cloud.ai.examples.javatuning.runtime.RetentionChainSegment;
+import com.alibaba.cloud.ai.examples.javatuning.runtime.RetentionChainSummary;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.SuspectedHolderSummary;
 import com.alibaba.cloud.ai.examples.javatuning.source.LocalSourceHotspotFinder;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.mock;
-import static org.mockito.BDDMockito.given;
 
 class JavaTuningWorkflowServiceTest {
 
@@ -40,7 +39,7 @@ class JavaTuningWorkflowServiceTest {
 				new JvmGcSnapshot("G1", 1L, 1L, 0L, 0L, null), List.of(), "", null, null,
 				new JvmCollectionMetadata(List.of(), 0L, 0L, false), List.of());
 
-		JavaTuningWorkflowService service = new JavaTuningWorkflowService(mock(JvmRuntimeCollector.class),
+		JavaTuningWorkflowService service = new JavaTuningWorkflowService(stubCollector(),
 				MemoryGcDiagnosisEngine.firstVersion(), new LocalSourceHotspotFinder());
 
 		CodeContextSummary ctx = new CodeContextSummary(List.of(), Map.of(), List.of(),
@@ -58,12 +57,8 @@ class JavaTuningWorkflowServiceTest {
 		MemoryGcEvidencePack evidence = new MemoryGcEvidencePack(stubSnapshot(), null, null, List.of(), List.of(), null,
 				null, sampleRetentionResult());
 
-		MemoryGcDiagnosisEngine diagnosisEngine = mock(MemoryGcDiagnosisEngine.class);
-		JavaTuningWorkflowService service = new JavaTuningWorkflowService(mock(JvmRuntimeCollector.class),
-				diagnosisEngine, new LocalSourceHotspotFinder());
-		TuningAdviceReport base = new TuningAdviceReport(List.of(), List.of(), List.of(), List.of(), List.of(), "medium",
-				List.of("base confidence"), "");
-		given(diagnosisEngine.diagnose(any(), any(), any(), any())).willReturn(base);
+		JavaTuningWorkflowService service = new JavaTuningWorkflowService(stubCollector(),
+				MemoryGcDiagnosisEngine.firstVersion(), new LocalSourceHotspotFinder());
 
 		TuningAdviceReport report = service.generateAdviceFromEvidence(evidence, CodeContextSummary.empty(), "local",
 				"diagnose-memory");
@@ -71,6 +66,28 @@ class JavaTuningWorkflowServiceTest {
 		assertThat(report.formattedSummary()).contains("Heap retention analysis");
 		assertThat(report.formattedSummary()).contains("Engine=dominator-style");
 		assertThat(report.formattedSummary()).contains("## Confidence");
+	}
+
+	@Test
+	void shouldCorrelateRetentionHotspotsWhenGeneratingAdviceFromEvidence() {
+		MemoryGcEvidencePack evidence = new MemoryGcEvidencePack(stubSnapshot(), null, null, List.of(), List.of(), null,
+				null, memoryLeakDemoRetentionResult());
+		JavaTuningWorkflowService service = new JavaTuningWorkflowService(stubCollector(),
+				MemoryGcDiagnosisEngine.firstVersion(), new LocalSourceHotspotFinder());
+		CodeContextSummary ctx = new CodeContextSummary(List.of(), Map.of(), List.of(),
+				List.of(Path.of("").toAbsolutePath().resolve("compat/memory-leak-demo").toString()),
+				List.of("com.alibaba.cloud.ai.compat.memoryleakdemo"));
+
+		TuningAdviceReport report = service.generateAdviceFromEvidence(evidence, ctx, "local", "diagnose-memory");
+
+		assertThat(report.suspectedCodeHotspots()).extracting(hotspot -> hotspot.className())
+			.contains("com.alibaba.cloud.ai.compat.memoryleakdemo.leak.AllocationRecord",
+					"com.alibaba.cloud.ai.compat.memoryleakdemo.leak.InMemoryLeakStore");
+		assertThat(report.formattedSummary()).contains("heap-retention");
+	}
+
+	private static JvmRuntimeCollector stubCollector() {
+		return (pid, request) -> stubSnapshot();
 	}
 
 	private static JvmRuntimeSnapshot stubSnapshot() {
@@ -89,5 +106,29 @@ class JavaTuningWorkflowServiceTest {
 								List.of("Engine=dominator-style")),
 						"### Heap retention analysis\n\nEngine=dominator-style", true, List.of(), ""),
 				"### Heap retention analysis\n\nEngine=dominator-style");
+	}
+
+	private static HeapRetentionAnalysisResult memoryLeakDemoRetentionResult() {
+		var holder = new SuspectedHolderSummary("com.alibaba.cloud.ai.compat.memoryleakdemo.leak.AllocationRecord",
+				"field-owner", 8_388_608L, 8_388_608L, 128L, "AllocationRecord.payload", "byte[]",
+				"payload retains byte arrays");
+		var storeHolder = new SuspectedHolderSummary(
+				"com.alibaba.cloud.ai.compat.memoryleakdemo.leak.InMemoryLeakStore", "collection-owner",
+				8_388_608L, 8_388_608L, 128L, "InMemoryLeakStore.retainedRecords", "AllocationRecord",
+				"retainedRecords keeps allocation records reachable");
+		var chain = new RetentionChainSummary("unknown",
+				List.of(new RetentionChainSegment("com.alibaba.cloud.ai.compat.memoryleakdemo.leak.InMemoryLeakStore",
+						"field", "retainedRecords", "java.lang.Object[]"),
+						new RetentionChainSegment("java.lang.Object[]", "array-slot", "*",
+						"com.alibaba.cloud.ai.compat.memoryleakdemo.leak.AllocationRecord"),
+						new RetentionChainSegment("com.alibaba.cloud.ai.compat.memoryleakdemo.leak.AllocationRecord",
+								"field", "payload", "byte[]")),
+				"byte[]", 65536L, 128L, 8_388_608L, 8_388_608L);
+		var summary = new HeapRetentionSummary(List.of(), List.of(holder, storeHolder), List.of(chain), List.of(),
+				new HeapRetentionConfidence("medium", List.of("retained bytes are approximate"),
+						List.of("Engine=dominator-style")),
+				"### Heap retention analysis\n\nEngine=dominator-style", true, List.of(), "");
+		return new HeapRetentionAnalysisResult(true, "dominator-style", List.of(), "", summary,
+				summary.summaryMarkdown());
 	}
 }

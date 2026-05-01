@@ -36,6 +36,10 @@ class DominatorStyleHeapRetentionAnalyzerTest {
 				assertThat(holder.retainedBytesApprox()).isGreaterThan(163_840L);
 				assertThat(holder.retainedObjectCountApprox()).isGreaterThan(1L);
 			});
+		assertThat(result.summaryMarkdown()).contains("retained-style approximation")
+			.contains("reachable subgraph estimate")
+			.contains("not MAT exact retained size")
+			.contains("Likely source holder:");
 	}
 
 }

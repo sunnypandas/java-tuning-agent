@@ -16,7 +16,7 @@ public final class HeapRetentionMarkdownRenderer {
 		StringBuilder sb = new StringBuilder();
 		sb.append("### Heap retention analysis (local, holder-oriented)\n\n");
 		sb.append(
-				"Shark retention hint output. `reachable subgraph` is a bounded graph-based approximation, and this is not full dominator retained-size analysis.\n\n");
+				"Shark retention hint output. `reachable subgraph estimate` is a bounded graph-based approximation, and this is not MAT exact retained size.\n\n");
 		if (heapDumpPath != null) {
 			sb.append("**Source:** `").append(heapDumpPath).append("`\n\n");
 		}
@@ -42,7 +42,7 @@ public final class HeapRetentionMarkdownRenderer {
 
 		if (!summary.suspectedHolders().isEmpty()) {
 			sb.append("**Suspected holders**\n\n");
-			sb.append("| Holder | Role | Reachable subgraph | Example path |\n");
+			sb.append("| Holder | Role | Reachable subgraph estimate | Example path |\n");
 			sb.append("| --- | --- | --- | --- |\n");
 			for (SuspectedHolderSummary holder : summary.suspectedHolders()) {
 				sb.append("| `").append(escapePipes(holder.holderType())).append("` | ").append(holder.holderRole())
@@ -50,13 +50,17 @@ public final class HeapRetentionMarkdownRenderer {
 						.append(escapePipes(holder.exampleFieldPath())).append("` |\n");
 			}
 			sb.append("\n");
+			firstSourceHolder(summary.suspectedHolders())
+				.ifPresent(sourceHolder -> sb.append("Likely source holder: `")
+					.append(escapePipes(sourceHolder))
+					.append("`\n\n"));
 		}
 
 		if (!summary.retentionChains().isEmpty()) {
 			sb.append("**Representative chains**\n\n");
 			for (RetentionChainSummary chain : summary.retentionChains()) {
 				sb.append("- `").append(escapePipes(renderChain(chain))).append("`");
-				sb.append(" (`reachable subgraph` ").append(formatBytes(chain.reachableSubgraphBytesApprox()))
+				sb.append(" (`reachable subgraph estimate` ").append(formatBytes(chain.reachableSubgraphBytesApprox()))
 						.append(")\n");
 			}
 			sb.append("\n");
@@ -81,6 +85,13 @@ public final class HeapRetentionMarkdownRenderer {
 		}
 
 		return bound(sb.toString(), boundedChars);
+	}
+
+	private static java.util.Optional<String> firstSourceHolder(List<SuspectedHolderSummary> holders) {
+		return holders.stream()
+			.map(SuspectedHolderSummary::exampleFieldPath)
+			.filter(path -> path != null && !path.isBlank())
+			.findFirst();
 	}
 
 	private static String renderChain(RetentionChainSummary chain) {

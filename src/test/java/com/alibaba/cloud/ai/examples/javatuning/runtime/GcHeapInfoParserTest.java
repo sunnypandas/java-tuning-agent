@@ -61,4 +61,32 @@ class GcHeapInfoParserTest {
 		assertThat(parsed.oldGenCommittedBytes()).isEqualTo(200000L * 1024L);
 	}
 
+	@Test
+	void shouldIgnoreMalformedHumanTokens() {
+		String output = """
+				heap.max=268435456
+				G1 heap committed nopeK used 227391K
+				Metaspace       used not-a-numberK, committed 9216K, reserved 65536K
+				""";
+
+		JvmMemorySnapshot parsed = new GcHeapInfoParser().parse(output);
+
+		assertThat(parsed.heapUsedBytes()).isZero();
+		assertThat(parsed.heapCommittedBytes()).isZero();
+		assertThat(parsed.metaspaceUsedBytes()).isNull();
+	}
+
+	@Test
+	void shouldParseCompactG1HeapLine() {
+		String output = """
+				heap.max=268435456
+				G1 heap committed 262144K used 227391K
+				""";
+
+		JvmMemorySnapshot parsed = new GcHeapInfoParser().parse(output);
+
+		assertThat(parsed.heapCommittedBytes()).isEqualTo(262144L * 1024L);
+		assertThat(parsed.heapUsedBytes()).isEqualTo(227391L * 1024L);
+	}
+
 }

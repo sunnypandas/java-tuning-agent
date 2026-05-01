@@ -2,6 +2,7 @@ package com.alibaba.cloud.ai.examples.javatuning.runtime;
 
 import java.util.List;
 
+/** Primary evidence container for live and merged diagnosis inputs; use {@link MemoryGcEvidenceMerger} to combine optional attachments. */
 public record MemoryGcEvidencePack(JvmRuntimeSnapshot snapshot, ClassHistogramSummary classHistogram,
 		ThreadDumpSummary threadDump, List<String> missingData, List<String> warnings, String heapDumpPath,
 		HeapDumpShallowSummary heapShallowSummary, NativeMemorySummary nativeMemorySummary,

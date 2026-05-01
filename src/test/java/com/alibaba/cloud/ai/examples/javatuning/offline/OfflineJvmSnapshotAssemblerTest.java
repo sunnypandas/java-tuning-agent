@@ -75,4 +75,28 @@ class OfflineJvmSnapshotAssemblerTest {
 		assertThat(assembler.assemble(cmsDraft).gc().collector()).isEqualTo("CMS");
 	}
 
+	@Test
+	void degradesMalformedCompressedRuntimeSnapshotInsteadOfThrowing() {
+		String runtime = """
+				targetPid: 1961
+				heap.max=268435456
+				G1 heap committed 262144K used 227391K
+				jstat -gcutil: YGC 8 YGCT 0.015 FGC 0 FGCT 0.000
+				""";
+		OfflineBundleDraft draft = new OfflineBundleDraft("pid=1961\n-XX:+UseG1GC", "", runtime,
+				new OfflineArtifactSource(null, null), new OfflineArtifactSource(null, null), null, false, false, false,
+				null, null, null, null, null, null, Map.of());
+
+		JvmRuntimeSnapshot snap = assembler.assemble(draft);
+
+		assertThat(snap.pid()).isEqualTo(1961L);
+		assertThat(snap.gc()).isNotNull();
+		assertThat(snap.gc().collector()).isEqualTo("G1");
+		assertThat(snap.gc().youngGcCount()).isEqualTo(8L);
+		assertThat(snap.gc().youngGcTimeMs()).isEqualTo(15L);
+		assertThat(snap.memory().heapCommittedBytes()).isEqualTo(262144L * 1024L);
+		assertThat(snap.memory().heapUsedBytes()).isEqualTo(227391L * 1024L);
+		assertThat(snap.warnings()).anyMatch(warning -> warning.contains("Unable to parse"));
+	}
+
 }

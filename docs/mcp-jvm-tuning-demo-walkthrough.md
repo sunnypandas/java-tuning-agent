@@ -66,6 +66,8 @@ mvn -f compat/memory-leak-demo/pom.xml spring-boot:run "-Dspring-boot.run.jvmArg
 mvn -f compat/memory-leak-demo/pom.xml spring-boot:run "-Dspring-boot.run.jvmArguments=-Xms128m -Xmx256m -XX:+UseG1GC -XX:NativeMemoryTracking=summary"
 ```
 
+如果报告提示缺少 `nativeMemorySummary`，现场可以直接解释下一步：目标 JVM 需要带 `-XX:NativeMemoryTracking=summary` 重启，然后采集 `jcmd <pid> VM.native_memory summary`。Direct buffer 场景重点看 NMT `NIO` category；classloader/metaspace 场景重点看 NMT `Class` category。
+
 ### 3. 预先制造一轮可观测现象
 
 为了让后面的 tuning 演示更稳定，建议先打几次流量：
@@ -298,6 +300,7 @@ C:/Users/panpa/AppData/Local/Temp/java-tuning-agent-heap-<pid>.hprof
 如果你前面已经触发了 `deadlock/trigger`，这里通常能看到死锁提示。  
 如果你前面已经打过 `allocate` 和 `raw/allocate`，这里通常能看到 `byte[]` 或相关对象占用较高。  
 如果你前面已经打过 `direct/allocate` 并且 JVM 启用了 `-XX:NativeMemoryTracking=summary`，这里可以重点看 direct/native memory 相关 evidence。
+如果没启用 NMT，报告会给出命令级 next step：用 `-XX:NativeMemoryTracking=summary` 重启、采集 `jcmd <pid> VM.native_memory summary`，再通过 `collectMemoryGcEvidence` 或离线 `nativeMemorySummary` 合并证据。
 
 #### 讲解词
 
@@ -388,6 +391,8 @@ curl -X POST http://localhost:8091/api/leak/jfr-workload -H 'Content-Type: appli
 - `summary.executionSampleSummary`
 - 后续 report 中的 `JFR shows allocation hotspots` / `JFR shows thread contention pressure`
 
+如果 `JFR.start` 很快返回，当前 tool 会继续等待录制窗口结束并等待文件稳定；只有超出 duration + grace 后仍缺文件，才把手动检查 `.jfr` 路径当作兜底说明。
+
 ### Step 5. 最后让系统给出结构化分析结论
 
 #### 你可以这样触发
@@ -422,7 +427,7 @@ curl -X POST http://localhost:8091/api/leak/jfr-workload -H 'Content-Type: appli
 - 如果启用了 NMT 并触发 direct buffer，报告可以利用 native/direct buffer evidence
 - 如果补了 repeated sampling，报告可以利用趋势 evidence
 - 如果补了 JFR summary，报告会出现 JFR allocation/contention/execution sample 相关 findings
-- `sourceRoots` 提供后，报告会尝试把热点类映射回源码文件
+- `sourceRoots` 提供后，报告会把 histogram、thread dump、JFR 和 deep retention 里的类/holder 线索映射回源码文件
 
 ### 可选补充说明
 
@@ -485,6 +490,16 @@ scripts/export-jvm-diagnostics.sh --export-dir /tmp/memory-leak-demo-offline --p
 ```
 
 跳过 heap dump 时，`offline-draft-template.json` 里的 `heapDumpAbsolutePath` 会为空；后续要么补一个 `.hprof` 路径，要么在离线 advice 阶段设置 `proceedWithMissingRequired=true` 降级继续。
+
+### Step 0.5. 先确认离线 bundle 的目标 JVM
+
+在生成离线 advice 前，先打开 B1 或 `offline-draft-template.json` 里的 `jvmIdentityText`，确认 `java_command` 是 demo 应用：
+
+```text
+com.alibaba.cloud.ai.compat.memoryleakdemo.MemoryLeakDemoApplication
+```
+
+如果看到的是 `com.alibaba.cloud.ai.examples.javatuning.JavaTuningAgentApplication`，说明导出时选中了 MCP agent 自己，不要把这份 bundle 归因到 `compat/memory-leak-demo` 源码。`validateOfflineAnalysisDraft` 会提示 PID 不一致，`generateOfflineTuningAdvice` 会在源码上下文不匹配时追加 `offlineTargetConsistency`。
 
 ### Step 1. 构建离线草稿并做一次校验
 
@@ -549,6 +564,8 @@ scripts/export-jvm-diagnostics.sh --export-dir /tmp/memory-leak-demo-offline --p
 
 `finalizeOfflineHeapDump` 成功后会返回 `finalizeHeapDumpPath`，把它写回 `draft.heapDumpAbsolutePath`。
 
+新建 upload 会顺带清理过期的未完成分块目录，默认 TTL 是 `java-tuning-agent.offline.heap-dump-upload.ttl-seconds=86400`；已经 finalize 的 `.hprof` 默认保留，只有显式设置 `cleanup-finalized=true` 才会一起过期清理。
+
 ### Step 3. （可选）先预览 heap dump 浅层摘要
 
 如果现场想先展示“堆里是什么类型占用大”，可以先调用：
@@ -579,6 +596,7 @@ scripts/export-jvm-diagnostics.sh --export-dir /tmp/memory-leak-demo-offline --p
   "draft": { "...": "使用上一步确认后的完整 draft" },
   "environment": "prod",
   "optimizationGoal": "diagnose memory leak and reduce full gc",
+  "analysisDepth": "deep",
   "confirmationToken": "offline-approved-by-user",
   "proceedWithMissingRequired": false
 }
@@ -595,6 +613,14 @@ scripts/export-jvm-diagnostics.sh --export-dir /tmp/memory-leak-demo-offline --p
 - `formattedSummary`
 
 如果 `heapDumpAbsolutePath` 指向有效 `.hprof`，报告末尾通常会追加 heap shallow summary 小节。
+
+如果传了 `analysisDepth="deep"`，deep retention 可能会额外给出 holder/引用链线索。memory-leak-demo 的典型讲解例子可以写成：
+
+```text
+Object[] -> AllocationRecord.payload -> byte[]
+```
+
+这比只看 class histogram 的 `byte[]` 更接近源码里的保留字段。
 
 ### 离线模式分享讲解词（可直接照读）
 
@@ -744,6 +770,14 @@ curl -X POST http://localhost:8091/api/leak/classloader/allocate -H 'Content-Typ
 
 NMT 必须在目标 JVM 启动时打开；已经运行中的进程不能靠 MCP 后补这个开关。
 
+启用后重新采集：
+
+```text
+jcmd <pid> VM.native_memory summary
+```
+
+Direct buffer 结论需要 NMT `NIO` category；metaspace/classloader 结论需要 NMT `Class` category。没有这些 native category 时，报告会保留现有 heap/classloader 信号，但会把 native 结论降级为待确认。
+
 ### 看不到死锁
 
 重新触发一次：
@@ -792,4 +826,3 @@ curl -X POST http://localhost:8091/api/leak/raw/clear
 curl -X POST http://localhost:8091/api/leak/direct/clear
 curl -X POST http://localhost:8091/api/leak/classloader/clear
 ```
-

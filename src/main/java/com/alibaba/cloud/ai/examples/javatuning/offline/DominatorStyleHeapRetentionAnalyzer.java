@@ -963,8 +963,8 @@ public final class DominatorStyleHeapRetentionAnalyzer implements HeapRetentionA
 		return markdown.replace("### Heap retention analysis (local, holder-oriented)",
 				"### Heap retention analysis (local, dominator-style approximation)")
 			.replace(
-					"Shark retention hint output. `reachable subgraph` is a bounded graph-based approximation, and this is not full dominator retained-size analysis.",
-					"Dominator-style retained output. `retained bytes` come from a bounded local dominator approximation, and `reachable subgraph` remains an outbound graph estimate rather than MAT-exact retained size.");
+					"Shark retention hint output. `reachable subgraph estimate` is a bounded graph-based approximation, and this is not MAT exact retained size.",
+					"Dominator-style retention output. `retained-style approximation` bytes come from a bounded local dominator approximation, and `reachable subgraph estimate` remains an outbound graph estimate, not MAT exact retained size.");
 	}
 
 	private static HeapRetentionAnalysisResult failure(String errorMessage) {

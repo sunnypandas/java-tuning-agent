@@ -1,5 +1,10 @@
 package com.alibaba.cloud.ai.examples.javatuning.runtime;
 
+/**
+ * Bounds for JVM-side timed {@code JFR.start} recordings. {@code completionGraceMs} is appended after waiting the
+ * remaining requested recording window—based on elapsed {@code JFR.start} wall time—for the {@code .jfr} output to
+ * appear and stabilize.
+ */
 public record JfrRecordingProperties(int defaultDurationSeconds, int minDurationSeconds, int maxDurationSeconds,
 		long completionGraceMs, int defaultMaxSummaryEvents, int topLimit) {
 

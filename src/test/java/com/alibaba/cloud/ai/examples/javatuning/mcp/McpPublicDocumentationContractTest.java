@@ -9,16 +9,12 @@ import java.util.stream.Collectors;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.tool.ToolCallbackProvider;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-@SpringBootTest
 class McpPublicDocumentationContractTest {
 
-	@Autowired
-	private ToolCallbackProvider toolCallbackProvider;
+	private final ToolCallbackProvider toolCallbackProvider = McpToolCallbackProviderTestSupport.create();
 
 	@Test
 	void readmeAndCursorReferenceShouldMentionEveryPublicTool() throws Exception {
@@ -61,15 +57,17 @@ class McpPublicDocumentationContractTest {
 
 		assertThat(readme).contains("**13** tools", "seven for **live JVM**", "six for **offline / imported**",
 				"baselineEvidence", "jfrSummary", "repeatedSamplingResult", "resourceBudgetEvidence",
-				"nativeMemorySummary", "analysisDepth=deep");
+				"nativeMemorySummary", "analysisDepth=deep", "heap-dump-upload");
 		assertThat(skill).contains("inspectJvmRuntimeRepeated", "recordJvmFlightRecording", "nativeMemorySummary",
-				"backgroundNotes.resourceBudget", "analysisDepth: \"deep\"");
+				"backgroundNotes.resourceBudget", "analysisDepth: \"deep\"", "heap-dump-upload");
 		assertThat(reference).contains("nativeMemorySummary", "repeatedSamplesPathOrText",
-				"backgroundNotes.resourceBudget", "resourceBudgetEvidence", "`fast`, `balanced`, or `deep`");
+				"backgroundNotes.resourceBudget", "resourceBudgetEvidence", "`fast`, `balanced`, or `deep`",
+				"heap-dump-upload");
 		assertThat(offlineSpec).contains("13", "7 个在线 + 6 个离线", "repeatedSamplesPathOrText",
-				"backgroundNotes.resourceBudget", "nativeMemorySummary", "analysisDepth=deep");
+				"backgroundNotes.resourceBudget", "nativeMemorySummary", "analysisDepth=deep", "heap-dump-upload");
 		assertThat(walkthrough).contains("共 13 个", "repeatedSamplesPathOrText", "nativeMemorySummary",
-				"backgroundNotes.resourceBudget", "analysisDepth=\"deep\"");
+				"backgroundNotes.resourceBudget", "analysisDepth=\"deep\"", "MemoryLeakDemoApplication",
+				"Object[] -> AllocationRecord.payload -> byte[]");
 	}
 
 	@Test

@@ -173,7 +173,8 @@ class JavaTuningMcpToolsTest {
 
 		MemoryGcEvidencePack evidence = new MemoryGcEvidencePack(stubSnapshot(123L), null, null, List.of(),
 				List.of("already-collected"), null, null);
-		given(workflowService.generateAdviceFromEvidence(eq(evidence), any(CodeContextSummary.class), any(), any()))
+		given(workflowService.generateAdviceFromEvidence(any(MemoryGcEvidencePack.class), any(CodeContextSummary.class),
+				eq("prod"), eq("diagnose")))
 			.willReturn(new TuningAdviceReport(List.of(), List.of(), List.of(), List.of(), List.of(), "high",
 					List.of("from-current-evidence"), ""));
 
@@ -181,11 +182,12 @@ class JavaTuningMcpToolsTest {
 				workflowService);
 		var ctx = CodeContextSummary.withoutSource(List.of(), Map.of(), List.of());
 
-		assertThat(tools.generateTuningAdviceFromEvidence(evidence, ctx, "prod", "diagnose").confidence())
+		assertThat(tools.generateTuningAdviceFromEvidence(evidence, ctx, "prod", "diagnose", null, null, null, null)
+			.confidence())
 			.isEqualTo("high");
 
-		verify(workflowService, times(1)).generateAdviceFromEvidence(eq(evidence), eq(ctx), eq("prod"),
-				eq("diagnose"));
+		verify(workflowService, times(1)).generateAdviceFromEvidence(any(MemoryGcEvidencePack.class), eq(ctx),
+				eq("prod"), eq("diagnose"));
 		verify(workflowService, times(0)).collectEvidence(any(MemoryGcEvidenceRequest.class));
 		verify(collector, times(0)).collect(any(Long.class), any());
 	}
@@ -197,7 +199,8 @@ class JavaTuningMcpToolsTest {
 
 		MemoryGcEvidencePack evidence = new MemoryGcEvidencePack(stubSnapshot(123L), null, null, List.of(), List.of(),
 				"C:\\tmp\\dump.hprof", null);
-		given(workflowService.generateAdviceFromEvidence(eq(evidence), any(CodeContextSummary.class), any(), any()))
+		given(workflowService.generateAdviceFromEvidence(any(MemoryGcEvidencePack.class), any(CodeContextSummary.class),
+				eq("local"), eq("diagnose")))
 			.willReturn(new TuningAdviceReport(List.of(), List.of(), List.of(), List.of(), List.of(), "high",
 					List.of("reused-heap-dump"), ""));
 
@@ -205,12 +208,42 @@ class JavaTuningMcpToolsTest {
 				workflowService);
 		var ctx = CodeContextSummary.withoutSource(List.of(), Map.of(), List.of());
 
-		assertThat(tools.generateTuningAdviceFromEvidence(evidence, ctx, "local", "diagnose").confidenceReasons())
+		assertThat(tools.generateTuningAdviceFromEvidence(evidence, ctx, "local", "diagnose", null, null, null, null)
+			.confidenceReasons())
 			.contains("reused-heap-dump");
 
 		ArgumentCaptor<MemoryGcEvidencePack> captor = ArgumentCaptor.forClass(MemoryGcEvidencePack.class);
 		verify(workflowService).generateAdviceFromEvidence(captor.capture(), eq(ctx), eq("local"), eq("diagnose"));
 		assertThat(captor.getValue().heapDumpPath()).isEqualTo("C:\\tmp\\dump.hprof");
+		verify(workflowService, times(0)).collectEvidence(any(MemoryGcEvidenceRequest.class));
+		verify(collector, times(0)).collect(any(Long.class), any());
+	}
+
+	@Test
+	void shouldMergeOptionalRepeatedSamplingIntoAdviceFromEvidencePath() {
+		JvmRuntimeCollector collector = mock(JvmRuntimeCollector.class);
+		JavaTuningWorkflowService workflowService = mock(JavaTuningWorkflowService.class);
+
+		MemoryGcEvidencePack evidence = new MemoryGcEvidencePack(stubSnapshot(123L), null, null, List.of(),
+				List.of("pack-warn"), null, null);
+		given(workflowService.generateAdviceFromEvidence(any(MemoryGcEvidencePack.class), any(CodeContextSummary.class),
+				eq("local"), eq("footprint")))
+			.willReturn(new TuningAdviceReport(List.of(), List.of(), List.of(), List.of(), List.of(), "medium",
+					List.of("merged"), ""));
+		RepeatedSamplingResult repeated = new RepeatedSamplingResult(123L, List.of(),
+				List.of("repeated-flag"), List.of(), 10L, 900L);
+
+		JavaTuningMcpTools tools = new JavaTuningMcpTools(mock(JavaProcessDiscoveryService.class), collector,
+				workflowService);
+		var ctx = CodeContextSummary.withoutSource(List.of(), Map.of(), List.of());
+
+		tools.generateTuningAdviceFromEvidence(evidence, ctx, "local", "footprint", repeated, null, null, null);
+
+		ArgumentCaptor<MemoryGcEvidencePack> mergedCaptor = ArgumentCaptor.forClass(MemoryGcEvidencePack.class);
+		verify(workflowService).generateAdviceFromEvidence(mergedCaptor.capture(), eq(ctx), eq("local"),
+				eq("footprint"));
+		assertThat(mergedCaptor.getValue().repeatedSamplingResult()).isSameAs(repeated);
+		assertThat(mergedCaptor.getValue().warnings()).contains("pack-warn", "repeated-flag");
 		verify(workflowService, times(0)).collectEvidence(any(MemoryGcEvidenceRequest.class));
 		verify(collector, times(0)).collect(any(Long.class), any());
 	}

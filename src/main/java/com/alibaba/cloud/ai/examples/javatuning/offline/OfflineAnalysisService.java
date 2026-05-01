@@ -24,12 +24,21 @@ public class OfflineAnalysisService {
 
 	private final JavaTuningWorkflowService workflowService;
 
+	private final OfflineTargetConsistencyAnalyzer targetConsistencyAnalyzer;
+
 	public OfflineAnalysisService(OfflineDraftValidator validator, OfflineEvidenceAssembler evidenceAssembler,
 			HeapRetentionAnalyzer heapRetentionAnalyzer, JavaTuningWorkflowService workflowService) {
+		this(validator, evidenceAssembler, heapRetentionAnalyzer, workflowService, new OfflineTargetConsistencyAnalyzer());
+	}
+
+	OfflineAnalysisService(OfflineDraftValidator validator, OfflineEvidenceAssembler evidenceAssembler,
+			HeapRetentionAnalyzer heapRetentionAnalyzer, JavaTuningWorkflowService workflowService,
+			OfflineTargetConsistencyAnalyzer targetConsistencyAnalyzer) {
 		this.validator = validator;
 		this.evidenceAssembler = evidenceAssembler;
 		this.heapRetentionAnalyzer = heapRetentionAnalyzer;
 		this.workflowService = workflowService;
+		this.targetConsistencyAnalyzer = targetConsistencyAnalyzer;
 	}
 
 	public OfflineDraftValidationResult validate(OfflineBundleDraft draft, boolean proceedWithMissingRequired) {
@@ -49,9 +58,14 @@ public class OfflineAnalysisService {
 					"使用导入的类直方图、线程栈或堆转储进行分析需要非空的 confirmationToken（与在线模式特权采集相同语义）。");
 		}
 		CodeContextSummary ctx = codeContextSummary == null ? CodeContextSummary.empty() : codeContextSummary;
+		OfflineTargetConsistencyResult targetConsistency = targetConsistencyAnalyzer.analyze(draft, ctx);
 		MemoryGcEvidencePack base = evidenceAssembler.build(draft);
 		List<String> missing = new ArrayList<>(base.missingData());
 		List<String> warnings = new ArrayList<>(base.warnings());
+		warnings.addAll(targetConsistency.warnings());
+		if (!targetConsistency.targetMatched()) {
+			missing.add("offlineTargetConsistency");
+		}
 		appendRecommendedAbsenceNotes(draft, missing);
 		HeapRetentionAnalysisResult heapRetentionAnalysis = null;
 		String normalizedDepth = normalizeAnalysisDepth(analysisDepth);

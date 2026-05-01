@@ -33,4 +33,7 @@ java-tuning-agent:
     heap-summary:
       default-top-classes: 40
       default-max-output-chars: 32000
+    heap-dump-upload:
+      ttl-seconds: 86400
+      cleanup-finalized: false
     # chunk-base-dir: # optional; empty uses java.io.tmpdir/java-tuning-agent-offline-chunks

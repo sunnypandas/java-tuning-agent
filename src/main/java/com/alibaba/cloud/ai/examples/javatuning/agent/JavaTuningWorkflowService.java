@@ -17,11 +17,14 @@ import com.alibaba.cloud.ai.examples.javatuning.runtime.DiagnosisWindow;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.JfrSummary;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.JvmRuntimeCollector;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.JvmRuntimeSnapshot;
+import com.alibaba.cloud.ai.examples.javatuning.runtime.MemoryGcEvidenceMerger;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.MemoryGcEvidencePack;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.MemoryGcEvidenceRequest;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.NativeMemorySummary;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.RepeatedSamplingResult;
+import com.alibaba.cloud.ai.examples.javatuning.runtime.ResourceBudgetEvidence;
 import com.alibaba.cloud.ai.examples.javatuning.source.LocalSourceHotspotFinder;
+import com.alibaba.cloud.ai.examples.javatuning.source.SourceHotspotCorrelationService;
 
 public class JavaTuningWorkflowService {
 
@@ -29,13 +32,18 @@ public class JavaTuningWorkflowService {
 
 	private final MemoryGcDiagnosisEngine diagnosisEngine;
 
-	private final LocalSourceHotspotFinder sourceHotspotFinder;
+	private final SourceHotspotCorrelationService sourceHotspotCorrelationService;
 
 	public JavaTuningWorkflowService(JvmRuntimeCollector collector, MemoryGcDiagnosisEngine diagnosisEngine,
 			LocalSourceHotspotFinder sourceHotspotFinder) {
+		this(collector, diagnosisEngine, new SourceHotspotCorrelationService(sourceHotspotFinder));
+	}
+
+	public JavaTuningWorkflowService(JvmRuntimeCollector collector, MemoryGcDiagnosisEngine diagnosisEngine,
+			SourceHotspotCorrelationService sourceHotspotCorrelationService) {
 		this.collector = collector;
 		this.diagnosisEngine = diagnosisEngine;
-		this.sourceHotspotFinder = sourceHotspotFinder;
+		this.sourceHotspotCorrelationService = sourceHotspotCorrelationService;
 	}
 
 	public MemoryGcEvidencePack collectEvidence(MemoryGcEvidenceRequest request) {
@@ -54,6 +62,16 @@ public class JavaTuningWorkflowService {
 	}
 
 	/**
+	 * Fills nullable evidence fields before diagnosis — same semantics as {@link MemoryGcEvidenceMerger}.
+	 */
+	public MemoryGcEvidencePack mergeEvidenceAttachments(MemoryGcEvidencePack evidence,
+			RepeatedSamplingResult repeatedSamplingResult, JfrSummary jfrSummary,
+			ResourceBudgetEvidence resourceBudgetEvidence, MemoryGcEvidencePack baselineEvidence) {
+		return MemoryGcEvidenceMerger.merge(evidence, repeatedSamplingResult, jfrSummary, resourceBudgetEvidence,
+				baselineEvidence);
+	}
+
+	/**
 	 * Run diagnosis and optional source correlation on an existing evidence pack (lightweight snapshot,
 	 * histogram-inclusive pack from {@link #collectEvidence}, or merged inputs).
 	 */
@@ -62,8 +80,8 @@ public class JavaTuningWorkflowService {
 		evidence = ensureDiagnosisWindow(evidence);
 		TuningAdviceReport base = diagnosisEngine.diagnose(evidence, codeContextSummary, environment, optimizationGoal);
 		List<Path> roots = codeContextSummary.sourceRoots().stream().map(Path::of).toList();
-		List<SuspectedCodeHotspot> hotspots = sourceHotspotFinder.hotspotsFromHistogram(roots,
-				evidence.classHistogram(), codeContextSummary.candidatePackages());
+		List<SuspectedCodeHotspot> hotspots = sourceHotspotCorrelationService.correlate(roots, evidence,
+				codeContextSummary.candidatePackages());
 		TuningAdviceReport merged = new TuningAdviceReport(base.findings(), base.recommendations(), hotspots,
 				base.missingData(), base.nextSteps(), base.confidence(), base.confidenceReasons(), "");
 		String summary = TuningAdviceReportFormatter.toMarkdown(merged);

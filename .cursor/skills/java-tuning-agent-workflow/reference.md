@@ -141,6 +141,10 @@ Use this after `collectMemoryGcEvidence` when you want advice from the exact evi
     "warnings": [],
     "heapDumpPath": null
   },
+  "baselineEvidence": null,
+  "jfrSummary": null,
+  "repeatedSamplingResult": null,
+  "resourceBudgetEvidence": null,
   "environment": "local",
   "optimizationGoal": "reduce GC pause and stable latency",
   "codeContextSummary": {
@@ -153,7 +157,7 @@ Use this after `collectMemoryGcEvidence` when you want advice from the exact evi
 }
 ```
 
-In practice, set `evidence` to the **full JSON object returned by `collectMemoryGcEvidence`**. Keep optional fields such as `nativeMemorySummary`, `resourceBudgetEvidence`, `heapShallowSummary`, `jfrSummary`, `repeatedSamplingResult`, `baselineEvidence`, and `diagnosisWindow` if present.
+In practice, set `evidence` to the **full JSON object returned by `collectMemoryGcEvidence`**. Keep optional fields such as `nativeMemorySummary`, `resourceBudgetEvidence`, `heapShallowSummary`, `jfrSummary`, `repeatedSamplingResult`, `baselineEvidence`, and `diagnosisWindow` if present. The top-level optional `baselineEvidence`, `jfrSummary`, `repeatedSamplingResult`, and `resourceBudgetEvidence` fields are merge helpers for separately collected evidence; they fill missing pack fields and are optional.
 
 **Do not** follow `collectMemoryGcEvidence` by calling `generateTuningAdvice` with the same `collectClassHistogram` / `collectThreadDump` / `includeHeapDump` / `heapDumpOutputPath` values. That path collects again.
 
@@ -220,6 +224,8 @@ Use when there is **no** local target PID: the user provides exported `jcmd`/`js
 
 `draft` is a full `OfflineBundleDraft` (B1–B6, optional R1–R3 “absent” flags, `heapDumpAbsolutePath`, `backgroundNotes`, etc.). Set `proceedWithMissingRequired: true` only after the user explicitly accepts degraded analysis.
 
+Validation also performs structural target checks. If B1 JVM identity, B3 runtime snapshot, B4 class histogram, or B5 thread dump expose conflicting PID markers, the result stays structurally usable but includes degradation warnings. When later calling `generateOfflineTuningAdvice` with a `CodeContextSummary`, the server compares imported `java_command` against `applicationNames` and `candidatePackages`; a mismatch is surfaced as a warning and `offlineTargetConsistency` missing-data marker.
+
 **OfflineBundleDraft field shapes that agents must not guess:**
 
 - `jvmIdentityText`, `jdkInfoText`, `runtimeSnapshotText`: plain strings
@@ -269,7 +275,7 @@ Prefer `filePath` when the exported file already exists locally.
 }
 ```
 
-First call: leave `uploadId` empty; reuse the returned `uploadId` for all chunks `0 .. chunkTotal-1`.
+First call: leave `uploadId` empty; reuse the returned `uploadId` for all chunks `0 .. chunkTotal-1`. Creating a new upload also runs opportunistic TTL cleanup for stale incomplete upload directories (`java-tuning-agent.offline.heap-dump-upload.ttl-seconds`, default 86400). Finalized heap dumps are retained by default; set `java-tuning-agent.offline.heap-dump-upload.cleanup-finalized=true` only when repository-managed finalized dumps should expire too.
 
 **5.3 `finalizeOfflineHeapDump`**
 
@@ -291,6 +297,7 @@ Write the returned path into `draft.heapDumpAbsolutePath` before `generateOfflin
   "draft": { },
   "environment": "prod",
   "optimizationGoal": "reduce memory growth",
+  "analysisDepth": "deep",
   "confirmationToken": "user-verbatim-or-canonical-offline-scopes",
   "proceedWithMissingRequired": false
 }
