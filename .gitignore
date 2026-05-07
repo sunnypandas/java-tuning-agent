@@ -28,3 +28,6 @@ replay_pid*.log
 # Keep Cursor workspace metadata
 !.cursor/
 !.cursor/**
+
+# Generated local MCP client config
+.cursor/mcp.json

@@ -1,0 +1,3 @@
+[mcp_servers.java-tuning-agent-dev]
+command = "mvn"
+args = ["-q", "-f", "/absolute/path/to/java-tuning-agent/pom.xml", "-Pstdio-mcp-dev", "spring-boot:run"]

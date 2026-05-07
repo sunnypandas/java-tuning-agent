@@ -30,6 +30,9 @@ jobs:
       - name: Build and test
         run: mvn -B verify
 
+      - name: Build agent pack
+        run: scripts/build-agent-pack.sh 0.1.0
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -38,3 +41,4 @@ jobs:
           path: |
             target/java-tuning-agent-*.jar
             target/java-tuning-agent-*-mcp-schemas.json
+            target/agent-pack/*.zip

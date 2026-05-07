@@ -1,0 +1,33 @@
+{
+  "name": "java-tuning-agent",
+  "version": "0.1.0",
+  "description": "Skills and client adapters for the java-tuning-agent MCP server.",
+  "author": {
+    "name": "Spring AI Alibaba"
+  },
+  "license": "Apache-2.0",
+  "keywords": [
+    "jvm",
+    "mcp",
+    "gc",
+    "memory",
+    "java",
+    "tuning"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Java Tuning Agent",
+    "shortDescription": "JVM memory/GC tuning workflow for java-tuning-agent MCP",
+    "longDescription": "Installable workflow skill and client adapters for safely orchestrating java-tuning-agent MCP tools across Codex, Cursor, and GitHub Copilot.",
+    "developerName": "Spring AI Alibaba",
+    "category": "Coding",
+    "capabilities": [
+      "Read",
+      "Interactive"
+    ],
+    "defaultPrompt": [
+      "Use java-tuning-agent to analyze JVM memory and GC behavior.",
+      "Run the java-tuning-agent workflow for a local Java process."
+    ]
+  }
+}

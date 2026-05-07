@@ -179,21 +179,77 @@ The MCP server is configured as:
 
 For stdio MCP registrations, do not set `spring.main.keep-alive=true`: the server lifetime should be tied to the MCP client process/stdin. Forcing Spring Boot keep-alive can leave old MCP JVMs running after an LLM CLI session exits.
 
-## Use from Codex
+## Agent pack for Codex, Cursor, and GitHub Copilot
 
-Register this project as a local stdio MCP server (run from the repository root):
+Release assets include an optional **agent pack** zip:
 
-```bash
-codex mcp add java-tuning-agent -- mvn -f pom.xml spring-boot:run
+```text
+java-tuning-agent-agent-pack-<version>.zip
 ```
 
-Verify:
+This pack is modeled after Codex plugin/skill packages: it has a `.codex-plugin/plugin.json`, an installable Codex skill under `skills/`, and client adapters for Cursor and GitHub Copilot under `adapters/`.
 
-```bash
-codex mcp list
+Source layout:
+
+```text
+agent-pack/java-tuning-agent/
+  .codex-plugin/plugin.json
+  INSTALL.md
+  skills/java-tuning-agent-workflow/
+  adapters/cursor/
+  adapters/copilot/
+  mcp/release/
+  mcp/dev/
+  scripts/
 ```
 
-Then start a Codex session in this repository and ask it to use the `java-tuning-agent` MCP tools.
+Codex release install:
+
+```bash
+agent-pack/java-tuning-agent/scripts/install-codex.sh /absolute/path/to/java-tuning-agent-0.1.0.jar
+```
+
+Windows PowerShell:
+
+```powershell
+.\agent-pack\java-tuning-agent\scripts\install-codex.ps1 C:\path\to\java-tuning-agent-0.1.0.jar
+```
+
+Cursor release install:
+
+```bash
+agent-pack/java-tuning-agent/scripts/install-cursor.sh /path/to/project /absolute/path/to/java-tuning-agent-0.1.0.jar
+```
+
+Windows PowerShell:
+
+```powershell
+.\agent-pack\java-tuning-agent\scripts\install-cursor.ps1 C:\path\to\project C:\path\to\java-tuning-agent-0.1.0.jar
+```
+
+GitHub Copilot release install:
+
+```bash
+agent-pack/java-tuning-agent/scripts/install-copilot.sh /path/to/project /absolute/path/to/java-tuning-agent-0.1.0.jar
+```
+
+Windows PowerShell:
+
+```powershell
+.\agent-pack\java-tuning-agent\scripts\install-copilot.ps1 C:\path\to\project C:\path\to\java-tuning-agent-0.1.0.jar
+```
+
+For source-tree MCP development in Codex or Cursor, use the dev installers/templates under `agent-pack/java-tuning-agent/mcp/dev/`. They use Maven with `-q` so Maven logs do not pollute stdio MCP:
+
+```bash
+agent-pack/java-tuning-agent/scripts/install-codex-dev.sh /absolute/path/to/java-tuning-agent/pom.xml
+agent-pack/java-tuning-agent/scripts/install-cursor-dev.sh /path/to/project /absolute/path/to/java-tuning-agent/pom.xml
+```
+
+```powershell
+.\agent-pack\java-tuning-agent\scripts\install-codex-dev.ps1 C:\path\to\java-tuning-agent\pom.xml
+.\agent-pack\java-tuning-agent\scripts\install-cursor-dev.ps1 C:\path\to\project C:\path\to\java-tuning-agent\pom.xml
+```
 
 ## Utility scripts (PowerShell / Bash)
 
@@ -215,46 +271,21 @@ The `scripts/` directory provides both Windows PowerShell and Unix Bash variants
 - PowerShell: `.\scripts\kill-java-tuning-agent.ps1`
 - Bash: `scripts/kill-java-tuning-agent.sh`
 
-## Use from VS Code / GitHub Copilot
-
-Create or open `.vscode/mcp.json` in the repository root:
+## MCP client config
 
 ```json
 {
-  "servers": {
+  "mcpServers": {
     "java-tuning-agent": {
       "type": "stdio",
-      "command": "mvn",
-      "args": [
-        "-f",
-        "${workspaceFolder}/pom.xml",
-        "spring-boot:run"
-      ]
+      "command": "java",
+      "args": ["-jar", "/absolute/path/to/java-tuning-agent-0.1.0.jar"]
     }
   }
 }
 ```
 
-Then:
-
-1. Run `MCP: Open Workspace Folder Configuration` if you want to edit `mcp.json` from the Command Palette.
-2. Run `MCP: List Servers`.
-3. Start the `java-tuning-agent` server if it is not already running.
-4. Open Copilot Chat or agent mode and confirm the tools are available.
-
-For user-level configuration, put the same server entry in your user `mcp.json`.
-
-## Use from Cursor
-
-This repository includes a **project skill** that runs the **live** MCP tools in sequence (`listJavaApps` → `inspectJvmRuntime` → optional `inspectJvmRuntimeRepeated` → optional `recordJvmFlightRecording` → `collectMemoryGcEvidence` → `generateTuningAdviceFromEvidence`), supports interactive PID disambiguation, and requires explicit user approval before privileged options (histogram, thread dump, heap dump, JFR). For **offline** bundles, the skill documents a separate path using all six offline tools, including `analyzeOfflineHeapRetention`.
-
-- [`.cursor/skills/java-tuning-agent-workflow/SKILL.md`](.cursor/skills/java-tuning-agent-workflow/SKILL.md) — workflow instructions for the agent  
-- [`.cursor/skills/java-tuning-agent-workflow/reference.md`](.cursor/skills/java-tuning-agent-workflow/reference.md) — JSON argument templates for each tool  
-- [`.cursor/rules/java-tuning-agent-mcp.mdc`](.cursor/rules/java-tuning-agent-mcp.mdc) — project rule so Agent reads the workflow before using MCP tools  
-
-Cursor **discovers** project skills from `.cursor/skills/` at startup (see [Agent Skills](https://cursor.com/docs/skills)). To confirm this repo’s skill is visible: **Cursor Settings → Rules → Agent Decides** (look for `java-tuning-agent-workflow`). You can also type **`/java-tuning-agent-workflow`** in **Agent** chat to attach it explicitly.
-
-Separately, register the `java-tuning-agent` MCP server in Cursor MCP settings (same idea as the `mcp.json` example above). Skills and MCP are independent: the skill defines *how* to call the tools; the server must still be enabled for the tools to appear.
+Client-specific examples live in `agent-pack/java-tuning-agent/mcp/release/`.
 
 ## Quick verification flow
 
@@ -279,7 +310,7 @@ On Windows, **`java -jar target/java-tuning-agent-*.jar`** keeps that file **loc
 
 **Recommended local workflow**
 
-1. Point MCP at **`mvn spring-boot:run`** instead of **`java -jar`** so the process loads **`target/classes`** and dependency jars from your local repository, not the repackaged executable jar.
+1. Point MCP at **`mvn -q -f <pom> -Pstdio-mcp-dev spring-boot:run`** instead of **`java -jar`** so the process loads **`target/classes`** and dependency jars from your local repository, not the repackaged executable jar. Keep `-q` for stdio MCP so Maven does not write normal progress logs into the protocol stream.
 2. Use the Maven profile **`stdio-mcp-dev`**, which injects the same stdio-related `-D` flags as a jar launch without forcing Spring Boot keep-alive. Example config: [inspector-mcp-dev.json](inspector-mcp-dev.json) (replace `${workspaceFolder}` with your repo path if the client does not expand it).
 3. While coding, run **`mvn compile`** or **`mvn test`**; restart the MCP server in the IDE to pick up changes. Run **`mvn package`** only when you need a distributable jar **after** stopping every process that was started with **`java -jar .../target/...jar`** (including duplicate MCP workers).
 
@@ -289,6 +320,7 @@ On Windows, **`java -jar target/java-tuning-agent-*.jar`** keeps that file **loc
 
 ## Further reading
 
+- Agent pack: [agent-pack/java-tuning-agent/README.md](agent-pack/java-tuning-agent/README.md)
 - Cursor workflow skill: [`.cursor/skills/java-tuning-agent-workflow/SKILL.md`](.cursor/skills/java-tuning-agent-workflow/SKILL.md)  
 - Offline mode requirements: [docs/offline-mode-spec.md](docs/offline-mode-spec.md)  
 - Design: [docs/superpowers/specs/2026-04-11-memory-gc-diagnosis-agent-design.md](docs/superpowers/specs/2026-04-11-memory-gc-diagnosis-agent-design.md)  

@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "java-tuning-agent": {
+      "type": "stdio",
+      "command": "java",
+      "args": ["-jar", "/absolute/path/to/java-tuning-agent-0.1.0.jar"],
+      "tools": ["*"],
+      "timeout": 600000
+    }
+  }
+}

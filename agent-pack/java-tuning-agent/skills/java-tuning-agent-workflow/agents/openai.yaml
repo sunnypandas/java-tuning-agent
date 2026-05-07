@@ -1,0 +1,3 @@
+interface:
+  display_name: "Java Tuning Agent Workflow"
+  short_description: "Safely orchestrate JVM memory/GC MCP tools"

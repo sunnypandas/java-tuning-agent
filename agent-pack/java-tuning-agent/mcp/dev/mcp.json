@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "java-tuning-agent-dev": {
+      "type": "stdio",
+      "command": "mvn",
+      "args": ["-q", "-f", "/absolute/path/to/java-tuning-agent/pom.xml", "-Pstdio-mcp-dev", "spring-boot:run"],
+      "tools": ["*"],
+      "timeout": 600000
+    }
+  }
+}

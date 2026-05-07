@@ -53,6 +53,9 @@ jobs:
       - name: Build and test
         run: mvn -B verify -Drevision="$MVN_REVISION"
 
+      - name: Build agent pack
+        run: scripts/build-agent-pack.sh "$MVN_REVISION"
+
       - name: Create GitHub Release with assets
         uses: softprops/action-gh-release@v2
         with:
@@ -62,6 +65,7 @@ jobs:
           files: |
             target/java-tuning-agent-*.jar
             target/java-tuning-agent-*-mcp-schemas.json
+            target/agent-pack/*.zip
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

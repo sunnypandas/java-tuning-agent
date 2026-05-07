@@ -4,12 +4,11 @@
       "type": "stdio",
       "command": "mvn",
       "args": [
+        "-q",
         "-f",
         "/Users/panpan/Workspace/java-tuning-agent/pom.xml",
-        "spring-boot:run",
-        "-P",
-        "stdio-mcp-dev",
-        "-q"
+        "-Pstdio-mcp-dev",
+        "spring-boot:run"
       ]
     }
   }

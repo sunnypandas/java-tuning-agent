@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "java-tuning-agent": {
+      "command": "java",
+      "args": ["-jar", "/absolute/path/to/java-tuning-agent-0.1.0.jar"],
+      "env": {}
+    }
+  }
+}
