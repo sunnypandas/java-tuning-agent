@@ -176,6 +176,37 @@ class OfflineEvidenceAssemblerTest {
 	}
 
 	@Test
+	void parsesMetaspaceEvidenceIntoClassloaderSummary() {
+		OfflineBundleDraft draft = new OfflineBundleDraft("pid=99999\n-XX:+UseG1GC", "VM.version:\n21.0.2",
+				"garbage-first heap total 262144K, used 218758K", new OfflineArtifactSource(null, null),
+				new OfflineArtifactSource(null, null), null, false, false, false, null, null,
+				new OfflineArtifactSource(null, """
+						ClassLoader Parent CLD* Classes ChunkSz BlockSz Type
+						0x1 0x0 0x2 1,200 65,536 32,768 com.example.ProxyClassLoader
+						"""),
+				null, null, null, Map.of());
+
+		MemoryGcEvidencePack pack = assembler.build(draft);
+
+		assertThat(pack.classloaderMetaspaceSummary()).isNotNull();
+		assertThat(pack.classloaderMetaspaceSummary().entries()).hasSize(1);
+		assertThat(pack.classloaderMetaspaceSummary().totalClassCount()).isEqualTo(1_200L);
+	}
+
+	@Test
+	void leavesClassloaderSummaryEmptyWhenMetaspaceEvidenceIsMissing() {
+		OfflineBundleDraft draft = new OfflineBundleDraft("pid=99999\n-XX:+UseG1GC", "VM.version:\n21.0.2",
+				"garbage-first heap total 262144K, used 218758K", new OfflineArtifactSource(null, null),
+				new OfflineArtifactSource(null, null), null, false, false, false, null, null, null, null, null, null,
+				Map.of());
+
+		MemoryGcEvidencePack pack = assembler.build(draft);
+
+		assertThat(pack.classloaderMetaspaceSummary()).isNull();
+		assertThat(pack.missingData()).doesNotContain("metaspaceEvidence");
+	}
+
+	@Test
 	void parsesResourceBudgetFromBackgroundNotes() {
 		OfflineBundleDraft draft = new OfflineBundleDraft("pid=99999\n-XX:+UseG1GC", "VM.version:\n21.0.2",
 				"garbage-first heap total 262144K, used 218758K", new OfflineArtifactSource(null, null),

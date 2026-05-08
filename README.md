@@ -162,7 +162,7 @@ Compatibility behavior:
 
 - `nativeMemorySummary`: preferred VM.native_memory summary source
 - `directBufferEvidence`: optional direct-buffer supporting evidence, currently retained for manual context/future expansion; primary direct-buffer rules consume `nativeMemorySummary` `NIO` data
-- `metaspaceEvidence`: optional metaspace supporting evidence, currently retained for manual context/future expansion; primary metaspace rules consume runtime metaspace and `nativeMemorySummary` `Class` data
+- `metaspaceEvidence`: optional offline classloader/metaspace evidence source for `VM.classloader_stats` / `jmap -clstats` style text; primary NMT sizing still comes from runtime metaspace and `nativeMemorySummary` `Class` data
 
 These fields are recommended (not required). If `nativeMemorySummary` is absent or unparsable, offline analysis degrades with explicit `warnings`/`missingData` while preserving backward compatibility for existing drafts.
 

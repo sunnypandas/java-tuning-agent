@@ -104,7 +104,7 @@
 
 若本地已存在导出文件，优先使用 `filePath`，不要把大文本直接塞进 `classHistogram` 或 `threadDump` 的裸字符串值。
 
-对于 native 输入，策略为“推荐但不强制”：缺失时允许继续分析，并在报告中通过 `missingData` / `warnings` 显式降级，不阻断离线主流程。当前主要规则入口是 `nativeMemorySummary`（解析 `VM.native_memory summary` / `summary.diff`）；`directBufferEvidence` / `metaspaceEvidence` 作为辅助材料字段保留，主要用于人工上下文与后续扩展，当前不替代 `nativeMemorySummary` 的结构化规则输入。
+对于 native 输入，策略为“推荐但不强制”：缺失时允许继续分析，并在报告中通过 `missingData` / `warnings` 显式降级，不阻断离线主流程。当前主要 NMT 规则入口是 `nativeMemorySummary`（解析 `VM.native_memory summary` / `summary.diff`）；`directBufferEvidence` 仍是辅助材料字段，`metaspaceEvidence` 可提供 `VM.classloader_stats` / `jmap -clstats` 风格文本，用于离线 classloader/metaspace 归因，但不替代 `nativeMemorySummary` 的 NMT `Class` sizing 证据。
 
 ---
 

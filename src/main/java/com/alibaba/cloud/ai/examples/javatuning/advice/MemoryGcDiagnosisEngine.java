@@ -20,10 +20,11 @@ public final class MemoryGcDiagnosisEngine {
 		return new MemoryGcDiagnosisEngine(
 				List.of(new HighHeapPressureRule(), new RepeatedSamplingTrendRule(), new SuspectedLeakRule(),
 						new HeapDumpShallowDominanceRule(), new HeapRetentionInsightsRule(), new GcLogInsightsRule(),
-						new JfrInsightsRule(), new ThreadDumpInsightsRule(), new AllocationChurnRule(),
-						new GcStrategyMismatchRule(), new NativeMemoryPressureRule(), new DirectBufferPressureRule(),
-						new MetaspacePressureRule(), new ResourceBudgetPressureRule(), new EvidenceGapRule()),
-				new DiagnosisConfidenceEvaluator());
+							new JfrInsightsRule(), new ThreadDumpInsightsRule(), new AllocationChurnRule(),
+							new GcStrategyMismatchRule(), new NativeMemoryPressureRule(), new DirectBufferPressureRule(),
+							new MetaspacePressureRule(), new ClassloaderMetaspaceRule(), new ResourceBudgetPressureRule(),
+							new EvidenceGapRule()),
+					new DiagnosisConfidenceEvaluator());
 	}
 
 	public TuningAdviceReport diagnose(MemoryGcEvidencePack evidence, CodeContextSummary context, String environment,

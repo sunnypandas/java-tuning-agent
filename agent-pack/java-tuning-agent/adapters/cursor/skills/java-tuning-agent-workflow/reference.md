@@ -230,7 +230,7 @@ Validation also performs structural target checks. If B1 JVM identity, B3 runtim
 
 - `jvmIdentityText`, `jdkInfoText`, `runtimeSnapshotText`: plain strings
 - `classHistogram`, `threadDump`: `OfflineArtifactSource` objects, not bare strings
-- `nativeMemorySummary`, `directBufferEvidence`, `metaspaceEvidence`: optional `OfflineArtifactSource` objects; primary native/direct/metaspace rules consume structured `nativeMemorySummary`
+- `nativeMemorySummary`, `directBufferEvidence`, `metaspaceEvidence`: optional `OfflineArtifactSource` objects; `nativeMemorySummary` carries NMT summary/diff data, while `metaspaceEvidence` may carry offline `VM.classloader_stats` / `jmap -clstats` text for classloader/metaspace attribution
 - `heapDumpAbsolutePath`: plain string path
 - `gcLogPathOrText`: plain string path or inline JDK unified GC log text; parsed into `gcLogSummary` when present
 - `repeatedSamplesPathOrText`: plain string path or inline `inspectJvmRuntimeRepeated` JSON; parsed into `repeatedSamplingResult` when present

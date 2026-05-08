@@ -9,12 +9,23 @@ public record MemoryGcEvidencePack(JvmRuntimeSnapshot snapshot, ClassHistogramSu
 		HeapRetentionAnalysisResult heapRetentionAnalysis,
 		RepeatedSamplingResult repeatedSamplingResult, GcLogSummary gcLogSummary, JfrSummary jfrSummary,
 		MemoryGcEvidencePack baselineEvidence, DiagnosisWindow diagnosisWindow,
-		ResourceBudgetEvidence resourceBudgetEvidence) {
+		ResourceBudgetEvidence resourceBudgetEvidence, ClassloaderMetaspaceSummary classloaderMetaspaceSummary) {
 
 	public MemoryGcEvidencePack {
 		missingData = missingData == null ? List.of() : List.copyOf(missingData);
 		warnings = warnings == null ? List.of() : List.copyOf(warnings);
 		baselineEvidence = sanitizeBaseline(baselineEvidence);
+	}
+
+	public MemoryGcEvidencePack(JvmRuntimeSnapshot snapshot, ClassHistogramSummary classHistogram,
+			ThreadDumpSummary threadDump, List<String> missingData, List<String> warnings, String heapDumpPath,
+			HeapDumpShallowSummary heapShallowSummary, NativeMemorySummary nativeMemorySummary,
+			HeapRetentionAnalysisResult heapRetentionAnalysis, RepeatedSamplingResult repeatedSamplingResult,
+			GcLogSummary gcLogSummary, JfrSummary jfrSummary, MemoryGcEvidencePack baselineEvidence,
+			DiagnosisWindow diagnosisWindow, ResourceBudgetEvidence resourceBudgetEvidence) {
+		this(snapshot, classHistogram, threadDump, missingData, warnings, heapDumpPath, heapShallowSummary,
+				nativeMemorySummary, heapRetentionAnalysis, repeatedSamplingResult, gcLogSummary, jfrSummary,
+				baselineEvidence, diagnosisWindow, resourceBudgetEvidence, null);
 	}
 
 	public MemoryGcEvidencePack(JvmRuntimeSnapshot snapshot, ClassHistogramSummary classHistogram,
@@ -43,54 +54,61 @@ public record MemoryGcEvidencePack(JvmRuntimeSnapshot snapshot, ClassHistogramSu
 		return new MemoryGcEvidencePack(snapshot, classHistogram, threadDump, missingData, warnings, heapDumpPath,
 				heapShallowSummary, nativeMemorySummary, heapRetentionAnalysis, repeatedSamplingResult, gcLogSummary,
 				jfrSummary,
-				baselineEvidence, diagnosisWindow, resourceBudgetEvidence);
+				baselineEvidence, diagnosisWindow, resourceBudgetEvidence, classloaderMetaspaceSummary);
 	}
 
 	public MemoryGcEvidencePack withHeapRetentionAnalysis(HeapRetentionAnalysisResult heapRetentionAnalysis) {
 		return new MemoryGcEvidencePack(snapshot, classHistogram, threadDump, missingData, warnings, heapDumpPath,
 				heapShallowSummary, nativeMemorySummary, heapRetentionAnalysis, repeatedSamplingResult, gcLogSummary,
 				jfrSummary,
-				baselineEvidence, diagnosisWindow, resourceBudgetEvidence);
+				baselineEvidence, diagnosisWindow, resourceBudgetEvidence, classloaderMetaspaceSummary);
 	}
 
 	public MemoryGcEvidencePack withRepeatedSamplingResult(RepeatedSamplingResult repeatedSamplingResult) {
 		return new MemoryGcEvidencePack(snapshot, classHistogram, threadDump, missingData, warnings, heapDumpPath,
 				heapShallowSummary, nativeMemorySummary, heapRetentionAnalysis, repeatedSamplingResult, gcLogSummary,
 				jfrSummary,
-				baselineEvidence, diagnosisWindow, resourceBudgetEvidence);
+				baselineEvidence, diagnosisWindow, resourceBudgetEvidence, classloaderMetaspaceSummary);
 	}
 
 	public MemoryGcEvidencePack withGcLogSummary(GcLogSummary gcLogSummary) {
 		return new MemoryGcEvidencePack(snapshot, classHistogram, threadDump, missingData, warnings, heapDumpPath,
 				heapShallowSummary, nativeMemorySummary, heapRetentionAnalysis, repeatedSamplingResult, gcLogSummary,
 				jfrSummary,
-				baselineEvidence, diagnosisWindow, resourceBudgetEvidence);
+				baselineEvidence, diagnosisWindow, resourceBudgetEvidence, classloaderMetaspaceSummary);
 	}
 
 	public MemoryGcEvidencePack withJfrSummary(JfrSummary jfrSummary) {
 		return new MemoryGcEvidencePack(snapshot, classHistogram, threadDump, missingData, warnings, heapDumpPath,
 				heapShallowSummary, nativeMemorySummary, heapRetentionAnalysis, repeatedSamplingResult, gcLogSummary,
 				jfrSummary,
-				baselineEvidence, diagnosisWindow, resourceBudgetEvidence);
+				baselineEvidence, diagnosisWindow, resourceBudgetEvidence, classloaderMetaspaceSummary);
 	}
 
 	public MemoryGcEvidencePack withBaselineEvidence(MemoryGcEvidencePack baselineEvidence) {
 		return new MemoryGcEvidencePack(snapshot, classHistogram, threadDump, missingData, warnings, heapDumpPath,
 				heapShallowSummary, nativeMemorySummary, heapRetentionAnalysis, repeatedSamplingResult, gcLogSummary,
 				jfrSummary,
-				baselineEvidence, diagnosisWindow, resourceBudgetEvidence);
+				baselineEvidence, diagnosisWindow, resourceBudgetEvidence, classloaderMetaspaceSummary);
 	}
 
 	public MemoryGcEvidencePack withDiagnosisWindow(DiagnosisWindow diagnosisWindow) {
 		return new MemoryGcEvidencePack(snapshot, classHistogram, threadDump, missingData, warnings, heapDumpPath,
 				heapShallowSummary, nativeMemorySummary, heapRetentionAnalysis, repeatedSamplingResult, gcLogSummary,
-				jfrSummary, baselineEvidence, diagnosisWindow, resourceBudgetEvidence);
+				jfrSummary, baselineEvidence, diagnosisWindow, resourceBudgetEvidence, classloaderMetaspaceSummary);
 	}
 
 	public MemoryGcEvidencePack withResourceBudgetEvidence(ResourceBudgetEvidence resourceBudgetEvidence) {
 		return new MemoryGcEvidencePack(snapshot, classHistogram, threadDump, missingData, warnings, heapDumpPath,
 				heapShallowSummary, nativeMemorySummary, heapRetentionAnalysis, repeatedSamplingResult, gcLogSummary,
-				jfrSummary, baselineEvidence, diagnosisWindow, resourceBudgetEvidence);
+				jfrSummary, baselineEvidence, diagnosisWindow, resourceBudgetEvidence, classloaderMetaspaceSummary);
+	}
+
+	public MemoryGcEvidencePack withClassloaderMetaspaceSummary(
+			ClassloaderMetaspaceSummary classloaderMetaspaceSummary) {
+		return new MemoryGcEvidencePack(snapshot, classHistogram, threadDump, missingData, warnings, heapDumpPath,
+				heapShallowSummary, nativeMemorySummary, heapRetentionAnalysis, repeatedSamplingResult, gcLogSummary,
+				jfrSummary, baselineEvidence, diagnosisWindow, resourceBudgetEvidence, classloaderMetaspaceSummary);
 	}
 
 	private static MemoryGcEvidencePack sanitizeBaseline(MemoryGcEvidencePack baselineEvidence) {
@@ -102,7 +120,8 @@ public record MemoryGcEvidencePack(JvmRuntimeSnapshot snapshot, ClassHistogramSu
 				baselineEvidence.heapDumpPath(), baselineEvidence.heapShallowSummary(),
 				baselineEvidence.nativeMemorySummary(), baselineEvidence.heapRetentionAnalysis(),
 				baselineEvidence.repeatedSamplingResult(), baselineEvidence.gcLogSummary(), baselineEvidence.jfrSummary(),
-				null, baselineEvidence.diagnosisWindow(), baselineEvidence.resourceBudgetEvidence());
+				null, baselineEvidence.diagnosisWindow(), baselineEvidence.resourceBudgetEvidence(),
+				baselineEvidence.classloaderMetaspaceSummary());
 	}
 
 }

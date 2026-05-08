@@ -26,7 +26,7 @@ public record OfflineBundleDraft(
 		OfflineArtifactSource nativeMemorySummary,
 		@JsonPropertyDescription("Optional direct buffer supporting evidence source. Currently retained for manual context/future expansion; primary direct-buffer rules consume nativeMemorySummary NIO data.")
 		OfflineArtifactSource directBufferEvidence,
-		@JsonPropertyDescription("Optional metaspace supporting evidence source. Currently retained for manual context/future expansion; primary metaspace rules consume runtime metaspace and nativeMemorySummary Class data.")
+		@JsonPropertyDescription("Optional offline classloader/metaspace evidence source. Pass VM.classloader_stats or jmap -clstats style text; NMT Class sizing still comes from runtime metaspace and nativeMemorySummary.")
 		OfflineArtifactSource metaspaceEvidence,
 		String gcLogPathOrText,
 		String appLogPathOrText,

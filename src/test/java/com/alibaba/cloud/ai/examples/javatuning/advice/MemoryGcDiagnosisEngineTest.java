@@ -5,6 +5,8 @@ import java.util.Map;
 
 import com.alibaba.cloud.ai.examples.javatuning.runtime.ClassHistogramParser;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.ClassHistogramSummary;
+import com.alibaba.cloud.ai.examples.javatuning.runtime.ClassloaderMetaspaceEntry;
+import com.alibaba.cloud.ai.examples.javatuning.runtime.ClassloaderMetaspaceSummary;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.GcLogSummary;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.HeapDumpShallowSummary;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.HeapRetentionAnalysisResult;
@@ -370,6 +372,19 @@ class MemoryGcDiagnosisEngineTest {
 
 		assertThat(report.findings()).extracting(TuningFinding::title)
 			.doesNotContain(ThreadDumpInsightsRule.DEADLOCK_FINDING_TITLE);
+	}
+
+	@Test
+	void shouldRunClassloaderMetaspaceRuleFromFirstVersionEngine() {
+		MemoryGcEvidencePack evidence = stableBaseEvidence().withClassloaderMetaspaceSummary(
+				new ClassloaderMetaspaceSummary(List.of(new ClassloaderMetaspaceEntry("com.example.ProxyClassLoader",
+						"0x0", 750L, 64L * 1024L * 1024L, true, "raw")), 750L, 64L * 1024L * 1024L, List.of()));
+
+		TuningAdviceReport report = MemoryGcDiagnosisEngine.firstVersion()
+			.diagnose(evidence, CodeContextSummary.empty(), "offline", "diagnose-metaspace");
+
+		assertThat(report.findings()).extracting(TuningFinding::title)
+			.contains("Suspected classloader retention or churn");
 	}
 
 	private static MemoryGcEvidencePack stableBaseEvidence() {

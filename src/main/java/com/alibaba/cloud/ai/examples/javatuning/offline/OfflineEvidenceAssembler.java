@@ -8,6 +8,8 @@ import java.util.List;
 
 import com.alibaba.cloud.ai.examples.javatuning.runtime.ClassHistogramParser;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.ClassHistogramSummary;
+import com.alibaba.cloud.ai.examples.javatuning.runtime.ClassloaderMetaspaceParser;
+import com.alibaba.cloud.ai.examples.javatuning.runtime.ClassloaderMetaspaceSummary;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.GcLogSummary;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.GcUnifiedLogParser;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.HeapDumpShallowSummary;
@@ -43,6 +45,8 @@ public class OfflineEvidenceAssembler {
 
 	private final NativeMemorySummaryParser nativeMemorySummaryParser = new NativeMemorySummaryParser();
 
+	private final ClassloaderMetaspaceParser classloaderMetaspaceParser = new ClassloaderMetaspaceParser();
+
 	private final RepeatedSamplingResultParser repeatedSamplingResultParser = new RepeatedSamplingResultParser();
 
 	private final ResourceBudgetEvidenceParser resourceBudgetEvidenceParser = new ResourceBudgetEvidenceParser();
@@ -71,6 +75,7 @@ public class OfflineEvidenceAssembler {
 		ThreadDumpSummary threadDump = loadThreadDump(draft, warnings, missingData);
 		GcLogSummary gcLogSummary = loadGcLog(draft, warnings, missingData);
 		NativeMemorySummary nativeMemorySummary = loadNativeMemorySummary(draft, snapshot, warnings, missingData);
+		ClassloaderMetaspaceSummary classloaderMetaspaceSummary = loadMetaspaceEvidence(draft, warnings, missingData);
 		RepeatedSamplingResult repeatedSamplingResult = loadRepeatedSamples(draft, warnings, missingData);
 		ResourceBudgetEvidence resourceBudgetEvidence = loadResourceBudget(draft, snapshot, nativeMemorySummary);
 
@@ -81,6 +86,7 @@ public class OfflineEvidenceAssembler {
 		return new MemoryGcEvidencePack(snapshot, classHistogram, threadDump, List.copyOf(missingData),
 				List.copyOf(warnings), heapDumpPath, heapShallowSummary).withGcLogSummary(gcLogSummary)
 			.withNativeMemorySummary(nativeMemorySummary)
+			.withClassloaderMetaspaceSummary(classloaderMetaspaceSummary)
 			.withRepeatedSamplingResult(repeatedSamplingResult)
 			.withResourceBudgetEvidence(resourceBudgetEvidence);
 	}
@@ -238,6 +244,33 @@ public class OfflineEvidenceAssembler {
 		catch (IOException ex) {
 			missingData.add("repeatedSamples");
 			warnings.add("Unable to load repeated samples: " + ex.getMessage());
+			return null;
+		}
+	}
+
+	private ClassloaderMetaspaceSummary loadMetaspaceEvidence(OfflineBundleDraft draft, List<String> warnings,
+			List<String> missingData) {
+		try {
+			String text = OfflineTextLoader.load(draft.metaspaceEvidence());
+			if (text.isBlank()) {
+				return null;
+			}
+			ClassloaderMetaspaceSummary summary = classloaderMetaspaceParser.parse(text);
+			warnings.addAll(summary.warnings());
+			if (summary.entries().isEmpty()) {
+				missingData.add("metaspaceEvidence");
+				return null;
+			}
+			return summary;
+		}
+		catch (IOException ex) {
+			missingData.add("metaspaceEvidence");
+			warnings.add("Unable to load metaspace evidence: " + ex.getMessage());
+			return null;
+		}
+		catch (RuntimeException ex) {
+			missingData.add("metaspaceEvidence");
+			warnings.add("Unable to parse metaspace evidence: " + ex.getMessage());
 			return null;
 		}
 	}
