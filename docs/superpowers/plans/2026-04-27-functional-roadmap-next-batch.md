@@ -1,5 +1,25 @@
 # Functional Roadmap Next Batch (Feature-First)
 
+## Current Status
+
+Completed on `main`.
+
+- [x] Ticket 1: Differential Diagnostics Baseline
+- [x] Ticket 2: NMT Differential Analysis
+- [x] Ticket 3: JFR Insights Rule Integration
+
+Implementation notes:
+
+- `baselineEvidence` is accepted by both advice paths and renders a deterministic `## Key Deltas` section.
+- `NativeMemorySummaryParser` accepts `VM.native_memory summary` and `summary.diff`, including category-level growth.
+- `JfrInsightsRule` is registered in `MemoryGcDiagnosisEngine` and emits findings for allocation, contention, and execution samples.
+
+Focused verification:
+
+```bash
+mvn -q -Dtest=JavaTuningWorkflowServiceBaselineDeltasTest,NativeMemorySummaryParserTest,MemoryGcDiagnosisEngineTest test
+```
+
 ## Scope
 
 This batch focuses on practical production value first, without adding process-heavy work:
@@ -28,8 +48,8 @@ Single snapshots are often insufficient in production. Teams need deltas to vali
 
 ### Acceptance
 
-- Existing requests without baseline continue to work unchanged.
-- With baseline provided, report includes explicit delta findings.
+- [x] Existing requests without baseline continue to work unchanged.
+- [x] With baseline provided, report includes explicit delta findings.
 
 ## Ticket 2: NMT Differential Analysis
 
@@ -51,8 +71,8 @@ Native memory growth is a major source of production incidents. Absolute NMT val
 
 ### Acceptance
 
-- Live and offline both produce category-level NMT growth when inputs exist.
-- Missing NMT never aborts diagnosis; it only adds `missingData` + warning.
+- [x] Live and offline both produce category-level NMT growth when inputs exist.
+- [x] Missing NMT never aborts diagnosis; it only adds `missingData` + warning.
 
 ## Ticket 3: JFR Insights Rule Integration
 
@@ -77,8 +97,8 @@ JFR already has high-value signals (allocation, lock contention, execution sampl
 
 ### Acceptance
 
-- When JFR summary is present, report includes JFR-based findings and next steps.
-- When absent, no behavior regression in existing report paths.
+- [x] When JFR summary is present, report includes JFR-based findings and next steps.
+- [x] When absent, no behavior regression in existing report paths.
 
 ## Out of Scope (for this batch)
 
