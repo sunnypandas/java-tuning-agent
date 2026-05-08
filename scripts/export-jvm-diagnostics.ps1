@@ -433,6 +433,26 @@ function Export-NativeMemorySummary {
     return $true
 }
 
+function Export-ClassloaderStats {
+    param(
+        [Parameter(Mandatory = $true)][string]$OutFile,
+        [Parameter(Mandatory = $true)][string]$SkippedFile
+    )
+    $stats = Invoke-ToolTextRaw -ExePath $jcmd -ToolArgs @($pidStr, 'VM.classloader_stats')
+    if ($stats.Code -ne 0 -or [string]::IsNullOrWhiteSpace($stats.Text)) {
+        @(
+            'VM.classloader_stats was not available.',
+            "Manual: jcmd $pidStr VM.classloader_stats",
+            '',
+            'jcmd output:',
+            $stats.Text
+        ) | Set-Content -LiteralPath $SkippedFile -Encoding utf8
+        return $false
+    }
+    @('VM.classloader_stats', $stats.Text.TrimEnd()) | Set-Content -LiteralPath $OutFile -Encoding utf8
+    return $true
+}
+
 function Export-ResourceBudget {
     param([Parameter(Mandatory = $true)][string]$OutFile)
     $lines = New-Object System.Collections.Generic.List[string]
@@ -475,6 +495,11 @@ function Write-OfflineDraftTemplate {
     if (Test-Path -LiteralPath $nativeCandidate -PathType Leaf) {
         $nativePath = [System.IO.Path]::GetFullPath($nativeCandidate)
     }
+    $metaspacePath = ''
+    $metaspaceCandidate = Join-Path $root 'optional-metaspace-classloader-stats.txt'
+    if (Test-Path -LiteralPath $metaspaceCandidate -PathType Leaf) {
+        $metaspacePath = [System.IO.Path]::GetFullPath($metaspaceCandidate)
+    }
     $gcLogOut = Join-Path $root 'r1-gc-log.txt'
     $appLogOut = Join-Path $root 'r2-app-log.txt'
     $repeatedOut = Join-Path $root 'r3-repeated-samples.json'
@@ -490,6 +515,7 @@ function Write-OfflineDraftTemplate {
         explicitlyNoAppLog = -not (Test-Path -LiteralPath $appLogOut -PathType Leaf)
         explicitlyNoRepeatedSamples = -not (Test-Path -LiteralPath $repeatedOut -PathType Leaf)
         nativeMemorySummary = New-ArtifactSource $nativePath
+        metaspaceEvidence = New-ArtifactSource $metaspacePath
         gcLogPathOrText = $(if (Test-Path -LiteralPath $gcLogOut -PathType Leaf) { [System.IO.Path]::GetFullPath($gcLogOut) } else { '' })
         appLogPathOrText = $(if (Test-Path -LiteralPath $appLogOut -PathType Leaf) { [System.IO.Path]::GetFullPath($appLogOut) } else { '' })
         repeatedSamplesPathOrText = $(if (Test-Path -LiteralPath $repeatedOut -PathType Leaf) { [System.IO.Path]::GetFullPath($repeatedOut) } else { '' })
@@ -633,6 +659,7 @@ else {
 }
 
 [void](Export-NativeMemorySummary -OutFile (Join-Path $root 'optional-native-memory-summary.txt') -SkippedFile (Join-Path $root 'optional-native-memory-summary-SKIPPED.txt'))
+[void](Export-ClassloaderStats -OutFile (Join-Path $root 'optional-metaspace-classloader-stats.txt') -SkippedFile (Join-Path $root 'optional-metaspace-classloader-stats-SKIPPED.txt'))
 Export-ResourceBudget -OutFile (Join-Path $root 'optional-resource-budget.txt')
 Write-OfflineDraftTemplate -OutFile (Join-Path $root 'offline-draft-template.json')
 

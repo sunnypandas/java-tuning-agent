@@ -311,6 +311,30 @@ collect_native_memory_summary() {
   return 0
 }
 
+collect_classloader_stats() {
+  local output_file="$1"
+  local skipped_file="$2"
+  local stats_data stats_code stats_text
+  stats_data="$(run_capture_raw "${jcmd}" "${resolved_pid}" VM.classloader_stats)"
+  stats_code="$(printf '%s\n' "${stats_data}" | sed -n '1p')"
+  stats_text="$(printf '%s\n' "${stats_data}" | sed '1d')"
+  if [[ "${stats_code}" != "0" || -z "${stats_text//[[:space:]]/}" ]]; then
+    {
+      echo "VM.classloader_stats was not available."
+      echo "Manual: jcmd ${resolved_pid} VM.classloader_stats"
+      echo
+      echo "jcmd output:"
+      printf '%s\n' "${stats_text}"
+    } >"${skipped_file}"
+    return 1
+  fi
+  {
+    echo "VM.classloader_stats"
+    printf '%s\n' "${stats_text}"
+  } >"${output_file}"
+  return 0
+}
+
 collect_resource_budget() {
   local output_file="$1"
   local rss_bytes=""
@@ -493,6 +517,10 @@ write_offline_draft_template() {
   if [[ -f "${root}/optional-native-memory-summary.txt" ]]; then
     native_path="${root}/optional-native-memory-summary.txt"
   fi
+  local metaspace_path=""
+  if [[ -f "${root}/optional-metaspace-classloader-stats.txt" ]]; then
+    metaspace_path="${root}/optional-metaspace-classloader-stats.txt"
+  fi
   local gc_log_path=""
   local no_gc_log="true"
   if [[ -f "${root}/r1-gc-log.txt" ]]; then
@@ -511,12 +539,12 @@ write_offline_draft_template() {
     repeated_path="${root}/r3-repeated-samples.json"
     no_repeated="false"
   fi
-  python3 - "${output_file}" "${root}" "${heap_path}" "${native_path}" "${gc_log_path}" "${no_gc_log}" "${app_log_path}" "${no_app_log}" "${repeated_path}" "${no_repeated}" <<'PY'
+  python3 - "${output_file}" "${root}" "${heap_path}" "${native_path}" "${metaspace_path}" "${gc_log_path}" "${no_gc_log}" "${app_log_path}" "${no_app_log}" "${repeated_path}" "${no_repeated}" <<'PY'
 import json
 import pathlib
 import sys
 
-output_file, root, heap_path, native_path, gc_log_path, no_gc_log, app_log_path, no_app_log, repeated_path, no_repeated = sys.argv[1:]
+output_file, root, heap_path, native_path, metaspace_path, gc_log_path, no_gc_log, app_log_path, no_app_log, repeated_path, no_repeated = sys.argv[1:]
 root_path = pathlib.Path(root)
 
 def read_text(name):
@@ -538,6 +566,7 @@ draft = {
     "explicitlyNoAppLog": no_app_log == "true",
     "explicitlyNoRepeatedSamples": no_repeated == "true",
     "nativeMemorySummary": source(native_path),
+    "metaspaceEvidence": source(metaspace_path),
     "gcLogPathOrText": gc_log_path,
     "appLogPathOrText": app_log_path,
     "repeatedSamplesPathOrText": repeated_path,
@@ -666,6 +695,7 @@ else
 fi
 
 collect_native_memory_summary "${root}/optional-native-memory-summary.txt" "${root}/optional-native-memory-summary-SKIPPED.txt" || true
+collect_classloader_stats "${root}/optional-metaspace-classloader-stats.txt" "${root}/optional-metaspace-classloader-stats-SKIPPED.txt" || true
 collect_resource_budget "${root}/optional-resource-budget.txt"
 write_offline_draft_template "${root}/offline-draft-template.json"
 

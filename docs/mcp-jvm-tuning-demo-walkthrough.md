@@ -464,7 +464,7 @@ curl -X POST http://localhost:8091/api/leak/jfr-workload -H 'Content-Type: appli
 
 - B1-B6 必选材料：`b1-jvm-identity.txt`、`b2-jdk-vm-version.txt`、`b3-runtime-snapshot.txt`、`b4-class-histogram.txt`、`b5-thread-dump.txt`、`b6-heap-dump.hprof`
 - R1-R3 推荐项：`r1-gc-log.txt` / `r1-gc-log-NOT_COLLECTED.txt`、`r2-app-log.txt` / `r2-app-log-NOT_COLLECTED.txt`、`r3-repeated-samples.json`
-- 增强证据：`optional-native-memory-summary.txt` 或 `optional-native-memory-summary-SKIPPED.txt`、`optional-resource-budget.txt`
+- 增强证据：`optional-native-memory-summary.txt` 或 `optional-native-memory-summary-SKIPPED.txt`、`optional-metaspace-classloader-stats.txt` 或 `optional-metaspace-classloader-stats-SKIPPED.txt`、`optional-resource-budget.txt`
 - 可直接作为草稿起点的 `offline-draft-template.json`
 
 macOS/Linux shell:
