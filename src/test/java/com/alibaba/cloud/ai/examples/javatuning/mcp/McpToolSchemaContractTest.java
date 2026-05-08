@@ -73,7 +73,8 @@ class McpToolSchemaContractTest {
 					JsonNode req = schema.path("properties").path("request");
 					assertThat(req.path("type").asText()).isEqualTo("object");
 					assertThat(req.path("properties").path("pid").path("type").asText()).isIn("integer", "number");
-					for (String flag : new String[] { "includeClassHistogram", "includeThreadDump", "includeHeapDump" }) {
+					for (String flag : new String[] { "includeClassHistogram", "includeThreadDump", "includeHeapDump",
+							"includeClassloaderStats" }) {
 						assertThat(req.path("properties").path(flag).path("type").asText()).isEqualTo("boolean");
 					}
 					assertThat(req.path("properties").path("heapDumpOutputPath").path("type").asText())
@@ -274,7 +275,7 @@ class McpToolSchemaContractTest {
 			.path("request");
 		assertThat(requiredFields(collectRequestSchema)).contains("pid")
 			.doesNotContain("includeClassHistogram", "includeThreadDump", "includeHeapDump", "heapDumpOutputPath",
-					"confirmationToken");
+					"confirmationToken", "includeClassloaderStats");
 
 		JsonNode repeatedRequestSchema = publishedInputSchema("inspectJvmRuntimeRepeated").path("properties")
 			.path("request");

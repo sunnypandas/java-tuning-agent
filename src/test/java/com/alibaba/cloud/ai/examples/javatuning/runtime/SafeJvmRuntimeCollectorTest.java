@@ -326,6 +326,64 @@ class SafeJvmRuntimeCollectorTest {
 	}
 
 	@Test
+	void shouldCollectClassloaderMetaspaceStatsWhenRequested() {
+		CommandExecutor executor = mock(CommandExecutor.class);
+		given(executor.run(List.of("jcmd", "123", "VM.flags"))).willReturn("-XX:+UseG1GC -Xms512m -Xmx1024m");
+		stubExtendedCollectors(executor, "123");
+		given(executor.run(List.of("jcmd", "123", "VM.version"))).willReturn("123:\nOpenJDK 64-Bit Server VM 21.0.2");
+		given(executor.run(List.of("jcmd", "123", "GC.heap_info"))).willReturn("""
+				123:
+				garbage-first heap total 1048576K, used 524288K
+				Metaspace       used 8192K, committed 9216K, reserved 65536K
+				""");
+		given(executor.run(List.of("jstat", "-gcutil", "123"))).willReturn("""
+				  S0     S1     E      O      M      CCS     YGC     YGCT    FGC    FGCT     CGC    CGCT       GCT
+				  0.00   0.00  12.34  78.90  92.21   88.12     145    1.234      2    0.456      -       -     1.690
+				""");
+		given(executor.run(List.of("jcmd", "123", "VM.classloader_stats"))).willReturn("""
+				ClassLoader Parent CLD* Classes ChunkSz BlockSz Type
+				0x1 0x0 0x2 600 33554432 1048576 com.example.ProxyClassLoader
+				0x3 0x0 0x4 25 4096 2048 jdk.internal.loader.ClassLoaders$AppClassLoader
+				""");
+
+		MemoryGcEvidencePack pack = testCollector(executor)
+			.collectMemoryGcEvidence(new MemoryGcEvidenceRequest(123L, false, false, false, "", null, true));
+
+		assertThat(pack.classloaderMetaspaceSummary()).isNotNull();
+		assertThat(pack.classloaderMetaspaceSummary().entries()).hasSize(2);
+		assertThat(pack.classloaderMetaspaceSummary().totalClassCount()).isEqualTo(625L);
+		assertThat(pack.snapshot().collectionMetadata().commandsRun()).contains("jcmd 123 VM.classloader_stats");
+		assertThat(pack.missingData()).doesNotContain("classloaderStats");
+		assertThat(pack.warnings()).isEmpty();
+	}
+
+	@Test
+	void shouldDegradeClassloaderMetaspaceStatsWhenCommandFails() {
+		CommandExecutor executor = mock(CommandExecutor.class);
+		given(executor.run(List.of("jcmd", "123", "VM.flags"))).willReturn("-XX:+UseG1GC -Xms512m -Xmx1024m");
+		stubExtendedCollectors(executor, "123");
+		given(executor.run(List.of("jcmd", "123", "VM.version"))).willReturn("123:\nOpenJDK 64-Bit Server VM 21.0.2");
+		given(executor.run(List.of("jcmd", "123", "GC.heap_info"))).willReturn("""
+				123:
+				garbage-first heap total 1048576K, used 524288K
+				Metaspace       used 8192K, committed 9216K, reserved 65536K
+				""");
+		given(executor.run(List.of("jstat", "-gcutil", "123"))).willReturn("""
+				  S0     S1     E      O      M      CCS     YGC     YGCT    FGC    FGCT     CGC    CGCT       GCT
+				  0.00   0.00  12.34  78.90  92.21   88.12     145    1.234      2    0.456      -       -     1.690
+				""");
+		given(executor.run(List.of("jcmd", "123", "VM.classloader_stats")))
+			.willThrow(new IllegalStateException("unsupported diagnostic command"));
+
+		MemoryGcEvidencePack pack = testCollector(executor)
+			.collectMemoryGcEvidence(new MemoryGcEvidenceRequest(123L, false, false, false, "", null, true));
+
+		assertThat(pack.classloaderMetaspaceSummary()).isNull();
+		assertThat(pack.missingData()).contains("classloaderStats");
+		assertThat(pack.warnings()).anyMatch(w -> w.contains("Unable to collect VM.classloader_stats"));
+	}
+
+	@Test
 	void shouldCollectHeapDumpWhenConfirmed(@TempDir Path tempDir) throws Exception {
 		Path dumpFile = tempDir.resolve("heap.hprof");
 		String abs = dumpFile.toAbsolutePath().normalize().toString();

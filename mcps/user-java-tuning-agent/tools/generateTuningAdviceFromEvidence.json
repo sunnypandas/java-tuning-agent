@@ -110,6 +110,13 @@
               "null"
             ],
             "description": "Optional resource budget evidence already attached to the evidence pack."
+          },
+          "classloaderMetaspaceSummary": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Optional parsed VM.classloader_stats / jmap -clstats summary."
           }
         },
         "required": [
@@ -299,6 +306,13 @@
               "null"
             ],
             "description": "Optional resource budget evidence already attached to the evidence pack."
+          },
+          "classloaderMetaspaceSummary": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Optional parsed VM.classloader_stats / jmap -clstats summary."
           }
         },
         "additionalProperties": true

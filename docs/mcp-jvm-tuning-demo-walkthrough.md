@@ -178,7 +178,7 @@ curl -X POST http://localhost:8091/api/leak/deadlock/trigger
 | `listJavaApps`                     | 列出当前用户可见的 JVM 进程 / discover local JVMs        | 先找到“要分析谁”                                             |
 | `inspectJvmRuntime`                | 做一次轻量只读快照 / safe readonly snapshot            | 先看基础运行状态                                              |
 | `inspectJvmRuntimeRepeated`        | 做短窗口多次轻量采样 / repeated readonly samples        | 看趋势，而不是只看单点                                           |
-| `collectMemoryGcEvidence`          | 采集中等成本证据 / collect memory-GC evidence         | 需要时再拿 histogram、thread dump、heap dump                 |
+| `collectMemoryGcEvidence`          | 采集中等成本证据 / collect memory-GC evidence         | 需要时再拿 histogram、thread dump、heap dump、classloader stats |
 | `recordJvmFlightRecording`         | 录制短 JFR 并解析摘要 / short JFR recording           | 需要 allocation、contention、CPU 样本时再开 JFR                |
 | `generateTuningAdvice`             | 一步式采集并生成结论 / one-shot advice                  | 适合快速试用，不适合已经采过 evidence 的场景                           |
 | `generateTuningAdviceFromEvidence` | 从已采集证据产出结构化结论 / advise from existing evidence | 最后把同一份 evidence 归纳成 findings、recommendations、hotspots |

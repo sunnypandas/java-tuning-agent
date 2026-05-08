@@ -139,8 +139,9 @@ The agent **must not** choose step-3 scope on the user’s behalf. **“Quick pa
 
 ### `collectMemoryGcEvidence` (step 3)
 
-- **Cost / impact:** histogram and thread dump add pause/load; heap dump writes a large `.hprof` file and needs disk space.
+- **Cost / impact:** histogram and thread dump add pause/load; heap dump writes a large `.hprof` file and needs disk space; `includeClassloaderStats` adds a best-effort read-only `jcmd VM.classloader_stats` call.
 - **Required user interaction:** Before any `includeClassHistogram`, `includeThreadDump`, or `includeHeapDump` is `true`, the user must **explicitly consent** via **either** [Structured UI approval](#structured-ui-approval-preferred) **or** a clear chat reply. The MCP API still requires a **non-blank** `confirmationToken` string — use the [Canonical UI token](#canonical-ui-token-format) when consent came from multi-select; otherwise you may copy the user’s **exact** approval phrase as the token.
+- **Classloader stats:** `includeClassloaderStats: true` does not require `confirmationToken`, but it must still be part of the step-3 scope the user selected or explicitly requested. It attaches `classloaderMetaspaceSummary` when supported; otherwise `classloaderStats` appears in `missingData`.
 - **Heap dump:** `includeHeapDump: true` requires an **absolute** `heapDumpOutputPath` ending in `.hprof`; its parent directory must already exist and the target file must not. Agree the path with the user first, unless they defer to the [Default heap dump path](#default-heap-dump-path) below.
 - **Snapshot-only (quick pass):** After the user **explicitly chooses** snapshot-only via the [step-3 gate](#mandatory-step-3-scope-gate-no-silent-quick-pass), call step 3 with **all** `include*` flags **`false`**, `heapDumpOutputPath` `""`, and `confirmationToken` `""` (still pass the full `request` object per schema), then step 4 lightweight. The agent **must not** pick this path without that explicit choice.
 

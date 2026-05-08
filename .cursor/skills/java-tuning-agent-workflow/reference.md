@@ -72,7 +72,8 @@ Wrapper key is **`request`**. Only `pid` is unconditionally required by schema; 
     "includeThreadDump": false,
     "includeHeapDump": false,
     "heapDumpOutputPath": "",
-    "confirmationToken": ""
+    "confirmationToken": "",
+    "includeClassloaderStats": false
   }
 }
 ```
@@ -87,7 +88,8 @@ Wrapper key is **`request`**. Only `pid` is unconditionally required by schema; 
     "includeThreadDump": false,
     "includeHeapDump": false,
     "heapDumpOutputPath": "",
-    "confirmationToken": "java-tuning-agent:ui-approval:v1:pid=12345:scopes=classHistogram"
+    "confirmationToken": "java-tuning-agent:ui-approval:v1:pid=12345:scopes=classHistogram",
+    "includeClassloaderStats": false
   }
 }
 ```
@@ -157,7 +159,7 @@ Use this after `collectMemoryGcEvidence` when you want advice from the exact evi
 }
 ```
 
-In practice, set `evidence` to the **full JSON object returned by `collectMemoryGcEvidence`**. Keep optional fields such as `nativeMemorySummary`, `resourceBudgetEvidence`, `heapShallowSummary`, `jfrSummary`, `repeatedSamplingResult`, `baselineEvidence`, and `diagnosisWindow` if present. The top-level optional `baselineEvidence`, `jfrSummary`, `repeatedSamplingResult`, and `resourceBudgetEvidence` fields are merge helpers for separately collected evidence; they fill missing pack fields and are optional.
+In practice, set `evidence` to the **full JSON object returned by `collectMemoryGcEvidence`**. Keep optional fields such as `nativeMemorySummary`, `resourceBudgetEvidence`, `classloaderMetaspaceSummary`, `heapShallowSummary`, `jfrSummary`, `repeatedSamplingResult`, `baselineEvidence`, and `diagnosisWindow` if present. The top-level optional `baselineEvidence`, `jfrSummary`, `repeatedSamplingResult`, and `resourceBudgetEvidence` fields are merge helpers for separately collected evidence; they fill missing pack fields and are optional.
 
 **Do not** follow `collectMemoryGcEvidence` by calling `generateTuningAdvice` with the same `collectClassHistogram` / `collectThreadDump` / `includeHeapDump` / `heapDumpOutputPath` values. That path collects again.
 

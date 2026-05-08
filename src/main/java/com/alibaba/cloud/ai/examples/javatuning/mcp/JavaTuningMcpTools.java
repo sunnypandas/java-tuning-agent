@@ -77,10 +77,10 @@ public class JavaTuningMcpTools {
 	}
 
 	@Tool(description = """
-			Collect medium-cost memory/GC evidence: optional class histogram, thread dump, and/or heap dump (jcmd GC.heap_dump). \
-			中文：按用户选择采集中等成本内存/GC 证据，可包含类直方图、线程栈和/或 heap dump。 \
-			Privileged options require a non-blank confirmationToken; heap dump also requires heapDumpOutputPath (absolute .hprof path, existing parent directory, target file must not already exist). \
-			Example: {"request":{"pid":12345,"includeClassHistogram":true,"includeThreadDump":false,"includeHeapDump":false,"heapDumpOutputPath":"","confirmationToken":"user-approved"}}""")
+			Collect medium-cost memory/GC evidence: optional class histogram, thread dump, heap dump (jcmd GC.heap_dump), and best-effort classloader stats (jcmd VM.classloader_stats). \
+			中文：按用户选择采集中等成本内存/GC 证据，可包含类直方图、线程栈、heap dump，或只读 classloader stats。 \
+			Privileged options require a non-blank confirmationToken; heap dump also requires heapDumpOutputPath (absolute .hprof path, existing parent directory, target file must not already exist). includeClassloaderStats is read-only best-effort and does not require confirmationToken. \
+			Example: {"request":{"pid":12345,"includeClassHistogram":true,"includeThreadDump":false,"includeHeapDump":false,"heapDumpOutputPath":"","confirmationToken":"user-approved","includeClassloaderStats":true}}""")
 	public MemoryGcEvidencePack collectMemoryGcEvidence(
 			@ToolParam(description = "Evidence selection and privileged-field policy; see MemoryGcEvidenceRequest JSON shape.") MemoryGcEvidenceRequest request) {
 		return workflowService.collectEvidence(request);

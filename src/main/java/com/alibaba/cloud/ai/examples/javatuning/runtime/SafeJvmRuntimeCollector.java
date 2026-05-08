@@ -54,6 +54,8 @@ public class SafeJvmRuntimeCollector implements JvmRuntimeCollector {
 
 	private final NativeMemorySummaryParser nativeMemorySummaryParser = new NativeMemorySummaryParser();
 
+	private final ClassloaderMetaspaceParser classloaderMetaspaceParser = new ClassloaderMetaspaceParser();
+
 	private final ResourceBudgetEvidenceParser resourceBudgetEvidenceParser = new ResourceBudgetEvidenceParser();
 
 	private final JvmCapabilitiesPolicy capabilitiesPolicy = new JvmCapabilitiesPolicy();
@@ -153,6 +155,7 @@ public class SafeJvmRuntimeCollector implements JvmRuntimeCollector {
 		ThreadDumpSummary threadDump = null;
 		String heapDumpPathResult = null;
 		NativeMemorySummary nativeMemorySummary = null;
+		ClassloaderMetaspaceSummary classloaderMetaspaceSummary = null;
 		boolean nativeCommandAttempted = false;
 		if (request.includeThreadDump()) {
 			try {
@@ -184,6 +187,25 @@ public class SafeJvmRuntimeCollector implements JvmRuntimeCollector {
 			catch (RuntimeException ex) {
 				missingData.add("classHistogram");
 				warnings.add("Unable to collect GC.class_histogram: " + ex.getMessage());
+			}
+		}
+		if (request.includeClassloaderStats()) {
+			try {
+				String output = executor.run(classloaderStatsCommand(Long.toString(request.pid())));
+				if (output == null || output.isBlank()) {
+					missingData.add("classloaderStats");
+				}
+				else {
+					classloaderMetaspaceSummary = classloaderMetaspaceParser.parse(output);
+					warnings.addAll(classloaderMetaspaceSummary.warnings());
+					if (classloaderMetaspaceSummary.entries().isEmpty()) {
+						missingData.add("classloaderStats");
+					}
+				}
+			}
+			catch (RuntimeException ex) {
+				missingData.add("classloaderStats");
+				warnings.add("Unable to collect VM.classloader_stats: " + ex.getMessage());
 			}
 		}
 		HeapDumpShallowSummary heapShallowSummary = null;
@@ -252,6 +274,9 @@ public class SafeJvmRuntimeCollector implements JvmRuntimeCollector {
 		if (request.includeClassHistogram()) {
 			commandsRun.add(String.join(" ", classHistogramCommand(Long.toString(request.pid()))));
 		}
+		if (request.includeClassloaderStats()) {
+			commandsRun.add(String.join(" ", classloaderStatsCommand(Long.toString(request.pid()))));
+		}
 		if (request.includeThreadDump()) {
 			commandsRun.add(String.join(" ", threadPrintCommand(Long.toString(request.pid()))));
 		}
@@ -274,7 +299,8 @@ public class SafeJvmRuntimeCollector implements JvmRuntimeCollector {
 		return new MemoryGcEvidencePack(enrichedSnapshot, classHistogram, threadDump, List.copyOf(missingData),
 				List.copyOf(warnings), heapDumpPathResult, heapShallowSummary).withNativeMemorySummary(nativeMemorySummary)
 			.withDiagnosisWindow(DiagnosisWindow.fromSnapshot(enrichedSnapshot, "live"))
-			.withResourceBudgetEvidence(resourceBudgetEvidence);
+			.withResourceBudgetEvidence(resourceBudgetEvidence)
+			.withClassloaderMetaspaceSummary(classloaderMetaspaceSummary);
 	}
 
 	@Override
@@ -396,6 +422,10 @@ public class SafeJvmRuntimeCollector implements JvmRuntimeCollector {
 
 	private List<String> classHistogramCommand(String pidValue) {
 		return List.of(JCMD, pidValue, "GC.class_histogram");
+	}
+
+	private List<String> classloaderStatsCommand(String pidValue) {
+		return List.of(JCMD, pidValue, "VM.classloader_stats");
 	}
 
 	private List<String> threadPrintCommand(String pidValue) {

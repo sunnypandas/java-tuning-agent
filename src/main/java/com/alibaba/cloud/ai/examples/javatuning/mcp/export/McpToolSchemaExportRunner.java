@@ -93,7 +93,8 @@ public class McpToolSchemaExportRunner implements ApplicationRunner {
 	private void applyKnownOptionalFieldContracts(String toolName, ObjectNode schema) {
 		switch (toolName) {
 			case "collectMemoryGcEvidence" -> markOptional(property(schema, "request"), "includeClassHistogram",
-					"includeThreadDump", "includeHeapDump", "heapDumpOutputPath", "confirmationToken");
+					"includeThreadDump", "includeHeapDump", "heapDumpOutputPath", "confirmationToken",
+					"includeClassloaderStats");
 			case "inspectJvmRuntimeRepeated" -> markOptional(property(schema, "request"), "sampleCount",
 					"intervalMillis", "includeThreadCount", "includeClassCount", "confirmationToken");
 			case "recordJvmFlightRecording" -> markOptional(property(schema, "request"), "durationSeconds", "settings",
@@ -170,6 +171,8 @@ public class McpToolSchemaExportRunner implements ApplicationRunner {
 		properties.set("diagnosisWindow", nullableObjectProperty("Optional diagnosis window metadata."));
 		properties.set("resourceBudgetEvidence",
 				nullableObjectProperty("Optional resource budget evidence already attached to the evidence pack."));
+		properties.set("classloaderMetaspaceSummary",
+				nullableObjectProperty("Optional parsed VM.classloader_stats / jmap -clstats summary."));
 		if (requireSnapshot) {
 			ArrayNode required = schema.putArray("required");
 			required.add("snapshot");
