@@ -62,7 +62,7 @@ public final class HeapRetentionAnalysisOrchestrator implements HeapRetentionAna
 		List<String> summaryWarnings = new ArrayList<>(summary.warnings());
 		summaryWarnings.add(fallbackWarning);
 		HeapRetentionSummary updatedSummary = new HeapRetentionSummary(summary.dominantRetainedTypes(),
-				summary.suspectedHolders(), summary.retentionChains(), summary.gcRootHints(),
+				summary.suspectedHolders(), summary.classloaderRetainedGroups(), summary.retentionChains(), summary.gcRootHints(),
 				summary.confidenceAndLimits(), summary.summaryMarkdown(), summary.analysisSucceeded(),
 				summaryWarnings, summary.errorMessage());
 		return new HeapRetentionAnalysisResult(sharkResult.analysisSucceeded(), sharkResult.engine(), warnings,

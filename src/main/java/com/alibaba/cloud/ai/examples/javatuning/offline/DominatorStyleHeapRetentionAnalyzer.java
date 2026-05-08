@@ -18,6 +18,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
+import com.alibaba.cloud.ai.examples.javatuning.runtime.ClassloaderRetentionSummary;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.GcRootHint;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.HeapRetentionAnalysisResult;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.HeapRetentionConfidence;
@@ -129,6 +130,7 @@ public final class DominatorStyleHeapRetentionAnalyzer implements HeapRetentionA
 
 		List<RetainedTypeSummary> dominantTypes = buildDominantTypes(analyses, topN);
 		List<SuspectedHolderSummary> holders = buildHolders(analyses, topN);
+		List<ClassloaderRetentionSummary> classloaderGroups = buildClassloaderGroups(analyses, topN);
 		List<RetentionChainSummary> chains = buildChains(analyses, topN);
 		List<GcRootHint> rootHints = buildRootHints(analyses, topN);
 
@@ -137,11 +139,11 @@ public final class DominatorStyleHeapRetentionAnalyzer implements HeapRetentionA
 				List.of("Engine=dominator-style", "Deep analysis requested explicitly.",
 						"focusTypes=" + normalizedFocusTypes(focusTypes), "sliceNodes=" + slice.nodeIds().size()));
 
-		HeapRetentionSummary withoutMarkdown = new HeapRetentionSummary(dominantTypes, holders, chains, rootHints,
-				confidence, "", true, warnings, "");
+		HeapRetentionSummary withoutMarkdown = new HeapRetentionSummary(dominantTypes, holders, classloaderGroups,
+				chains, rootHints, confidence, "", true, warnings, "");
 		String markdown = rewriteMarkdown(markdownRenderer.render(heapDumpPath, withoutMarkdown, maxChars));
-		return new HeapRetentionSummary(dominantTypes, holders, chains, rootHints, confidence, markdown, true, warnings,
-				"");
+		return new HeapRetentionSummary(dominantTypes, holders, classloaderGroups, chains, rootHints, confidence,
+				markdown, true, warnings, "");
 	}
 
 	private AnalysisPass analyzeCandidates(GraphIndex index, Slice slice, DominatorIndex dominatorIndex,
@@ -238,6 +240,41 @@ public final class DominatorStyleHeapRetentionAnalyzer implements HeapRetentionA
 			.sorted(Comparator.comparingLong((SuspectedHolderSummary holder) -> holder.retainedBytesApprox() == null ? 0L
 					: holder.retainedBytesApprox()).reversed()
 				.thenComparing(Comparator.comparingLong(SuspectedHolderSummary::reachableSubgraphBytesApprox).reversed()))
+			.limit(topN)
+			.toList();
+	}
+
+	private List<ClassloaderRetentionSummary> buildClassloaderGroups(List<CandidateAnalysis> analyses, int topN) {
+		Map<String, ClassloaderAccumulator> groups = new LinkedHashMap<>();
+		for (CandidateAnalysis analysis : analyses) {
+			String classLoaderName = analysis.candidate().classLoaderName();
+			Long classLoaderObjectId = analysis.candidate().classLoaderObjectId();
+			String key = classLoaderName + "|" + classLoaderObjectId;
+			ClassloaderAccumulator accumulator = groups.computeIfAbsent(key,
+					ignored -> new ClassloaderAccumulator(classLoaderName, classLoaderObjectId));
+			accumulator.retainedBytes = saturatingAdd(accumulator.retainedBytes,
+					analysis.candidateRetainedBytesApprox());
+			accumulator.reachableBytes = saturatingAdd(accumulator.reachableBytes,
+					analysis.candidateReachableBytesApprox());
+			accumulator.terminalShallowBytes = saturatingAdd(accumulator.terminalShallowBytes,
+					analysis.candidate().shallowBytes());
+			accumulator.objectCount++;
+			if (accumulator.exampleHolderType == null || accumulator.exampleHolderType.isBlank()) {
+				accumulator.exampleHolderType = analysis.holderType();
+				accumulator.exampleFieldPath = analysis.exampleFieldPath();
+				accumulator.exampleTargetType = analysis.candidate().typeName();
+				accumulator.notes = analysis.notes();
+			}
+		}
+		return groups.values().stream()
+			.map(accumulator -> new ClassloaderRetentionSummary(accumulator.classLoaderName,
+					accumulator.classLoaderObjectId, accumulator.reachableBytes, accumulator.objectCount,
+					accumulator.retainedBytes, accumulator.terminalShallowBytes, accumulator.exampleHolderType,
+					accumulator.exampleFieldPath, accumulator.exampleTargetType, accumulator.notes))
+			.sorted(Comparator.comparingLong((ClassloaderRetentionSummary summary) -> summary.retainedBytesApprox() == null
+					? 0L : summary.retainedBytesApprox()).reversed()
+				.thenComparing(Comparator.comparingLong(ClassloaderRetentionSummary::reachableSubgraphBytesApprox).reversed())
+				.thenComparing(ClassloaderRetentionSummary::classLoaderName))
 			.limit(topN)
 			.toList();
 	}
@@ -720,7 +757,9 @@ public final class DominatorStyleHeapRetentionAnalyzer implements HeapRetentionA
 	private List<Candidate> selectCandidates(GraphIndex index, Set<String> focusTypes, List<String> focusPackages, int topN) {
 		return index.objectsById().entrySet().stream()
 			.filter(entry -> !entry.getValue().heapClass())
-			.map(entry -> new Candidate(entry.getKey(), entry.getValue().typeName(), entry.getValue().shallowBytes()))
+			.map(entry -> new Candidate(entry.getKey(), entry.getValue().typeName(), entry.getValue().shallowBytes(),
+					entry.getValue().classLoaderObjectId(), classLoaderName(index.objectsById(),
+							entry.getValue().classLoaderObjectId())))
 			.filter(candidate -> isCandidateType(candidate.typeName(), focusTypes))
 			.sorted(candidateComparator(focusPackages))
 			.limit(Math.max(topN * CANDIDATE_MULTIPLIER, topN))
@@ -743,7 +782,8 @@ public final class DominatorStyleHeapRetentionAnalyzer implements HeapRetentionA
 			HeapObject object = objects.next();
 			HeapObject.HeapClass heapClass = object.getAsClass();
 			if (heapClass != null) {
-				objectsById.put(heapClass.getObjectId(), new ObjectInfo(heapClass.getName(), 0L, true));
+				Long classLoaderId = safeClassLoaderId(heapClass);
+				objectsById.put(heapClass.getObjectId(), new ObjectInfo(heapClass.getName(), 0L, true, classLoaderId));
 				Iterator<HeapField> staticFields = heapClass.readStaticFields().iterator();
 				boolean addedStaticReference = false;
 				while (staticFields.hasNext()) {
@@ -761,8 +801,9 @@ public final class DominatorStyleHeapRetentionAnalyzer implements HeapRetentionA
 
 			HeapObject.HeapInstance instance = object.getAsInstance();
 			if (instance != null) {
+				Long classLoaderId = safeClassLoaderId(instance);
 				objectsById.put(instance.getObjectId(),
-						new ObjectInfo(instance.getInstanceClassName(), instance.getByteSize(), false));
+						new ObjectInfo(instance.getInstanceClassName(), instance.getByteSize(), false, classLoaderId));
 				Iterator<HeapField> fields = instance.readFields().iterator();
 				while (fields.hasNext()) {
 					HeapField field = fields.next();
@@ -774,8 +815,9 @@ public final class DominatorStyleHeapRetentionAnalyzer implements HeapRetentionA
 
 			HeapObject.HeapObjectArray objectArray = object.getAsObjectArray();
 			if (objectArray != null) {
+				Long classLoaderId = safeClassLoaderId(objectArray);
 				objectsById.put(objectArray.getObjectId(),
-						new ObjectInfo(objectArray.getArrayClassName(), objectArray.getByteSize(), false));
+						new ObjectInfo(objectArray.getArrayClassName(), objectArray.getByteSize(), false, classLoaderId));
 				Iterator<HeapValue> elements = objectArray.readElements().iterator();
 				int indexPosition = 0;
 				while (elements.hasNext()) {
@@ -789,8 +831,10 @@ public final class DominatorStyleHeapRetentionAnalyzer implements HeapRetentionA
 
 			HeapObject.HeapPrimitiveArray primitiveArray = object.getAsPrimitiveArray();
 			if (primitiveArray != null) {
+				Long classLoaderId = safeClassLoaderId(primitiveArray);
 				objectsById.put(primitiveArray.getObjectId(),
-						new ObjectInfo(primitiveArray.getArrayClassName(), primitiveArray.getByteSize(), false));
+						new ObjectInfo(primitiveArray.getArrayClassName(), primitiveArray.getByteSize(), false,
+								classLoaderId));
 			}
 		}
 
@@ -818,6 +862,60 @@ public final class DominatorStyleHeapRetentionAnalyzer implements HeapRetentionA
 		inboundEdges.computeIfAbsent(targetId, ignored -> new ArrayList<>()).add(edge);
 		outboundEdges.computeIfAbsent(ownerId, ignored -> new ArrayList<>()).add(edge);
 		return true;
+	}
+
+	private static Long normalizeClassLoaderId(long classLoaderId) {
+		return classLoaderId == 0L ? null : classLoaderId;
+	}
+
+	private static Long safeClassLoaderId(HeapObject.HeapClass heapClass) {
+		if (heapClass == null) {
+			return null;
+		}
+		try {
+			return normalizeClassLoaderId(heapClass.readRecord().getClassLoaderId());
+		}
+		catch (RuntimeException ex) {
+			return null;
+		}
+	}
+
+	private static Long safeClassLoaderId(HeapObject.HeapInstance instance) {
+		try {
+			return instance == null ? null : safeClassLoaderId(instance.getInstanceClass());
+		}
+		catch (RuntimeException ex) {
+			return null;
+		}
+	}
+
+	private static Long safeClassLoaderId(HeapObject.HeapObjectArray objectArray) {
+		try {
+			return objectArray == null ? null : safeClassLoaderId(objectArray.getArrayClass());
+		}
+		catch (RuntimeException ex) {
+			return null;
+		}
+	}
+
+	private static Long safeClassLoaderId(HeapObject.HeapPrimitiveArray primitiveArray) {
+		try {
+			return primitiveArray == null ? null : safeClassLoaderId(primitiveArray.getArrayClass());
+		}
+		catch (RuntimeException ex) {
+			return null;
+		}
+	}
+
+	private static String classLoaderName(Map<Long, ObjectInfo> objectsById, Long classLoaderObjectId) {
+		if (classLoaderObjectId == null) {
+			return "bootstrap";
+		}
+		ObjectInfo info = objectsById.get(classLoaderObjectId);
+		if (info == null || info.typeName() == null || info.typeName().isBlank()) {
+			return "classLoader@0x" + Long.toHexString(classLoaderObjectId);
+		}
+		return info.typeName();
 	}
 
 	private static void enrichEdgeTargetTypes(Map<Long, List<RefEdge>> edgesByNodeId, Map<Long, ObjectInfo> objectsById) {
@@ -1002,13 +1100,14 @@ public final class DominatorStyleHeapRetentionAnalyzer implements HeapRetentionA
 
 	}
 
-	private record ObjectInfo(String typeName, long shallowBytes, boolean heapClass) {
+	private record ObjectInfo(String typeName, long shallowBytes, boolean heapClass, Long classLoaderObjectId) {
 
-		private static final ObjectInfo EMPTY = new ObjectInfo("", 0L, false);
+		private static final ObjectInfo EMPTY = new ObjectInfo("", 0L, false, null);
 
 	}
 
-	private record Candidate(long objectId, String typeName, long shallowBytes) {
+	private record Candidate(long objectId, String typeName, long shallowBytes, Long classLoaderObjectId,
+			String classLoaderName) {
 	}
 
 	private record RefEdge(long ownerId, String ownerType, String referenceKind, String referenceName, long targetId,
@@ -1084,6 +1183,35 @@ public final class DominatorStyleHeapRetentionAnalyzer implements HeapRetentionA
 				total = saturatingAdd(total, reachableBytes == null ? 0L : reachableBytes);
 			}
 			return total;
+		}
+
+	}
+
+	private static final class ClassloaderAccumulator {
+
+		private final String classLoaderName;
+
+		private final Long classLoaderObjectId;
+
+		private long retainedBytes;
+
+		private long reachableBytes;
+
+		private long terminalShallowBytes;
+
+		private long objectCount;
+
+		private String exampleHolderType;
+
+		private String exampleFieldPath;
+
+		private String exampleTargetType;
+
+		private String notes;
+
+		private ClassloaderAccumulator(String classLoaderName, Long classLoaderObjectId) {
+			this.classLoaderName = classLoaderName;
+			this.classLoaderObjectId = classLoaderObjectId;
 		}
 
 	}

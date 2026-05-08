@@ -18,6 +18,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
+import com.alibaba.cloud.ai.examples.javatuning.runtime.ClassloaderRetentionSummary;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.GcRootHint;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.HeapRetentionAnalysisResult;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.HeapRetentionConfidence;
@@ -106,6 +107,7 @@ public final class SharkHeapRetentionAnalyzer implements HeapRetentionAnalyzer {
 
 		List<RetainedTypeSummary> dominantTypes = buildDominantTypes(analyses, topN);
 		List<SuspectedHolderSummary> holders = buildHolders(analyses, topN);
+		List<ClassloaderRetentionSummary> classloaderGroups = buildClassloaderGroups(analyses, topN);
 		List<RetentionChainSummary> chains = buildChains(analyses, topN);
 		List<GcRootHint> rootHints = buildRootHints(analyses, topN);
 
@@ -115,11 +117,11 @@ public final class SharkHeapRetentionAnalyzer implements HeapRetentionAnalyzer {
 				List.of("Engine=shark", "Holder chains are representative, not exhaustive.",
 						"focusTypes=" + normalizedFocusTypes(focusTypes)));
 
-		HeapRetentionSummary withoutMarkdown = new HeapRetentionSummary(dominantTypes, holders, chains, rootHints,
-				confidence, "", true, warnings, "");
+		HeapRetentionSummary withoutMarkdown = new HeapRetentionSummary(dominantTypes, holders, classloaderGroups,
+				chains, rootHints, confidence, "", true, warnings, "");
 		String markdown = markdownRenderer.render(heapDumpPath, withoutMarkdown, maxChars);
-		return new HeapRetentionSummary(dominantTypes, holders, chains, rootHints, confidence, markdown, true, warnings,
-				"");
+		return new HeapRetentionSummary(dominantTypes, holders, classloaderGroups, chains, rootHints, confidence,
+				markdown, true, warnings, "");
 	}
 
 	private List<PathAnalysis> analyzeCandidates(AnalysisIndex index, int topN, int depthLimit, List<String> focusPackages) {
@@ -306,6 +308,35 @@ public final class SharkHeapRetentionAnalyzer implements HeapRetentionAnalyzer {
 			.toList();
 	}
 
+	private List<ClassloaderRetentionSummary> buildClassloaderGroups(List<PathAnalysis> analyses, int topN) {
+		Map<String, ClassloaderAccumulator> groups = new LinkedHashMap<>();
+		for (PathAnalysis analysis : analyses) {
+			String classLoaderName = analysis.candidate().classLoaderName();
+			Long classLoaderObjectId = analysis.candidate().classLoaderObjectId();
+			String key = classLoaderName + "|" + classLoaderObjectId;
+			ClassloaderAccumulator accumulator = groups.computeIfAbsent(key,
+					ignored -> new ClassloaderAccumulator(classLoaderName, classLoaderObjectId));
+			accumulator.reachableBytes += analysis.approximateBytes();
+			accumulator.terminalShallowBytes += analysis.candidate().shallowBytes();
+			accumulator.objectCount++;
+			if (accumulator.exampleHolderType == null || accumulator.exampleHolderType.isBlank()) {
+				accumulator.exampleHolderType = analysis.trace().holderType();
+				accumulator.exampleFieldPath = analysis.trace().exampleFieldPath();
+				accumulator.exampleTargetType = analysis.candidate().typeName();
+				accumulator.notes = analysis.trace().notes();
+			}
+		}
+		return groups.values().stream()
+			.map(accumulator -> new ClassloaderRetentionSummary(accumulator.classLoaderName,
+					accumulator.classLoaderObjectId, accumulator.reachableBytes, accumulator.objectCount,
+					null, accumulator.terminalShallowBytes, accumulator.exampleHolderType, accumulator.exampleFieldPath,
+					accumulator.exampleTargetType, accumulator.notes))
+			.sorted(Comparator.comparingLong(ClassloaderRetentionSummary::reachableSubgraphBytesApprox).reversed()
+				.thenComparing(ClassloaderRetentionSummary::classLoaderName))
+			.limit(topN)
+			.toList();
+	}
+
 	private List<RetentionChainSummary> buildChains(List<PathAnalysis> analyses, int topN) {
 		Map<String, ChainAccumulator> chains = new LinkedHashMap<>();
 		for (PathAnalysis analysis : analyses) {
@@ -359,7 +390,8 @@ public final class SharkHeapRetentionAnalyzer implements HeapRetentionAnalyzer {
 			HeapObject object = objects.next();
 			HeapObject.HeapClass heapClass = object.getAsClass();
 			if (heapClass != null) {
-				objectsById.put(heapClass.getObjectId(), new ObjectInfo(heapClass.getName(), 0L, true));
+				Long classLoaderId = safeClassLoaderId(heapClass);
+				objectsById.put(heapClass.getObjectId(), new ObjectInfo(heapClass.getName(), 0L, true, classLoaderId));
 				Iterator<HeapField> staticFields = heapClass.readStaticFields().iterator();
 				while (staticFields.hasNext()) {
 					HeapField field = staticFields.next();
@@ -371,10 +403,11 @@ public final class SharkHeapRetentionAnalyzer implements HeapRetentionAnalyzer {
 
 			HeapObject.HeapInstance instance = object.getAsInstance();
 			if (instance != null) {
+				Long classLoaderId = safeClassLoaderId(instance);
 				objectsById.put(instance.getObjectId(),
-						new ObjectInfo(instance.getInstanceClassName(), instance.getByteSize(), false));
+						new ObjectInfo(instance.getInstanceClassName(), instance.getByteSize(), false, classLoaderId));
 				maybeAddCandidate(candidates, instance.getObjectId(), instance.getInstanceClassName(), instance.getByteSize(),
-						focusTypes);
+						focusTypes, classLoaderId, classLoaderName(objectsById, classLoaderId));
 				Iterator<HeapField> fields = instance.readFields().iterator();
 				while (fields.hasNext()) {
 					HeapField field = fields.next();
@@ -386,10 +419,11 @@ public final class SharkHeapRetentionAnalyzer implements HeapRetentionAnalyzer {
 
 			HeapObject.HeapObjectArray objectArray = object.getAsObjectArray();
 			if (objectArray != null) {
+				Long classLoaderId = safeClassLoaderId(objectArray);
 				objectsById.put(objectArray.getObjectId(),
-						new ObjectInfo(objectArray.getArrayClassName(), objectArray.getByteSize(), false));
+						new ObjectInfo(objectArray.getArrayClassName(), objectArray.getByteSize(), false, classLoaderId));
 				maybeAddCandidate(candidates, objectArray.getObjectId(), objectArray.getArrayClassName(),
-						objectArray.getByteSize(), focusTypes);
+						objectArray.getByteSize(), focusTypes, classLoaderId, classLoaderName(objectsById, classLoaderId));
 				Iterator<HeapValue> elements = objectArray.readElements().iterator();
 				int index = 0;
 				while (elements.hasNext()) {
@@ -402,10 +436,11 @@ public final class SharkHeapRetentionAnalyzer implements HeapRetentionAnalyzer {
 
 			HeapObject.HeapPrimitiveArray primitiveArray = object.getAsPrimitiveArray();
 			if (primitiveArray != null) {
-				objectsById.put(primitiveArray.getObjectId(),
-						new ObjectInfo(primitiveArray.getArrayClassName(), primitiveArray.getByteSize(), false));
+				Long classLoaderId = safeClassLoaderId(primitiveArray);
+				objectsById.put(primitiveArray.getObjectId(), new ObjectInfo(primitiveArray.getArrayClassName(),
+						primitiveArray.getByteSize(), false, classLoaderId));
 				maybeAddCandidate(candidates, primitiveArray.getObjectId(), primitiveArray.getArrayClassName(),
-						primitiveArray.getByteSize(), focusTypes);
+						primitiveArray.getByteSize(), focusTypes, classLoaderId, classLoaderName(objectsById, classLoaderId));
 			}
 		}
 
@@ -425,11 +460,65 @@ public final class SharkHeapRetentionAnalyzer implements HeapRetentionAnalyzer {
 	}
 
 	private static void maybeAddCandidate(List<Candidate> candidates, long objectId, String typeName, long shallowBytes,
-			Set<String> focusTypes) {
+			Set<String> focusTypes, Long classLoaderObjectId, String classLoaderName) {
 		if (!isCandidateType(typeName, focusTypes)) {
 			return;
 		}
-		candidates.add(new Candidate(objectId, typeName, shallowBytes));
+		candidates.add(new Candidate(objectId, typeName, shallowBytes, classLoaderObjectId, classLoaderName));
+	}
+
+	private static Long normalizeClassLoaderId(long classLoaderId) {
+		return classLoaderId == 0L ? null : classLoaderId;
+	}
+
+	private static Long safeClassLoaderId(HeapObject.HeapClass heapClass) {
+		if (heapClass == null) {
+			return null;
+		}
+		try {
+			return normalizeClassLoaderId(heapClass.readRecord().getClassLoaderId());
+		}
+		catch (RuntimeException ex) {
+			return null;
+		}
+	}
+
+	private static Long safeClassLoaderId(HeapObject.HeapInstance instance) {
+		try {
+			return instance == null ? null : safeClassLoaderId(instance.getInstanceClass());
+		}
+		catch (RuntimeException ex) {
+			return null;
+		}
+	}
+
+	private static Long safeClassLoaderId(HeapObject.HeapObjectArray objectArray) {
+		try {
+			return objectArray == null ? null : safeClassLoaderId(objectArray.getArrayClass());
+		}
+		catch (RuntimeException ex) {
+			return null;
+		}
+	}
+
+	private static Long safeClassLoaderId(HeapObject.HeapPrimitiveArray primitiveArray) {
+		try {
+			return primitiveArray == null ? null : safeClassLoaderId(primitiveArray.getArrayClass());
+		}
+		catch (RuntimeException ex) {
+			return null;
+		}
+	}
+
+	private static String classLoaderName(Map<Long, ObjectInfo> objectsById, Long classLoaderObjectId) {
+		if (classLoaderObjectId == null) {
+			return "bootstrap";
+		}
+		ObjectInfo info = objectsById.get(classLoaderObjectId);
+		if (info == null || info.typeName() == null || info.typeName().isBlank()) {
+			return "classLoader@0x" + Long.toHexString(classLoaderObjectId);
+		}
+		return info.typeName();
 	}
 
 	private static boolean isCandidateType(String typeName, Set<String> focusTypes) {
@@ -618,10 +707,11 @@ public final class SharkHeapRetentionAnalyzer implements HeapRetentionAnalyzer {
 			Map<Long, List<String>> gcRootKindsByObjectId, List<Candidate> candidates) {
 	}
 
-	private record ObjectInfo(String typeName, long shallowBytes, boolean heapClass) {
+	private record ObjectInfo(String typeName, long shallowBytes, boolean heapClass, Long classLoaderObjectId) {
 	}
 
-	private record Candidate(long objectId, String typeName, long shallowBytes) {
+	private record Candidate(long objectId, String typeName, long shallowBytes, Long classLoaderObjectId,
+			String classLoaderName) {
 	}
 
 	private record RefEdge(long ownerId, String ownerType, String referenceKind, String referenceName, long targetId,
@@ -673,6 +763,33 @@ public final class SharkHeapRetentionAnalyzer implements HeapRetentionAnalyzer {
 			this.exampleFieldPath = exampleFieldPath;
 			this.exampleTargetType = exampleTargetType;
 			this.notes = notes;
+		}
+
+	}
+
+	private static final class ClassloaderAccumulator {
+
+		private final String classLoaderName;
+
+		private final Long classLoaderObjectId;
+
+		private long reachableBytes;
+
+		private long terminalShallowBytes;
+
+		private long objectCount;
+
+		private String exampleHolderType;
+
+		private String exampleFieldPath;
+
+		private String exampleTargetType;
+
+		private String notes;
+
+		private ClassloaderAccumulator(String classLoaderName, Long classLoaderObjectId) {
+			this.classLoaderName = classLoaderName;
+			this.classLoaderObjectId = classLoaderObjectId;
 		}
 
 	}

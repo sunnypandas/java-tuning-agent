@@ -4,6 +4,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
 
+import com.alibaba.cloud.ai.examples.javatuning.runtime.ClassloaderRetentionSummary;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.GcRootHint;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.HeapRetentionSummary;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.RetentionChainSummary;
@@ -54,6 +55,22 @@ public final class HeapRetentionMarkdownRenderer {
 				.ifPresent(sourceHolder -> sb.append("Likely source holder: `")
 					.append(escapePipes(sourceHolder))
 					.append("`\n\n"));
+		}
+
+		if (!summary.classloaderRetainedGroups().isEmpty()) {
+			sb.append("**Classloader retained groups**\n\n");
+			sb.append("| Classloader | Objects | Retained-style bytes | Reachable subgraph estimate | Example holder | Example target |\n");
+			sb.append("| --- | --- | --- | --- | --- | --- |\n");
+			for (ClassloaderRetentionSummary group : summary.classloaderRetainedGroups()) {
+				sb.append("| `").append(escapePipes(group.classLoaderName())).append("` | ")
+					.append(group.objectCountApprox()).append(" | ")
+					.append(group.retainedBytesApprox() == null ? "n/a" : formatBytes(group.retainedBytesApprox()))
+					.append(" | ")
+					.append(formatBytes(group.reachableSubgraphBytesApprox())).append(" | `")
+					.append(escapePipes(group.exampleHolderType())).append("` | `")
+					.append(escapePipes(group.exampleTargetType())).append("` |\n");
+			}
+			sb.append("\n");
 		}
 
 		if (!summary.retentionChains().isEmpty()) {

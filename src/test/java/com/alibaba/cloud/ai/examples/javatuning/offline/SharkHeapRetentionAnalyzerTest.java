@@ -158,4 +158,24 @@ class SharkHeapRetentionAnalyzerTest {
 			});
 	}
 
+	@Test
+	void summarizesRetentionHintsByClassloader(@TempDir Path dir) throws Exception {
+		Path heap = TestHeapDumpSupport.dumpFocusPackagePreferenceHeap(dir);
+		var analyzer = new SharkHeapRetentionAnalyzer(20, 12000);
+		String preferredType = TestHeapDumpSupport.preferredNodeArrayTypeName();
+
+		var result = analyzer.analyze(heap, 4, 12000, "balanced", List.of(preferredType), List.of());
+
+		assertThat(result.analysisSucceeded()).as(result.errorMessage()).isTrue();
+		assertThat(result.retentionSummary().classloaderRetainedGroups())
+			.anySatisfy(group -> {
+				assertThat(group.classLoaderName()).isNotBlank();
+				assertThat(group.reachableSubgraphBytesApprox()).isPositive();
+				assertThat(group.objectCountApprox()).isPositive();
+				assertThat(group.exampleHolderType()).isNotBlank();
+				assertThat(group.exampleTargetType()).isEqualTo(preferredType);
+			});
+		assertThat(result.summaryMarkdown()).contains("Classloader retained groups");
+	}
+
 }

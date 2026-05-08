@@ -614,7 +614,7 @@ com.alibaba.cloud.ai.compat.memoryleakdemo.MemoryLeakDemoApplication
 
 如果 `heapDumpAbsolutePath` 指向有效 `.hprof`，报告末尾通常会追加 heap shallow summary 小节。
 
-如果传了 `analysisDepth="deep"`，deep retention 可能会额外给出 holder/引用链线索。memory-leak-demo 的典型讲解例子可以写成：
+如果传了 `analysisDepth="deep"`，deep retention 可能会额外给出 holder/引用链/classloader 分组线索。memory-leak-demo 的典型讲解例子可以写成：
 
 ```text
 Object[] -> AllocationRecord.payload -> byte[]

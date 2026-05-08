@@ -336,4 +336,4 @@ Use for a **standalone** shallow table / `topByShallowBytes` without running the
 }
 ```
 
-Use this when you need holder-oriented retention evidence instead of only shallow-by-class output. `analysisDepth` may be `fast`, `balanced`, or `deep`; deep mode attempts a retained-style analysis and falls back honestly if the dump cannot support it.
+Use this when you need holder-oriented retention evidence instead of only shallow-by-class output. `analysisDepth` may be `fast`, `balanced`, or `deep`; deep mode attempts a retained-style analysis and falls back honestly if the dump cannot support it. The structured summary may include `classloaderRetainedGroups` with classloader-level holder/target examples.

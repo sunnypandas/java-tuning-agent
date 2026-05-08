@@ -135,8 +135,9 @@
 
 ### 5.2 堆保留关系分析（phase 1 独立工具）
 
-- `analyzeOfflineHeapRetention` 面向 **holder、代表性引用链、GC root hints**，用于回答「是谁在持有对象」而非「哪些类型浅层字节最大」。
+- `analyzeOfflineHeapRetention` 面向 **holder、代表性引用链、GC root hints、classloader retained groups**，用于回答「是谁在持有对象 / 哪个 classloader 维度聚合了这些 retained-style 线索」而非「哪些类型浅层字节最大」。
 - 该工具可返回 `retainedBytesApprox` 等 **retained-style 近似值**；当分析器无法给出可辩护的 retained 语义时，`retainedBytesApprox` 可为空。
+- `classloaderRetainedGroups` 会按候选对象的 defining classloader 聚合 holder/target 示例；deep retained-style 引擎可给出 `retainedBytesApprox`，Shark fallback 只给 `reachableSubgraphBytesApprox`。
 - `reachableSubgraphBytesApprox` 仅表示**有界可达子图大小近似值**，用于 phase 1 排序与提示；**不是** exact retained size。
 - **phase 1 边界**：该能力当前以**独立 MCP 工具**交付；现有 `generateOfflineTuningAdvice` / `MemoryGcEvidencePack` 路径继续只自动消费浅层摘要，shared `MemoryGcEvidencePack` 集成延后到 retention 契约稳定后再做。
 
