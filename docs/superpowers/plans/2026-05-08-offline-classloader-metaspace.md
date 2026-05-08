@@ -30,7 +30,7 @@
 - Create: `src/main/java/com/alibaba/cloud/ai/examples/javatuning/runtime/ClassloaderMetaspaceSummary.java`
 - Create: `src/main/java/com/alibaba/cloud/ai/examples/javatuning/runtime/ClassloaderMetaspaceParser.java`
 
-- [ ] **Step 1: Write failing parser tests**
+- [x] **Step 1: Write failing parser tests**
 
 Create tests for:
 
@@ -55,7 +55,7 @@ Expected: alive `true`, class count `850`, bytes `49152`.
 
 Create an unparseable text test expecting no entries and a warning containing `Unable to parse classloader metaspace evidence`.
 
-- [ ] **Step 2: Run parser tests to verify failure**
+- [x] **Step 2: Run parser tests to verify failure**
 
 Run:
 
@@ -65,7 +65,7 @@ mvn -q -Dtest=ClassloaderMetaspaceParserTest test
 
 Expected: compile failure because parser/model classes do not exist.
 
-- [ ] **Step 3: Implement records and parser**
+- [x] **Step 3: Implement records and parser**
 
 Implement:
 
@@ -83,7 +83,7 @@ public record ClassloaderMetaspaceSummary(List<ClassloaderMetaspaceEntry> entrie
 
 Parser should skip headers/separators, parse VM rows with `loader parent cld classes chunk block type`, parse clstats rows with `loader parent alive classes bytes type`, and add a warning for non-blank text with no rows.
 
-- [ ] **Step 4: Run parser tests**
+- [x] **Step 4: Run parser tests**
 
 Run:
 
@@ -100,13 +100,13 @@ Expected: PASS.
 - Modify: `src/main/java/com/alibaba/cloud/ai/examples/javatuning/offline/OfflineEvidenceAssembler.java`
 - Test: `src/test/java/com/alibaba/cloud/ai/examples/javatuning/offline/OfflineEvidenceAssemblerTest.java`
 
-- [ ] **Step 1: Write failing offline assembler tests**
+- [x] **Step 1: Write failing offline assembler tests**
 
 Add one test where `metaspaceEvidence.inlineText` contains VM.classloader stats and assert `pack.classloaderMetaspaceSummary()` is not null.
 
 Add one regression test with missing `metaspaceEvidence` and assert `pack.classloaderMetaspaceSummary()` is null and `pack.missingData()` does not contain `metaspaceEvidence`.
 
-- [ ] **Step 2: Run offline tests to verify failure**
+- [x] **Step 2: Run offline tests to verify failure**
 
 Run:
 
@@ -116,15 +116,15 @@ mvn -q -Dtest=OfflineEvidenceAssemblerTest test
 
 Expected: compile failure because `classloaderMetaspaceSummary()` does not exist.
 
-- [ ] **Step 3: Extend `MemoryGcEvidencePack`**
+- [x] **Step 3: Extend `MemoryGcEvidencePack`**
 
 Add nullable `ClassloaderMetaspaceSummary classloaderMetaspaceSummary` to the record, preserve existing constructors by passing `null`, add `withClassloaderMetaspaceSummary(...)`, and update all internal copy methods to preserve the new field.
 
-- [ ] **Step 4: Load and attach `metaspaceEvidence`**
+- [x] **Step 4: Load and attach `metaspaceEvidence`**
 
 In `OfflineEvidenceAssembler`, instantiate `ClassloaderMetaspaceParser`, load `draft.metaspaceEvidence()`, parse non-blank text, attach parsed summaries, add warnings, and add `metaspaceEvidence` to missing data only for file load failures or non-blank unparseable text.
 
-- [ ] **Step 5: Run offline tests**
+- [x] **Step 5: Run offline tests**
 
 Run:
 
@@ -142,14 +142,14 @@ Expected: PASS.
 - Modify: `src/main/java/com/alibaba/cloud/ai/examples/javatuning/advice/MemoryGcDiagnosisEngine.java`
 - Test: `src/test/java/com/alibaba/cloud/ai/examples/javatuning/advice/MemoryGcDiagnosisEngineTest.java`
 
-- [ ] **Step 1: Write failing rule tests**
+- [x] **Step 1: Write failing rule tests**
 
 Create tests proving:
 
 - Many `ProxyClassLoader` rows produce finding title `Suspected classloader retention or churn`.
 - Classloader evidence plus NMT `Class` committed growth includes `nmtClassGrowthCorroborated=true` in evidence.
 
-- [ ] **Step 2: Run rule tests to verify failure**
+- [x] **Step 2: Run rule tests to verify failure**
 
 Run:
 
@@ -159,17 +159,17 @@ mvn -q -Dtest=ClassloaderMetaspaceRuleTest test
 
 Expected: compile failure because the rule does not exist.
 
-- [ ] **Step 3: Implement `ClassloaderMetaspaceRule`**
+- [x] **Step 3: Implement `ClassloaderMetaspaceRule`**
 
 Trigger when top class count is at least `500`, top bytes at least `32MB`, repeated generated/proxy pattern count is at least `3`, or classloader evidence is corroborated by NMT `Class` committed growth of at least `32MB`.
 
 Recommendation action should be `Inspect classloader retention and generated class lifecycle`.
 
-- [ ] **Step 4: Register rule in engine**
+- [x] **Step 4: Register rule in engine**
 
 Add `new ClassloaderMetaspaceRule()` after `new MetaspacePressureRule()`.
 
-- [ ] **Step 5: Run rule and engine tests**
+- [x] **Step 5: Run rule and engine tests**
 
 Run:
 
@@ -188,11 +188,11 @@ Expected: PASS.
 - Modify: `agent-pack/java-tuning-agent/skills/java-tuning-agent-workflow/SKILL.md`
 - Modify: `agent-pack/java-tuning-agent/adapters/cursor/skills/java-tuning-agent-workflow/SKILL.md`
 
-- [ ] **Step 1: Update docs wording**
+- [x] **Step 1: Update docs wording**
 
 Replace wording that says `metaspaceEvidence` is future/supporting only with wording that it now accepts classloader stats for offline classloader/metaspace attribution.
 
-- [ ] **Step 2: Run focused verification**
+- [x] **Step 2: Run focused verification**
 
 Run:
 
@@ -202,7 +202,7 @@ mvn -q -Dtest=ClassloaderMetaspaceParserTest,OfflineEvidenceAssemblerTest,Classl
 
 Expected: PASS.
 
-- [ ] **Step 3: Run full verification**
+- [x] **Step 3: Run full verification**
 
 Run:
 
@@ -212,7 +212,7 @@ mvn -q test
 
 Expected: exit code 0.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 Run:
 

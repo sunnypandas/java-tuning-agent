@@ -34,7 +34,7 @@
 - Modify: `src/main/java/com/alibaba/cloud/ai/examples/javatuning/runtime/GcHeapInfoParser.java`
 - Test: `src/test/java/com/alibaba/cloud/ai/examples/javatuning/runtime/GcHeapInfoParserTest.java`
 
-- [ ] **Step 1: Write the failing parser test**
+- [x] **Step 1: Write the failing parser test**
 
 Add assertions to `shouldParseG1HeapInfo`:
 
@@ -43,7 +43,7 @@ assertThat(parsed.metaspaceCommittedBytes()).isEqualTo(9216L * 1024L);
 assertThat(parsed.metaspaceReservedBytes()).isEqualTo(65536L * 1024L);
 ```
 
-- [ ] **Step 2: Run the focused test to verify it fails**
+- [x] **Step 2: Run the focused test to verify it fails**
 
 Run:
 
@@ -53,7 +53,7 @@ mvn -q -Dtest=GcHeapInfoParserTest test
 
 Expected: compile failure or assertion failure because `metaspaceCommittedBytes()` and `metaspaceReservedBytes()` do not exist yet.
 
-- [ ] **Step 3: Extend `JvmMemorySnapshot` with nullable fields and compatibility constructor**
+- [x] **Step 3: Extend `JvmMemorySnapshot` with nullable fields and compatibility constructor**
 
 Replace the record declaration with:
 
@@ -71,7 +71,7 @@ public record JvmMemorySnapshot(long heapUsedBytes, long heapCommittedBytes, lon
 }
 ```
 
-- [ ] **Step 4: Populate committed/reserved in `GcHeapInfoParser`**
+- [x] **Step 4: Populate committed/reserved in `GcHeapInfoParser`**
 
 Change local variables:
 
@@ -103,7 +103,7 @@ For the blank-output return, use:
 return new JvmMemorySnapshot(0L, 0L, 0L, null, null, null, null, null, null, null);
 ```
 
-- [ ] **Step 5: Run the focused parser test**
+- [x] **Step 5: Run the focused parser test**
 
 Run:
 
@@ -120,7 +120,7 @@ Expected: PASS.
 - Modify: `src/main/java/com/alibaba/cloud/ai/examples/javatuning/runtime/JstatGcUtilParser.java`
 - Test: `src/test/java/com/alibaba/cloud/ai/examples/javatuning/runtime/JstatGcUtilParserTest.java`
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 In `shouldParseGcUtilCounters`, add:
 
@@ -147,7 +147,7 @@ void shouldParseCompactMetaspaceAndCompressedClassSpaceUtilization() {
 }
 ```
 
-- [ ] **Step 2: Run focused test to verify it fails**
+- [x] **Step 2: Run focused test to verify it fails**
 
 Run:
 
@@ -157,7 +157,7 @@ mvn -q -Dtest=JstatGcUtilParserTest test
 
 Expected: compile failure because the new accessor methods do not exist.
 
-- [ ] **Step 3: Extend `JvmGcSnapshot` with nullable utilization fields**
+- [x] **Step 3: Extend `JvmGcSnapshot` with nullable utilization fields**
 
 Replace the record with:
 
@@ -174,7 +174,7 @@ public record JvmGcSnapshot(String collector, long youngGcCount, long youngGcTim
 }
 ```
 
-- [ ] **Step 4: Update `JstatGcUtilParser` labeled parsing**
+- [x] **Step 4: Update `JstatGcUtilParser` labeled parsing**
 
 Change `LABELED_VALUE` to include `M` and `CCS`:
 
@@ -204,7 +204,7 @@ return new JvmGcSnapshot("unknown", youngGcCount, youngGcTimeMs, fullGcCount, fu
 		oldUsagePercent, metaspaceUtilPercent, compressedClassSpaceUtilPercent);
 ```
 
-- [ ] **Step 5: Update tabular parsing**
+- [x] **Step 5: Update tabular parsing**
 
 In `parse`, after `oldUsagePercent`:
 
@@ -217,7 +217,7 @@ return new JvmGcSnapshot("unknown", youngGcCount, youngGcTimeMs, fullGcCount, fu
 
 Leave blank and malformed fallback constructors on the 6-argument constructor.
 
-- [ ] **Step 6: Run focused parser tests**
+- [x] **Step 6: Run focused parser tests**
 
 Run:
 
@@ -236,7 +236,7 @@ Expected: PASS.
 - Test: `src/test/java/com/alibaba/cloud/ai/examples/javatuning/runtime/SafeJvmRuntimeCollectorTest.java`
 - Test: `src/test/java/com/alibaba/cloud/ai/examples/javatuning/offline/OfflineJvmSnapshotAssemblerTest.java`
 
-- [ ] **Step 1: Write failing online preservation assertions**
+- [x] **Step 1: Write failing online preservation assertions**
 
 In `SafeJvmRuntimeCollectorTest.shouldCollectHeapDumpWhenConfirmed`, after snapshot assertions, add:
 
@@ -247,7 +247,7 @@ assertThat(pack.snapshot().gc().metaspaceUtilPercent()).isEqualTo(92.21d);
 assertThat(pack.snapshot().gc().compressedClassSpaceUtilPercent()).isEqualTo(88.12d);
 ```
 
-- [ ] **Step 2: Write failing offline preservation assertions**
+- [x] **Step 2: Write failing offline preservation assertions**
 
 In `OfflineJvmSnapshotAssemblerTest.assemblesPidHeapAndGcFromOfflineTexts`, add a `Metaspace` line to `runtime`:
 
@@ -265,7 +265,7 @@ assertThat(snap.gc().metaspaceUtilPercent()).isEqualTo(92.21d);
 assertThat(snap.gc().compressedClassSpaceUtilPercent()).isEqualTo(88.12d);
 ```
 
-- [ ] **Step 3: Run focused tests to verify failure**
+- [x] **Step 3: Run focused tests to verify failure**
 
 Run:
 
@@ -275,7 +275,7 @@ mvn -q -Dtest=SafeJvmRuntimeCollectorTest,OfflineJvmSnapshotAssemblerTest test
 
 Expected: FAIL because collector/assembler re-wrap snapshots without preserving new fields.
 
-- [ ] **Step 4: Preserve memory fields in `SafeJvmRuntimeCollector.collect`**
+- [x] **Step 4: Preserve memory fields in `SafeJvmRuntimeCollector.collect`**
 
 Change `structuredMemory` construction to:
 
@@ -293,7 +293,7 @@ gc = new JvmGcSnapshot(collector, gc.youngGcCount(), gc.youngGcTimeMs(), gc.full
 		gc.compressedClassSpaceUtilPercent());
 ```
 
-- [ ] **Step 5: Preserve fields in `OfflineJvmSnapshotAssembler`**
+- [x] **Step 5: Preserve fields in `OfflineJvmSnapshotAssembler`**
 
 Change `structuredMemory` construction to:
 
@@ -317,7 +317,7 @@ Change fallback memory return to:
 return new JvmMemorySnapshot(0L, 0L, 0L, null, null, null, null, null, null, null);
 ```
 
-- [ ] **Step 6: Read optional fields in `RepeatedSamplingResultParser`**
+- [x] **Step 6: Read optional fields in `RepeatedSamplingResultParser`**
 
 Update memory parsing to pass:
 
@@ -345,7 +345,7 @@ private Double nullableDouble(JsonNode node) {
 }
 ```
 
-- [ ] **Step 7: Run focused preservation tests**
+- [x] **Step 7: Run focused preservation tests**
 
 Run:
 
@@ -361,7 +361,7 @@ Expected: PASS.
 - Modify: `src/main/java/com/alibaba/cloud/ai/examples/javatuning/advice/MetaspacePressureRule.java`
 - Test: `src/test/java/com/alibaba/cloud/ai/examples/javatuning/advice/MetaspacePressureRuleTest.java`
 
-- [ ] **Step 1: Write failing rule tests**
+- [x] **Step 1: Write failing rule tests**
 
 Add imports if needed:
 
@@ -427,7 +427,7 @@ private static JvmRuntimeSnapshot snapshotWithGcUtil(long metaspaceUsedBytes, lo
 }
 ```
 
-- [ ] **Step 2: Run focused test to verify failure**
+- [x] **Step 2: Run focused test to verify failure**
 
 Run:
 
@@ -437,7 +437,7 @@ mvn -q -Dtest=MetaspacePressureRuleTest test
 
 Expected: FAIL because the rule ignores NMT class growth and utilization.
 
-- [ ] **Step 3: Implement growth and utilization helpers in `MetaspacePressureRule`**
+- [x] **Step 3: Implement growth and utilization helpers in `MetaspacePressureRule`**
 
 Add thresholds:
 
@@ -496,7 +496,7 @@ private static Long classCommittedGrowth(NativeMemorySummary summary) {
 }
 ```
 
-- [ ] **Step 4: Build richer evidence string**
+- [x] **Step 4: Build richer evidence string**
 
 Add helper:
 
@@ -519,7 +519,7 @@ private String percentText(Double value) {
 
 Use it in the `TuningFinding`.
 
-- [ ] **Step 5: Update missing NMT next step text**
+- [x] **Step 5: Update missing NMT next step text**
 
 Change the missing-NMT next step string to:
 
@@ -530,7 +530,7 @@ Change the missing-NMT next step string to:
 
 Update existing tests to expect the command-oriented string.
 
-- [ ] **Step 6: Run focused rule tests**
+- [x] **Step 6: Run focused rule tests**
 
 Run:
 
@@ -546,7 +546,7 @@ Expected: PASS.
 - Modify only if tests expose propagation gaps.
 - Test: focused parser, collector, assembler, and rule tests.
 
-- [ ] **Step 1: Run focused suite**
+- [x] **Step 1: Run focused suite**
 
 Run:
 
@@ -556,11 +556,11 @@ mvn -q -Dtest=GcHeapInfoParserTest,JstatGcUtilParserTest,MetaspacePressureRuleTe
 
 Expected: PASS.
 
-- [ ] **Step 2: Fix constructor or propagation compile failures**
+- [x] **Step 2: Fix constructor or propagation compile failures**
 
 If compile failures appear for direct record constructors, prefer preserving compatibility constructors over editing every unrelated test. Only update direct construction sites when they need to assert the new fields.
 
-- [ ] **Step 3: Run full test suite**
+- [x] **Step 3: Run full test suite**
 
 Run:
 
@@ -570,7 +570,7 @@ mvn -q test
 
 Expected: PASS.
 
-- [ ] **Step 4: Review diff**
+- [x] **Step 4: Review diff**
 
 Run:
 
@@ -580,7 +580,7 @@ git diff -- src/main/java src/test/java docs/superpowers/plans/2026-05-08-metasp
 
 Expected: diff is limited to the P1 metaspace fields, parsers, rule behavior, tests, and this implementation plan.
 
-- [ ] **Step 5: Commit implementation**
+- [x] **Step 5: Commit implementation**
 
 Run:
 

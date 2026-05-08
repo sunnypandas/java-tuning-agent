@@ -15,13 +15,13 @@
 **Files:**
 - Modify: `scripts/export-jvm-diagnostics.sh`
 
-- [ ] **Step 1: Verify current shell script lacks metaspace evidence output**
+- [x] **Step 1: Verify current shell script lacks metaspace evidence output**
 
 Run the fixture export smoke command with `--skip-heap-dump --sample-count 1 --sample-interval-seconds 0`, then inspect `offline-draft-template.json`.
 
 Expected before implementation: no `optional-metaspace-classloader-stats.txt` file and no `draft.metaspaceEvidence.filePath`.
 
-- [ ] **Step 2: Add shell helper**
+- [x] **Step 2: Add shell helper**
 
 Add `collect_classloader_stats()` near `collect_native_memory_summary()`:
 
@@ -51,7 +51,7 @@ collect_classloader_stats() {
 }
 ```
 
-- [ ] **Step 3: Add shell template field**
+- [x] **Step 3: Add shell template field**
 
 In `write_offline_draft_template`, discover `optional-metaspace-classloader-stats.txt`, pass it into the Python template generator, and add:
 
@@ -59,7 +59,7 @@ In `write_offline_draft_template`, discover `optional-metaspace-classloader-stat
 "metaspaceEvidence": source(metaspace_path),
 ```
 
-- [ ] **Step 4: Call shell helper before writing template**
+- [x] **Step 4: Call shell helper before writing template**
 
 Add:
 
@@ -69,7 +69,7 @@ collect_classloader_stats "${root}/optional-metaspace-classloader-stats.txt" "${
 
 before `write_offline_draft_template`.
 
-- [ ] **Step 5: Verify shell export smoke**
+- [x] **Step 5: Verify shell export smoke**
 
 Run the fixture export smoke command again.
 
@@ -80,7 +80,7 @@ Expected after implementation: either `optional-metaspace-classloader-stats.txt`
 **Files:**
 - Modify: `scripts/export-jvm-diagnostics.ps1`
 
-- [ ] **Step 1: Add PowerShell helper**
+- [x] **Step 1: Add PowerShell helper**
 
 Add `Export-ClassloaderStats` near `Export-NativeMemorySummary`:
 
@@ -106,7 +106,7 @@ function Export-ClassloaderStats {
 }
 ```
 
-- [ ] **Step 2: Add PowerShell template field**
+- [x] **Step 2: Add PowerShell template field**
 
 In `Write-OfflineDraftTemplate`, discover `optional-metaspace-classloader-stats.txt` and add:
 
@@ -114,7 +114,7 @@ In `Write-OfflineDraftTemplate`, discover `optional-metaspace-classloader-stats.
 metaspaceEvidence = New-ArtifactSource $metaspacePath
 ```
 
-- [ ] **Step 3: Call PowerShell helper before writing template**
+- [x] **Step 3: Call PowerShell helper before writing template**
 
 Add:
 
@@ -124,7 +124,7 @@ Add:
 
 before `Write-OfflineDraftTemplate`.
 
-- [ ] **Step 4: Static sanity check**
+- [x] **Step 4: Static sanity check**
 
 Run:
 
@@ -139,11 +139,11 @@ Expected: prints `ok` if `pwsh` is available. If `pwsh` is unavailable, note tha
 **Files:**
 - Modify: `docs/mcp-jvm-tuning-demo-walkthrough.md`
 
-- [ ] **Step 1: Update demo walkthrough file list**
+- [x] **Step 1: Update demo walkthrough file list**
 
 Add `optional-metaspace-classloader-stats.txt` or `optional-metaspace-classloader-stats-SKIPPED.txt` to the enhanced evidence list near the export walkthrough.
 
-- [ ] **Step 2: Run focused parser/offline tests**
+- [x] **Step 2: Run focused parser/offline tests**
 
 Run:
 
@@ -153,7 +153,7 @@ mvn -q -Dtest=ClassloaderMetaspaceParserTest,OfflineEvidenceAssemblerTest test
 
 Expected: PASS.
 
-- [ ] **Step 3: Run full tests**
+- [x] **Step 3: Run full tests**
 
 Run:
 
@@ -163,7 +163,7 @@ mvn -q test
 
 Expected: exit code 0.
 
-- [ ] **Step 4: Check diff**
+- [x] **Step 4: Check diff**
 
 Run:
 
@@ -174,7 +174,7 @@ git diff --stat
 
 Expected: no whitespace errors; diff limited to export scripts, docs, and implementation plan.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 Run:
 

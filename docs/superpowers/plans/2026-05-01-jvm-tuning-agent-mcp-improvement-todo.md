@@ -282,7 +282,7 @@ If the file is still missing after the full wait budget, include duration and pa
 JFR recording file was not found after waiting for durationSeconds=<N> plus completionGraceMs=<M> at <path>
 ```
 
-- [ ] **Step 5: Consider `JFR.check` as a follow-up, not required here**
+- [x] **Step 5: Consider `JFR.check` as a follow-up, not required here**
 
 Do not add `JFR.check` in this task unless the simple wait budget still fails tests. Keep the implementation minimal.
 
@@ -869,10 +869,10 @@ mvn -q -Dtest=McpToolSchemaContractTest,McpPublicDocumentationContractTest test
 
 Before claiming completion:
 
-- [ ] Update this TODO file's checkboxes.
-- [ ] Mention any schema changes and regenerated descriptor files.
-- [ ] Mention any behavior changes that affect the 13-tool public surface.
-- [ ] Include exact tests run and whether they passed.
+- [x] Update this TODO file's checkboxes.
+- [x] Mention any schema changes and regenerated descriptor files: no 13-tool public method count change; offline `metaspaceEvidence` schema description now documents classloader stats input, and generated descriptor/docs updates were included in the completed docs refresh.
+- [x] Mention any behavior changes that affect the 13-tool public surface: public tools stay stable; behavior is strengthened for wrong-target offline warnings, JFR completion waiting, evidence merging, source hotspot correlation, native/NMT guidance, offline cleanup, and offline classloader/metaspace attribution.
+- [x] Include exact tests run and whether they passed: focused task suites passed during each task; latest metaspace/export round ran `mvn -q -Dtest=ClassloaderMetaspaceParserTest,OfflineEvidenceAssemblerTest test` and `mvn -q test` with exit code 0.
 
 ## Current Overall Status
 
