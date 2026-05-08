@@ -67,13 +67,14 @@ public class OfflineJvmSnapshotAssembler {
 		long heapMaxBytes = xmxBytes != null ? xmxBytes : 0L;
 		JvmMemorySnapshot structuredMemory = new JvmMemorySnapshot(memory.heapUsedBytes(), memory.heapCommittedBytes(),
 				heapMaxBytes, memory.oldGenUsedBytes(), memory.oldGenCommittedBytes(), memory.metaspaceUsedBytes(),
-				xmsBytes, xmxBytes);
+				memory.metaspaceCommittedBytes(), memory.metaspaceReservedBytes(), xmsBytes, xmxBytes);
 
 		String gcSection = extractGcUtilSection(runtimeSnapshotText);
 		String collector = inferCollector(jvmIdentityText, runtimeSnapshotText);
 		JvmGcSnapshot gcParsed = parseGcUtil(gcSection.isBlank() ? runtimeSnapshotText : gcSection, warnings);
 		JvmGcSnapshot gc = new JvmGcSnapshot(collector, gcParsed.youngGcCount(), gcParsed.youngGcTimeMs(),
-				gcParsed.fullGcCount(), gcParsed.fullGcTimeMs(), gcParsed.oldUsagePercent());
+				gcParsed.fullGcCount(), gcParsed.fullGcTimeMs(), gcParsed.oldUsagePercent(),
+				gcParsed.metaspaceUtilPercent(), gcParsed.compressedClassSpaceUtilPercent());
 
 		JvmCollectionMetadata metadata = new JvmCollectionMetadata(List.of("offline-import"), collectedAt, 0L, false);
 
@@ -87,7 +88,7 @@ public class OfflineJvmSnapshotAssembler {
 		}
 		catch (RuntimeException ex) {
 			warnings.add("Unable to parse GC.heap_info section: " + ex.getMessage());
-			return new JvmMemorySnapshot(0L, 0L, 0L, null, null, null, null, null);
+			return new JvmMemorySnapshot(0L, 0L, 0L, null, null, null, null, null, null, null);
 		}
 	}
 

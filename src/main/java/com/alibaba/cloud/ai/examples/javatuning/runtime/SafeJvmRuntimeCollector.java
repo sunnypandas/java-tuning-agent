@@ -119,11 +119,12 @@ public class SafeJvmRuntimeCollector implements JvmRuntimeCollector {
 		long heapMaxBytes = xmxBytes != null ? xmxBytes : 0L;
 		JvmMemorySnapshot structuredMemory = new JvmMemorySnapshot(memory.heapUsedBytes(), memory.heapCommittedBytes(),
 				heapMaxBytes, memory.oldGenUsedBytes(), memory.oldGenCommittedBytes(), memory.metaspaceUsedBytes(),
-				xmsBytes, xmxBytes);
+				memory.metaspaceCommittedBytes(), memory.metaspaceReservedBytes(), xmsBytes, xmxBytes);
 		String collector = inferCollector(vmFlags, heapInfo);
 		JvmGcSnapshot gc = new JstatGcUtilParser().parse(gcUtil);
 		gc = new JvmGcSnapshot(collector, gc.youngGcCount(), gc.youngGcTimeMs(), gc.fullGcCount(),
-				gc.fullGcTimeMs(), gc.oldUsagePercent());
+				gc.fullGcTimeMs(), gc.oldUsagePercent(), gc.metaspaceUtilPercent(),
+				gc.compressedClassSpaceUtilPercent());
 		String jvmVersion = vmVersionParser.parse(versionRaw);
 		Long threadCount = perfCounterLiveThreadsParser.parse(perfOut);
 		Long loadedClassCount = jstatClassLoadedParser.parseLoadedClasses(classOut);

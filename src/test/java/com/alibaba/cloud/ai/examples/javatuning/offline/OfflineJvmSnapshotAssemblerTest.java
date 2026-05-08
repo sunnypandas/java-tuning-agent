@@ -19,6 +19,7 @@ class OfflineJvmSnapshotAssemblerTest {
 				""";
 		String runtime = """
 				garbage-first heap   total reserved 262144K, committed 262144K, used 218758K
+				Metaspace       used 8192K, committed 9216K, reserved 65536K
 				  S0     S1     E      O      M      CCS     YGC     YGCT    FGC    FGCT     CGC    CGCT       GCT
 				  0.00   0.00  12.34  78.90  92.21   88.12     145    1.234      2    0.456      -       -     1.690
 				""";
@@ -35,6 +36,11 @@ class OfflineJvmSnapshotAssemblerTest {
 		assertThat(snap.gc().youngGcCount()).isEqualTo(145L);
 		assertThat(snap.gc().collector()).isEqualTo("G1");
 		assertThat(snap.memory().heapUsedBytes()).isEqualTo(218758L * 1024L);
+		assertThat(snap.memory().metaspaceUsedBytes()).isEqualTo(8192L * 1024L);
+		assertThat(snap.memory().metaspaceCommittedBytes()).isEqualTo(9216L * 1024L);
+		assertThat(snap.memory().metaspaceReservedBytes()).isEqualTo(65536L * 1024L);
+		assertThat(snap.gc().metaspaceUtilPercent()).isEqualTo(92.21d);
+		assertThat(snap.gc().compressedClassSpaceUtilPercent()).isEqualTo(88.12d);
 		assertThat(snap.collectionMetadata().commandsRun()).containsExactly("offline-import");
 	}
 

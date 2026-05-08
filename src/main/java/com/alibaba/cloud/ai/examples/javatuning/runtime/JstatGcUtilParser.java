@@ -8,7 +8,7 @@ import java.util.regex.Pattern;
 public class JstatGcUtilParser {
 
 	private static final Pattern LABELED_VALUE = Pattern
-		.compile("(?i)\\b(YGC|YGCT|FGC|FGCT|O)\\b\\s+(-|\\d+(?:\\.\\d+)?)");
+		.compile("(?i)\\b(YGC|YGCT|FGC|FGCT|O|M|CCS)\\b\\s+(-|\\d+(?:\\.\\d+)?)");
 
 	public JvmGcSnapshot parse(String output) {
 		if (output == null || output.isBlank()) {
@@ -31,8 +31,10 @@ public class JstatGcUtilParser {
 		long fullGcTimeMs = values.length > 9 ? secondsToMillis(values[9]) : 0L;
 
 		Double oldUsagePercent = values.length > 3 ? parseDoubleOrNull(values[3]) : null;
+		Double metaspaceUtilPercent = values.length > 4 ? parseDoubleOrNull(values[4]) : null;
+		Double compressedClassSpaceUtilPercent = values.length > 5 ? parseDoubleOrNull(values[5]) : null;
 		return new JvmGcSnapshot("unknown", youngGcCount, youngGcTimeMs, fullGcCount, fullGcTimeMs,
-				oldUsagePercent);
+				oldUsagePercent, metaspaceUtilPercent, compressedClassSpaceUtilPercent);
 	}
 
 	private JvmGcSnapshot parseLabeledGcUtil(List<String> lines) {
@@ -48,6 +50,8 @@ public class JstatGcUtilParser {
 		long fullGcCount = 0L;
 		long fullGcTimeMs = 0L;
 		Double oldUsagePercent = null;
+		Double metaspaceUtilPercent = null;
+		Double compressedClassSpaceUtilPercent = null;
 		Matcher matcher = LABELED_VALUE.matcher(labeledLine);
 		while (matcher.find()) {
 			String label = matcher.group(1).toUpperCase(Locale.ROOT);
@@ -58,12 +62,14 @@ public class JstatGcUtilParser {
 				case "FGC" -> fullGcCount = parseLongOrZero(value);
 				case "FGCT" -> fullGcTimeMs = secondsToMillis(value);
 				case "O" -> oldUsagePercent = parseDoubleOrNull(value);
+				case "M" -> metaspaceUtilPercent = parseDoubleOrNull(value);
+				case "CCS" -> compressedClassSpaceUtilPercent = parseDoubleOrNull(value);
 				default -> {
 				}
 			}
 		}
 		return new JvmGcSnapshot("unknown", youngGcCount, youngGcTimeMs, fullGcCount, fullGcTimeMs,
-				oldUsagePercent);
+				oldUsagePercent, metaspaceUtilPercent, compressedClassSpaceUtilPercent);
 	}
 
 	private long parseLongOrZero(String value) {

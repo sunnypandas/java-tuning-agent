@@ -357,6 +357,10 @@ class SafeJvmRuntimeCollectorTest {
 		assertThat(pack.missingData()).doesNotContain("heapDump");
 		assertThat(pack.snapshot().collectionMetadata().commandsRun()).contains("jcmd 123 GC.heap_dump " + abs);
 		assertThat(pack.snapshot().collectionMetadata().privilegedCollection()).isTrue();
+		assertThat(pack.snapshot().memory().metaspaceCommittedBytes()).isEqualTo(9216L * 1024L);
+		assertThat(pack.snapshot().memory().metaspaceReservedBytes()).isEqualTo(65536L * 1024L);
+		assertThat(pack.snapshot().gc().metaspaceUtilPercent()).isEqualTo(92.21d);
+		assertThat(pack.snapshot().gc().compressedClassSpaceUtilPercent()).isEqualTo(88.12d);
 	}
 
 	@Test

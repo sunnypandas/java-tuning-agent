@@ -28,7 +28,7 @@ public class GcHeapInfoParser {
 
 	public JvmMemorySnapshot parse(String output) {
 		if (output == null || output.isBlank()) {
-			return new JvmMemorySnapshot(0L, 0L, 0L, null, null, null, null, null);
+			return new JvmMemorySnapshot(0L, 0L, 0L, null, null, null, null, null, null, null);
 		}
 
 		long heapUsedBytes = 0L;
@@ -37,6 +37,8 @@ public class GcHeapInfoParser {
 		Long oldGenUsedBytes = null;
 		Long oldGenCommittedBytes = null;
 		Long metaspaceUsedBytes = null;
+		Long metaspaceCommittedBytes = null;
+		Long metaspaceReservedBytes = null;
 		Long xmsBytes = null;
 		Long xmxBytes = null;
 		boolean inOldGeneration = false;
@@ -86,11 +88,14 @@ public class GcHeapInfoParser {
 			Matcher metaspaceMatcher = METASPACE_PATTERN.matcher(line);
 			if (metaspaceMatcher.find()) {
 				metaspaceUsedBytes = toBytes(metaspaceMatcher.group(1));
+				metaspaceCommittedBytes = toBytes(metaspaceMatcher.group(2));
+				metaspaceReservedBytes = toBytes(metaspaceMatcher.group(3));
 			}
 		}
 
 		return new JvmMemorySnapshot(heapUsedBytes, heapCommittedBytes, heapMaxBytes, oldGenUsedBytes,
-				oldGenCommittedBytes, metaspaceUsedBytes, xmsBytes, xmxBytes);
+				oldGenCommittedBytes, metaspaceUsedBytes, metaspaceCommittedBytes, metaspaceReservedBytes, xmsBytes,
+				xmxBytes);
 	}
 
 	private long toBytes(String value) {

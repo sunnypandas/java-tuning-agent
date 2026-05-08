@@ -21,6 +21,8 @@ class JstatGcUtilParserTest {
 		assertThat(parsed.fullGcCount()).isEqualTo(2L);
 		assertThat(parsed.fullGcTimeMs()).isEqualTo(456L);
 		assertThat(parsed.oldUsagePercent()).isEqualTo(78.90d);
+		assertThat(parsed.metaspaceUtilPercent()).isEqualTo(92.21d);
+		assertThat(parsed.compressedClassSpaceUtilPercent()).isEqualTo(88.12d);
 	}
 
 	@Test
@@ -51,6 +53,20 @@ class JstatGcUtilParserTest {
 		assertThat(parsed.youngGcTimeMs()).isEqualTo(15L);
 		assertThat(parsed.fullGcCount()).isZero();
 		assertThat(parsed.fullGcTimeMs()).isZero();
+	}
+
+	@Test
+	void shouldParseCompactMetaspaceAndCompressedClassSpaceUtilization() {
+		String output = """
+				targetPid: 1961
+				jstat -gcutil: O 31.25 M 93.50 CCS 87.75 YGC 8 YGCT 0.015 FGC 0 FGCT 0.000
+				""";
+
+		JvmGcSnapshot parsed = new JstatGcUtilParser().parse(output);
+
+		assertThat(parsed.oldUsagePercent()).isEqualTo(31.25d);
+		assertThat(parsed.metaspaceUtilPercent()).isEqualTo(93.50d);
+		assertThat(parsed.compressedClassSpaceUtilPercent()).isEqualTo(87.75d);
 	}
 
 }

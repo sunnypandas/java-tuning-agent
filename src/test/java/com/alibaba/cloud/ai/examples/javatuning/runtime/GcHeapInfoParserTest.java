@@ -40,6 +40,8 @@ class GcHeapInfoParserTest {
 		assertThat(parsed.heapMaxBytes()).isZero();
 		assertThat(parsed.oldGenUsedBytes()).isEqualTo(131072L * 1024L);
 		assertThat(parsed.metaspaceUsedBytes()).isEqualTo(8192L * 1024L);
+		assertThat(parsed.metaspaceCommittedBytes()).isEqualTo(9216L * 1024L);
+		assertThat(parsed.metaspaceReservedBytes()).isEqualTo(65536L * 1024L);
 		assertThat(parsed.xmsBytes()).isNull();
 		assertThat(parsed.xmxBytes()).isNull();
 		assertThat(parsed.oldGenCommittedBytes()).isNull();

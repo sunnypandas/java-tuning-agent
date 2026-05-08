@@ -58,7 +58,8 @@ public final class RepeatedSamplingResultParser {
 		return new JvmMemorySnapshot(node.path("heapUsedBytes").asLong(0L),
 				node.path("heapCommittedBytes").asLong(0L), node.path("heapMaxBytes").asLong(0L),
 				nullableLong(node.path("oldGenUsedBytes")), nullableLong(node.path("oldGenCommittedBytes")),
-				nullableLong(node.path("metaspaceUsedBytes")), nullableLong(node.path("xmsBytes")),
+				nullableLong(node.path("metaspaceUsedBytes")), nullableLong(node.path("metaspaceCommittedBytes")),
+				nullableLong(node.path("metaspaceReservedBytes")), nullableLong(node.path("xmsBytes")),
 				nullableLong(node.path("xmxBytes")));
 	}
 
@@ -68,7 +69,9 @@ public final class RepeatedSamplingResultParser {
 		}
 		return new JvmGcSnapshot(node.path("collector").asText("unknown"), node.path("youngGcCount").asLong(0L),
 				node.path("youngGcTimeMs").asLong(0L), node.path("fullGcCount").asLong(0L),
-				node.path("fullGcTimeMs").asLong(0L), nullableDouble(node.path("oldUsagePercent")));
+				node.path("fullGcTimeMs").asLong(0L), nullableDouble(node.path("oldUsagePercent")),
+				nullableDouble(node.path("metaspaceUtilPercent")),
+				nullableDouble(node.path("compressedClassSpaceUtilPercent")));
 	}
 
 	private static Long nullableLong(JsonNode node) {
