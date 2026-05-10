@@ -31,6 +31,7 @@ import com.alibaba.cloud.ai.examples.javatuning.runtime.RepeatedRuntimeSample;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.RepeatedSamplingResult;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.ResourceBudgetEvidence;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.SuspectedHolderSummary;
+import com.alibaba.cloud.ai.examples.javatuning.runtime.ThreadCpuSample;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.ThreadDumpSummary;
 import org.junit.jupiter.api.Test;
 
@@ -227,6 +228,10 @@ class MemoryGcDiagnosisEngineTest {
 
 		assertThat(report.findings()).extracting(TuningFinding::title).contains(JfrInsightsRule.ALLOCATION_TITLE,
 				JfrInsightsRule.CONTENTION_TITLE, JfrInsightsRule.EXECUTION_TITLE);
+		assertThat(report.findings())
+			.filteredOn(f -> JfrInsightsRule.EXECUTION_TITLE.equals(f.title()))
+			.first()
+			.satisfies(f -> assertThat(f.evidence()).contains("sampleSharePercent=22.50"));
 		assertThat(report.confidenceReasons()).anyMatch(reason -> reason.contains("JFR summary present"));
 	}
 
@@ -318,6 +323,34 @@ class MemoryGcDiagnosisEngineTest {
 
 		assertThat(report.findings()).extracting(TuningFinding::title)
 			.contains(ThreadDumpInsightsRule.BLOCKED_SEVERE_TITLE);
+	}
+
+	@Test
+	void shouldReportRunnableThreadCpuHotspotFromThreadDumpSummary() {
+		JvmRuntimeSnapshot snapshot = new JvmRuntimeSnapshot(1L,
+				new JvmMemorySnapshot(1L, 1L, 1L, null, null, null, null, null),
+				new JvmGcSnapshot("G1", 1L, 1L, 0L, 0L, null), List.of(), "", null, null,
+				new JvmCollectionMetadata(List.of(), 0L, 0L, false), List.of());
+		ThreadDumpSummary threadDump = new ThreadDumpSummary(2, Map.of("RUNNABLE", 1L, "WAITING", 1L), List.of(),
+				List.of(new ThreadCpuSample("http-nio-8091-exec-4", 2450.25d, "0x7b03", "RUNNABLE",
+						"com.alibaba.cloud.ai.compat.memoryleakdemo.churn.JfrWorkloadService.burnCpu(JfrWorkloadService.java:88)")));
+		MemoryGcEvidencePack evidence = new MemoryGcEvidencePack(snapshot, null, threadDump, List.of(), List.of(),
+				null, null);
+
+		TuningAdviceReport report = MemoryGcDiagnosisEngine.firstVersion()
+			.diagnose(evidence, CodeContextSummary.withoutSource(List.of(), java.util.Map.of(), List.of()), "local",
+					"diagnose high CPU");
+
+		assertThat(report.findings()).extracting(TuningFinding::title)
+			.contains(ThreadCpuHotspotRule.RUNNABLE_CPU_THREAD_TITLE);
+		assertThat(report.findings())
+			.filteredOn(f -> ThreadCpuHotspotRule.RUNNABLE_CPU_THREAD_TITLE.equals(f.title()))
+			.first()
+			.satisfies(f -> assertThat(f.evidence()).contains("http-nio-8091-exec-4")
+				.contains("cpuTimeMs=2450.25")
+				.contains("nid=0x7b03")
+				.contains("JfrWorkloadService.burnCpu"));
+		assertThat(report.recommendations()).extracting(TuningRecommendation::category).contains("cpu");
 	}
 
 	@Test

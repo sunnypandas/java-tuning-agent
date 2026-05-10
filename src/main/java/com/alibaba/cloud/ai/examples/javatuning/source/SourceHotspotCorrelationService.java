@@ -19,6 +19,7 @@ import com.alibaba.cloud.ai.examples.javatuning.runtime.MemoryGcEvidencePack;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.RetentionChainSegment;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.RetentionChainSummary;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.SuspectedHolderSummary;
+import com.alibaba.cloud.ai.examples.javatuning.runtime.ThreadCpuSample;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.ThreadDumpSummary;
 
 public final class SourceHotspotCorrelationService {
@@ -43,11 +44,26 @@ public final class SourceHotspotCorrelationService {
 			return List.of();
 		}
 		Map<String, SuspectedCodeHotspot> byClass = new LinkedHashMap<>();
+		addThreadCpuCandidates(byClass, sourceRoots, evidence.threadDump(), candidatePackages);
 		addThreadDumpCandidates(byClass, sourceRoots, evidence.threadDump(), candidatePackages);
 		addRetentionCandidates(byClass, sourceRoots, evidence.heapRetentionAnalysis(), candidatePackages);
 		addJfrCandidates(byClass, sourceRoots, evidence.jfrSummary(), candidatePackages);
 		addHistogramCandidates(byClass, sourceRoots, evidence, candidatePackages);
 		return byClass.values().stream().limit(MAX_HOTSPOTS).toList();
+	}
+
+	private void addThreadCpuCandidates(Map<String, SuspectedCodeHotspot> byClass, List<Path> sourceRoots,
+			ThreadDumpSummary threadDump, List<String> candidatePackages) {
+		if (threadDump == null) {
+			return;
+		}
+		for (ThreadCpuSample sample : threadDump.topCpuThreads()) {
+			for (String fqcn : classesFromStackText(sample.topFrame(), candidatePackages)) {
+				add(byClass, hotspot(sourceRoots, fqcn,
+						"Thread.print CPU sample points at " + simpleName(fqcn) + " on " + sample.threadName(),
+						"Thread.print CPU", "medium-high"));
+			}
+		}
 	}
 
 	private void addThreadDumpCandidates(Map<String, SuspectedCodeHotspot> byClass, List<Path> sourceRoots,

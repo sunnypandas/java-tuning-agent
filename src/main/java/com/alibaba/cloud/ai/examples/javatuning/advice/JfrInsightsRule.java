@@ -73,7 +73,7 @@ public final class JfrInsightsRule implements DiagnosisRule {
 		}
 		JfrStackAggregate hottest = summary.topMethods().get(0);
 		String detail = "sampleCount=" + summary.sampleCount() + " hottestFrame=" + hottest.frame() + " frameSamples="
-				+ hottest.count();
+				+ hottest.count() + " sampleSharePercent=" + percent(hottest.count(), summary.sampleCount());
 		scratch.addFinding(new TuningFinding(EXECUTION_TITLE, "medium", detail, "jfr",
 				"Execution samples expose CPU hotspots that often co-occur with memory and GC pressure"));
 		scratch.addRecommendation(new TuningRecommendation("Optimize hottest execution path before JVM flag changes", "cpu",
@@ -95,6 +95,13 @@ public final class JfrInsightsRule implements DiagnosisRule {
 
 	private static String formatMs(double value) {
 		return String.format(Locale.ROOT, "%.1f", value);
+	}
+
+	private static String percent(long numerator, long denominator) {
+		if (denominator <= 0L) {
+			return "0.00";
+		}
+		return String.format(Locale.ROOT, "%.2f", numerator * 100.0d / denominator);
 	}
 
 }

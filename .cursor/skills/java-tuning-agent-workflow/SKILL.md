@@ -153,7 +153,7 @@ The agent **must not** choose step-3 scope on the user’s behalf. **“Quick pa
 
 ### `recordJvmFlightRecording` (optional step 2c)
 
-Use `recordJvmFlightRecording` only after explicit user approval. Ask for an absolute `jfrOutputPath` ending in `.jfr`, a short `durationSeconds` window, and whether the user wants `profile` or `default` settings. Do not request this tool for default lightweight inspection.
+Use `recordJvmFlightRecording` only after explicit user approval. Ask for an absolute `jfrOutputPath` ending in `.jfr`, a short `durationSeconds` window, and whether the user wants `profile` or `default` settings. Do not request this tool for default lightweight inspection. For high-CPU questions, prefer a short `profile` JFR plus thread dump evidence: the report can use JFR `ExecutionSample` top frames and `Thread.print` header CPU time (`cpu=...ms`, `nid`, state, top Java frame), but this phase does not run OS-level samplers such as `top -H`, `ps -L`, or `pidstat`.
 
 Required request fields are `pid`, `durationSeconds`, `settings`, `jfrOutputPath`, `maxSummaryEvents`, and `confirmationToken`. The file must not already exist. Inspect result fields `jfrPath`, `fileSizeBytes`, `summary.eventCounts`, `summary.gcSummary`, `summary.allocationSummary`, `summary.threadSummary`, `summary.executionSampleSummary`, `warnings`, and `missingData`.
 

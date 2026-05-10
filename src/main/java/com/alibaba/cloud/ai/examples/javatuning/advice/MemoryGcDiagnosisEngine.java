@@ -20,7 +20,7 @@ public final class MemoryGcDiagnosisEngine {
 		return new MemoryGcDiagnosisEngine(
 				List.of(new HighHeapPressureRule(), new RepeatedSamplingTrendRule(), new SuspectedLeakRule(),
 						new HeapDumpShallowDominanceRule(), new HeapRetentionInsightsRule(), new GcLogInsightsRule(),
-							new JfrInsightsRule(), new ThreadDumpInsightsRule(), new AllocationChurnRule(),
+							new JfrInsightsRule(), new ThreadCpuHotspotRule(), new ThreadDumpInsightsRule(), new AllocationChurnRule(),
 							new GcStrategyMismatchRule(), new NativeMemoryPressureRule(), new DirectBufferPressureRule(),
 							new MetaspacePressureRule(), new ClassloaderMetaspaceRule(), new ResourceBudgetPressureRule(),
 							new EvidenceGapRule()),

@@ -1,6 +1,6 @@
 # Java Tuning Agent Example
 
-This example exposes MCP tools for local Java discovery, safe JVM inspection, **memory/GC-oriented diagnosis**, and structured tuning advice. It is configured to run as a local stdio MCP server, not as an HTTP service.
+This example exposes MCP tools for local Java discovery, safe JVM inspection, **memory/GC-oriented diagnosis**, Java-level CPU hotspot hints, and structured tuning advice. It is configured to run as a local stdio MCP server, not as an HTTP service.
 
 ## What MCP clients should discover
 
@@ -13,7 +13,7 @@ After the server is started over stdio, MCP clients should see **16** tools: sev
 | `listJavaApps` | Discover JVM processes visible to the current user；列出当前用户可见的本机 Java/JVM 进程。 |
 | `inspectJvmRuntime` | Collect a **lightweight** readonly snapshot (`jcmd` + `jstat`) structured for diagnosis；采集轻量只读 JVM 快照。 |
 | `inspectJvmRuntimeRepeated` | Collect repeated safe read-only snapshots for short trend analysis (`sampleCount`, `intervalMillis`, optional `includeThreadCount` / `includeClassCount`)；短窗口重复采样用于趋势判断。 |
-| `recordJvmFlightRecording` | Record one short Java Flight Recorder session for a PID and return the `.jfr` path plus a bounded summary of GC, allocation, thread/lock, and execution sample events；短时 JFR 录制，需 `confirmationToken` 与绝对 `jfrOutputPath`。 |
+| `recordJvmFlightRecording` | Record one short Java Flight Recorder session for a PID and return the `.jfr` path plus a bounded summary of GC, allocation, thread/lock, and execution sample events, including hottest execution-sample frames and sample share；短时 JFR 录制，需 `confirmationToken` 与绝对 `jfrOutputPath`。 |
 | `collectMemoryGcEvidence` | Collect **medium-cost** evidence (class histogram; optional thread dump; optional **`GC.heap_dump`** to an absolute `.hprof` path; optional read-only **`VM.classloader_stats`**) when `confirmationToken` is supplied for privileged options；按用户授权采集中等成本内存/GC 证据，也可补充 classloader/metaspace 归因。 Returned pack includes **`heapDumpPath`** when the dump file exists and `classloaderMetaspaceSummary` when `includeClassloaderStats` succeeds. When **`java-tuning-agent.heap-summary.auto-enabled`** is `true` (default) and the `.hprof` file is present, the pack also includes a **Shark-based shallow heap summary** (`heapShallowSummary`) used by the diagnosis engine and appended to `formattedSummary` (see below). |
 | `generateTuningAdvice` | Run the **rule-based memory/GC diagnosis engine** for the PID and `CodeContextSummary`；从 PID 与源码上下文生成结构化调优建议。 Default: lightweight snapshot only; optional **`collectClassHistogram`** + **`confirmationToken`** runs histogram first (same policy as `collectMemoryGcEvidence`). Callers may also pass optional `baselineEvidence`, `jfrSummary`, `repeatedSamplingResult`, and `resourceBudgetEvidence` collected in the same diagnosis window. Response includes **`formattedSummary`**: stable Markdown of the full report (`##` / `###`, lists, fenced `text` blocks for evidence), **plus** optional diagnosis context, key deltas, and heap dump shallow summary sections when the corresponding evidence is present. Hosts should **paste it into the message as renderable Markdown**—**not** wrapped in an outer code fence—so structure shows; avoid paraphrasing away **`suspectedCodeHotspots`**. |
 | `generateTuningAdviceFromEvidence` | Run the same diagnosis/report path from an existing **`MemoryGcEvidencePack`**；复用已有证据包生成建议。 Use this immediately after `collectMemoryGcEvidence` so histogram/thread/heap evidence is **not collected again** and the report matches the evidence the user already saw. Optional `baselineEvidence`, `jfrSummary`, `repeatedSamplingResult`, and `resourceBudgetEvidence` parameters are merged only when matching fields are absent from the supplied pack. |
@@ -141,6 +141,8 @@ The tool runs one bounded `jcmd JFR.start ... duration=<Ns> filename=<path>` rec
 
 It does not expose public `JFR.stop` lifecycle management, does not overwrite existing recordings, and can feed parsed findings into advice via `jfrSummary` / `generateTuningAdviceFromEvidence`.
 
+For high-CPU investigations, the current support is Java-level evidence only: JFR `jdk.ExecutionSample` top frames and `Thread.print` thread-header CPU time (`cpu=...ms`, `nid`, state, top Java frame). It does **not** yet run OS-level thread CPU samplers such as `top -H`, `ps -L`, or `pidstat`; use the reported `nid` and frame as the bridge to those external tools when needed.
+
 ## Structured report (`TuningAdviceReport`)
 
 - **`findings`**: rule-based or inferred memory/GC findings (`TuningFinding`: title, severity, evidence, reasoning type, impact).  
@@ -171,7 +173,7 @@ Native/collector rules now include:
 - **Privileged diagnostics** (class histogram, thread dump, heap dump via **`GC.heap_dump`**, JFR short recording) require a non-blank **`confirmationToken`**. Heap dump also requires a non-blank absolute **`heapDumpOutputPath`** ending in `.hprof`, with an existing parent directory and a target file that does not already exist; JFR requires a non-blank absolute **`jfrOutputPath`** ending in `.jfr`. Otherwise collection fails fast with `IllegalArgumentException`.
 - **Classloader stats:** requesting `includeClassloaderStats` runs read-only `jcmd <pid> VM.classloader_stats`, parses it into `classloaderMetaspaceSummary`, and lets `ClassloaderMetaspaceRule` reuse the same online/offline classloader/metaspace attribution path. It is best-effort and does not require `confirmationToken`; unsupported or blocked commands add `classloaderStats` to `missingData`.
 - The example is intended for local development or controlled readonly inspection of JVM processes visible to the current user.
-- **Thread dump:** requesting `includeThreadDump` runs `jcmd <pid> Thread.print` and attaches the parsed summary to the evidence pack; collection warnings are surfaced when output is missing or cannot be parsed.
+- **Thread dump:** requesting `includeThreadDump` runs `jcmd <pid> Thread.print` and attaches the parsed summary to the evidence pack, including state counts, deadlock hints, and best-effort top CPU thread rows from `cpu=...ms` / `nid` headers when present; collection warnings are surfaced when output is missing or cannot be parsed.
 
 ### GC/JDK capability matrix (P1 baseline)
 

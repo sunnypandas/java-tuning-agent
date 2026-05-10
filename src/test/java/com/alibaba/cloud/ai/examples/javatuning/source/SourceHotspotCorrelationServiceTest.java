@@ -19,6 +19,7 @@ import com.alibaba.cloud.ai.examples.javatuning.runtime.MemoryGcEvidencePack;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.RetentionChainSegment;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.RetentionChainSummary;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.SuspectedHolderSummary;
+import com.alibaba.cloud.ai.examples.javatuning.runtime.ThreadCpuSample;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.ThreadDumpSummary;
 import org.junit.jupiter.api.Test;
 
@@ -71,6 +72,25 @@ class SourceHotspotCorrelationServiceTest {
 		assertThat(hotspots.get(0).fileHint()).contains("DeadlockDemoTrigger.java");
 		assertThat(hotspots.get(0).evidenceLink()).contains("Thread.print");
 		assertThat(hotspots.get(0).confidence()).isEqualTo("high");
+	}
+
+	@Test
+	void correlatesThreadCpuSampleFrameToSourceFile() {
+		ThreadDumpSummary threadDump = new ThreadDumpSummary(2, Map.of("RUNNABLE", 1L, "WAITING", 1L), List.of(),
+				List.of(new ThreadCpuSample("http-nio-8091-exec-4", 2450.25d, "0x7b03", "RUNNABLE",
+						"com.alibaba.cloud.ai.compat.memoryleakdemo.churn.JfrWorkloadService.burnCpu(JfrWorkloadService.java:88)")));
+		MemoryGcEvidencePack evidence = new MemoryGcEvidencePack(null, null, threadDump, List.of(), List.of(), null,
+				null);
+
+		var hotspots = service.correlate(sourceRoots, evidence,
+				List.of("com.alibaba.cloud.ai.compat.memoryleakdemo"));
+
+		assertThat(hotspots).isNotEmpty();
+		assertThat(hotspots.get(0).className())
+			.isEqualTo("com.alibaba.cloud.ai.compat.memoryleakdemo.churn.JfrWorkloadService");
+		assertThat(hotspots.get(0).fileHint()).contains("JfrWorkloadService.java");
+		assertThat(hotspots.get(0).evidenceLink()).contains("Thread.print CPU");
+		assertThat(hotspots.get(0).confidence()).isEqualTo("medium-high");
 	}
 
 	@Test
