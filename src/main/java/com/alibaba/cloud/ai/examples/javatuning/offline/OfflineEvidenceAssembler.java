@@ -14,6 +14,8 @@ import com.alibaba.cloud.ai.examples.javatuning.runtime.GcLogSummary;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.GcUnifiedLogParser;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.HeapDumpShallowSummary;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.HeapRetentionAnalysisResult;
+import com.alibaba.cloud.ai.examples.javatuning.runtime.JfrSummary;
+import com.alibaba.cloud.ai.examples.javatuning.runtime.JfrSummaryParser;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.MemoryGcEvidencePack;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.NativeMemorySummary;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.NativeMemorySummaryParser;
@@ -25,6 +27,7 @@ import com.alibaba.cloud.ai.examples.javatuning.runtime.JvmCapabilitiesPolicy;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.ThreadDumpParser;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.ThreadDumpSummary;
 import com.alibaba.cloud.ai.examples.javatuning.runtime.JvmRuntimeSnapshot;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
 
 /**
@@ -53,6 +56,10 @@ public class OfflineEvidenceAssembler {
 
 	private final JvmCapabilitiesPolicy capabilitiesPolicy = new JvmCapabilitiesPolicy();
 
+	private final JfrSummaryParser jfrSummaryParser = new JfrSummaryParser(10);
+
+	private final ObjectMapper objectMapper = new ObjectMapper();
+
 	private final boolean autoHeapSummary;
 
 	public OfflineEvidenceAssembler(OfflineJvmSnapshotAssembler snapshotAssembler,
@@ -77,6 +84,7 @@ public class OfflineEvidenceAssembler {
 		NativeMemorySummary nativeMemorySummary = loadNativeMemorySummary(draft, snapshot, warnings, missingData);
 		ClassloaderMetaspaceSummary classloaderMetaspaceSummary = loadMetaspaceEvidence(draft, warnings, missingData);
 		RepeatedSamplingResult repeatedSamplingResult = loadRepeatedSamples(draft, warnings, missingData);
+		JfrSummary jfrSummary = loadJfrSummary(draft, warnings, missingData);
 		ResourceBudgetEvidence resourceBudgetEvidence = loadResourceBudget(draft, snapshot, nativeMemorySummary);
 
 		String heapDumpPath = draft.heapDumpAbsolutePath();
@@ -88,6 +96,7 @@ public class OfflineEvidenceAssembler {
 			.withNativeMemorySummary(nativeMemorySummary)
 			.withClassloaderMetaspaceSummary(classloaderMetaspaceSummary)
 			.withRepeatedSamplingResult(repeatedSamplingResult)
+			.withJfrSummary(jfrSummary)
 			.withResourceBudgetEvidence(resourceBudgetEvidence);
 	}
 
@@ -244,6 +253,34 @@ public class OfflineEvidenceAssembler {
 		catch (IOException ex) {
 			missingData.add("repeatedSamples");
 			warnings.add("Unable to load repeated samples: " + ex.getMessage());
+			return null;
+		}
+	}
+
+	private JfrSummary loadJfrSummary(OfflineBundleDraft draft, List<String> warnings, List<String> missingData) {
+		String source = draft.jfrPathOrSummary();
+		if (source == null || source.isBlank()) {
+			return null;
+		}
+		try {
+			String trimmed = source.trim();
+			if (!trimmed.contains("\n") && !trimmed.contains("\r")) {
+				Path path = Path.of(trimmed);
+				if (Files.isRegularFile(path) && path.getFileName().toString().toLowerCase(java.util.Locale.ROOT)
+					.endsWith(".jfr")) {
+					return jfrSummaryParser.parse(path, 200_000);
+				}
+			}
+			return objectMapper.readValue(loadPathOrInlineText(source), JfrSummary.class);
+		}
+		catch (IOException ex) {
+			missingData.add("jfrSummary");
+			warnings.add("Unable to load JFR evidence: " + ex.getMessage());
+			return null;
+		}
+		catch (RuntimeException ex) {
+			missingData.add("jfrSummary");
+			warnings.add("Unable to parse JFR evidence: " + ex.getMessage());
 			return null;
 		}
 	}

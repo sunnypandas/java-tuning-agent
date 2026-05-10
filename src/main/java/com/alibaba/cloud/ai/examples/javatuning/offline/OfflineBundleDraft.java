@@ -22,6 +22,7 @@ public record OfflineBundleDraft(
 		boolean explicitlyNoGcLog,
 		boolean explicitlyNoAppLog,
 		boolean explicitlyNoRepeatedSamples,
+		boolean explicitlyNoJfr,
 		@JsonPropertyDescription("Optional native memory source. Pass filePath or inlineText for VM.native_memory summary output.")
 		OfflineArtifactSource nativeMemorySummary,
 		@JsonPropertyDescription("Optional direct buffer supporting evidence source. Currently retained for manual context/future expansion; primary direct-buffer rules consume nativeMemorySummary NIO data.")
@@ -32,12 +33,26 @@ public record OfflineBundleDraft(
 		String appLogPathOrText,
 		@JsonPropertyDescription("Optional repeated samples JSON or host-readable file path. Accepts inspectJvmRuntimeRepeated output shape.")
 		String repeatedSamplesPathOrText,
+		@JsonPropertyDescription("Optional JFR evidence. Accepts a host-readable .jfr file path, a host-readable JfrSummary JSON file path, or inline JfrSummary JSON.")
+		String jfrPathOrSummary,
 		@JsonPropertyDescription("Optional notes keyed by evidence type. Use backgroundNotes.resourceBudget for container/RSS/CPU budget key=value text when no dedicated file exists.")
 		Map<String, String> backgroundNotes) {
 
 	public static OfflineBundleDraft empty() {
-		return new OfflineBundleDraft(null, null, null, null, null, null, false, false, false, null, null, null, null,
-				null, null, Map.of());
+		return new OfflineBundleDraft(null, null, null, null, null, null, false, false, false, false, null, null, null,
+				null, null, null, null, Map.of());
+	}
+
+	public OfflineBundleDraft(String jvmIdentityText, String jdkInfoText, String runtimeSnapshotText,
+			OfflineArtifactSource classHistogram, OfflineArtifactSource threadDump, String heapDumpAbsolutePath,
+			boolean explicitlyNoGcLog, boolean explicitlyNoAppLog, boolean explicitlyNoRepeatedSamples,
+			OfflineArtifactSource nativeMemorySummary, OfflineArtifactSource directBufferEvidence,
+			OfflineArtifactSource metaspaceEvidence, String gcLogPathOrText, String appLogPathOrText,
+			String repeatedSamplesPathOrText, Map<String, String> backgroundNotes) {
+		this(jvmIdentityText, jdkInfoText, runtimeSnapshotText, classHistogram, threadDump, heapDumpAbsolutePath,
+				explicitlyNoGcLog, explicitlyNoAppLog, explicitlyNoRepeatedSamples, false, nativeMemorySummary,
+				directBufferEvidence, metaspaceEvidence, gcLogPathOrText, appLogPathOrText, repeatedSamplesPathOrText, null,
+				backgroundNotes);
 	}
 
 	public OfflineBundleDraft {

@@ -62,15 +62,15 @@ class McpPublicDocumentationContractTest {
 		assertThat(skill).contains("inspectJvmRuntimeRepeated", "recordJvmFlightRecording", "nativeMemorySummary",
 				"backgroundNotes.resourceBudget", "analysisDepth: \"deep\"", "heap-dump-upload",
 				"startOfflineHeapRetentionAnalysis");
-		assertThat(reference).contains("nativeMemorySummary", "repeatedSamplesPathOrText",
+		assertThat(reference).contains("nativeMemorySummary", "repeatedSamplesPathOrText", "jfrPathOrSummary",
 				"backgroundNotes.resourceBudget", "resourceBudgetEvidence", "`fast`, `balanced`, or `deep`",
 				"heap-dump-upload", "getOfflineAnalysisJob");
-		assertThat(offlineSpec).contains("16", "7 个在线 + 9 个离线", "repeatedSamplesPathOrText",
+		assertThat(offlineSpec).contains("16", "7 个在线 + 9 个离线", "repeatedSamplesPathOrText", "jfrPathOrSummary",
 				"backgroundNotes.resourceBudget", "nativeMemorySummary", "analysisDepth=deep", "heap-dump-upload",
 				"startOfflineHeapRetentionAnalysis");
-		assertThat(walkthrough).contains("共 16 个", "repeatedSamplesPathOrText", "nativeMemorySummary",
-				"backgroundNotes.resourceBudget", "analysisDepth=\"deep\"", "MemoryLeakDemoApplication",
-				"Object[] -> AllocationRecord.payload -> byte[]");
+		assertThat(walkthrough).contains("16 个工具", "jfrPathOrSummary", "RecordJfr", "--record-jfr",
+				"MemoryLeakDemoApplication", "candidatePackage 是 com.alibaba.cloud.ai.compat.memoryleakdemo",
+				"analysisDepth 可以用 deep");
 	}
 
 	@Test

@@ -225,9 +225,10 @@ public class McpToolSchemaExportRunner implements ApplicationRunner {
 		}
 		objectDraft.remove("required");
 		markOptional(objectDraft, "appLogPathOrText", "backgroundNotes", "classHistogram", "directBufferEvidence",
-				"explicitlyNoAppLog", "explicitlyNoGcLog", "explicitlyNoRepeatedSamples", "gcLogPathOrText",
-				"heapDumpAbsolutePath", "jdkInfoText", "jvmIdentityText", "metaspaceEvidence",
-				"nativeMemorySummary", "repeatedSamplesPathOrText", "runtimeSnapshotText", "threadDump");
+				"explicitlyNoAppLog", "explicitlyNoGcLog", "explicitlyNoJfr", "explicitlyNoRepeatedSamples",
+				"gcLogPathOrText", "heapDumpAbsolutePath", "jdkInfoText", "jfrPathOrSummary", "jvmIdentityText",
+				"metaspaceEvidence", "nativeMemorySummary", "repeatedSamplesPathOrText", "runtimeSnapshotText",
+				"threadDump");
 		ObjectNode properties = (ObjectNode) objectDraft.path("properties");
 		inlineOfflineArtifactSource(properties, "classHistogram");
 		inlineOfflineArtifactSource(properties, "threadDump");

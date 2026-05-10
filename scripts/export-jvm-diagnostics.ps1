@@ -34,6 +34,15 @@
 .PARAMETER SkipRepeatedSamples
   Omit r3-repeated-samples.json.
 
+.PARAMETER RecordJfr
+  Record optional-jfr-recording.jfr and reference it in offline-draft-template.json.
+
+.PARAMETER JfrDurationSeconds
+  JFR recording duration when -RecordJfr is set. Default: 30.
+
+.PARAMETER JfrSettings
+  JFR settings template when -RecordJfr is set. Valid values: profile, default. Default: profile.
+
 .EXAMPLE
   .\scripts\export-jvm-diagnostics.ps1 -ExportDir 'D:\exports\case-001' -ProcessId 12345
 
@@ -62,7 +71,14 @@ param(
 
     [int]$SampleIntervalSeconds = 2,
 
-    [switch]$SkipRepeatedSamples
+    [switch]$SkipRepeatedSamples,
+
+    [switch]$RecordJfr,
+
+    [int]$JfrDurationSeconds = 30,
+
+    [ValidateSet('profile', 'default')]
+    [string]$JfrSettings = 'profile'
 )
 
 Set-StrictMode -Version Latest
@@ -402,6 +418,61 @@ function Export-RepeatedSamples {
     $payload | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $OutFile -Encoding utf8
 }
 
+function Export-JfrRecording {
+    param(
+        [Parameter(Mandatory = $true)][string]$OutFile,
+        [Parameter(Mandatory = $true)][string]$SkippedFile
+    )
+    $support = Invoke-ToolTextRaw -ExePath $jcmd -ToolArgs @($pidStr, 'help', 'JFR.start')
+    if ($support.Code -ne 0 -or $support.Text -notmatch 'JFR\.start') {
+        @(
+            'JFR.start was not available on the target JVM.',
+            'jcmd output:',
+            $support.Text
+        ) | Set-Content -LiteralPath $SkippedFile -Encoding utf8
+        return $false
+    }
+    Remove-Item -LiteralPath $OutFile -Force -ErrorAction SilentlyContinue
+    $recordingName = 'java-tuning-agent-export-{0}-{1}' -f $pidStr, (Get-EpochMilliseconds)
+    $record = Invoke-ToolTextRaw -ExePath $jcmd -ToolArgs @(
+        $pidStr,
+        'JFR.start',
+        "name=$recordingName",
+        "settings=$JfrSettings",
+        "duration=$($JfrDurationSeconds)s",
+        "filename=$OutFile",
+        'disk=true'
+    )
+    if ($record.Code -ne 0) {
+        @(
+            'JFR recording failed.',
+            'jcmd output:',
+            $record.Text
+        ) | Set-Content -LiteralPath $SkippedFile -Encoding utf8
+        return $false
+    }
+    Start-Sleep -Seconds ($JfrDurationSeconds + 2)
+    if (-not (Test-Path -LiteralPath $OutFile -PathType Leaf)) {
+        @(
+            'JFR recording command finished but file was not found.',
+            "Expected path: $OutFile",
+            'jcmd output:',
+            $record.Text
+        ) | Set-Content -LiteralPath $SkippedFile -Encoding utf8
+        return $false
+    }
+    @(
+        'JFR recording captured.',
+        "path=$OutFile",
+        "settings=$JfrSettings",
+        "durationSeconds=$JfrDurationSeconds",
+        '',
+        'jcmd output:',
+        $record.Text
+    ) | Set-Content -LiteralPath (Join-Path $root 'optional-jfr-recording-jcmd-output.txt') -Encoding utf8
+    return $true
+}
+
 function Export-NativeMemorySummary {
     param(
         [Parameter(Mandatory = $true)][string]$OutFile,
@@ -503,6 +574,7 @@ function Write-OfflineDraftTemplate {
     $gcLogOut = Join-Path $root 'r1-gc-log.txt'
     $appLogOut = Join-Path $root 'r2-app-log.txt'
     $repeatedOut = Join-Path $root 'r3-repeated-samples.json'
+    $jfrOut = Join-Path $root 'optional-jfr-recording.jfr'
     $resourceBudget = Read-TextOrEmpty (Join-Path $root 'optional-resource-budget.txt')
     $draft = [ordered]@{
         jvmIdentityText = Read-TextOrEmpty (Join-Path $root 'b1-jvm-identity.txt')
@@ -514,11 +586,13 @@ function Write-OfflineDraftTemplate {
         explicitlyNoGcLog = -not (Test-Path -LiteralPath $gcLogOut -PathType Leaf)
         explicitlyNoAppLog = -not (Test-Path -LiteralPath $appLogOut -PathType Leaf)
         explicitlyNoRepeatedSamples = -not (Test-Path -LiteralPath $repeatedOut -PathType Leaf)
+        explicitlyNoJfr = -not (Test-Path -LiteralPath $jfrOut -PathType Leaf)
         nativeMemorySummary = New-ArtifactSource $nativePath
         metaspaceEvidence = New-ArtifactSource $metaspacePath
         gcLogPathOrText = $(if (Test-Path -LiteralPath $gcLogOut -PathType Leaf) { [System.IO.Path]::GetFullPath($gcLogOut) } else { '' })
         appLogPathOrText = $(if (Test-Path -LiteralPath $appLogOut -PathType Leaf) { [System.IO.Path]::GetFullPath($appLogOut) } else { '' })
         repeatedSamplesPathOrText = $(if (Test-Path -LiteralPath $repeatedOut -PathType Leaf) { [System.IO.Path]::GetFullPath($repeatedOut) } else { '' })
+        jfrPathOrSummary = $(if (Test-Path -LiteralPath $jfrOut -PathType Leaf) { [System.IO.Path]::GetFullPath($jfrOut) } else { '' })
         backgroundNotes = $(if ($resourceBudget.Trim()) { @{ resourceBudget = $resourceBudget } } else { @{} })
     }
     [ordered]@{
@@ -539,6 +613,9 @@ if ($SampleCount -lt 1) {
 }
 if ($SampleIntervalSeconds -lt 0) {
     throw 'SampleIntervalSeconds must be zero or greater.'
+}
+if ($JfrDurationSeconds -lt 5) {
+    throw 'JfrDurationSeconds must be 5 or greater.'
 }
 $resolvedPid = 0
 if ($ProcessId -gt 0) {
@@ -573,6 +650,9 @@ skipHeapDump:    $SkipHeapDump
 sampleCount:     $SampleCount
 sampleIntervalS: $SampleIntervalSeconds
 skipRepeated:    $SkipRepeatedSamples
+recordJfr:       $RecordJfr
+jfrDurationS:    $JfrDurationSeconds
+jfrSettings:     $JfrSettings
 gcLogPath:       $GcLogPath
 appLogPath:      $AppLogPath
 jcmd:            $jcmd
@@ -655,6 +735,16 @@ else {
     Set-Content -LiteralPath (Join-Path $root 'r3-repeated-samples-SKIPPED.txt') -Encoding utf8 -Value @(
         'Repeated samples were skipped (-SkipRepeatedSamples).',
         'Manual: run inspectJvmRuntimeRepeated or rerun this script without -SkipRepeatedSamples.'
+    )
+}
+
+if ($RecordJfr) {
+    [void](Export-JfrRecording -OutFile (Join-Path $root 'optional-jfr-recording.jfr') -SkippedFile (Join-Path $root 'optional-jfr-recording-SKIPPED.txt'))
+}
+else {
+    Set-Content -LiteralPath (Join-Path $root 'optional-jfr-recording-SKIPPED.txt') -Encoding utf8 -Value @(
+        'JFR recording was skipped (pass -RecordJfr to collect it).',
+        'Manual: run recordJvmFlightRecording online, or rerun this script with -RecordJfr.'
     )
 }
 

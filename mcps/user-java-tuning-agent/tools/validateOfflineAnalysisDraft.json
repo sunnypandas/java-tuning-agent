@@ -81,6 +81,12 @@
               "null"
             ]
           },
+          "explicitlyNoJfr": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
           "explicitlyNoRepeatedSamples": {
             "type": [
               "boolean",
@@ -106,6 +112,13 @@
               "null"
             ],
             "description": "Required B2 text. JDK vendor/version details from the exported environment."
+          },
+          "jfrPathOrSummary": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional JFR evidence. Accepts a host-readable .jfr file path, a host-readable JfrSummary JSON file path, or inline JfrSummary JSON."
           },
           "jvmIdentityText": {
             "type": [

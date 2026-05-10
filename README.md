@@ -30,7 +30,7 @@ When `nativeMemorySummary` is missing, reports now include command-level next st
 | `validateOfflineAnalysisDraft` | Validate an `OfflineBundleDraft` (B1–B6, recommended “absent” flags, degradation)；校验离线诊断草稿并返回缺失项/降级提示。 |
 | `submitOfflineHeapDumpChunk` | Upload one Base64 chunk of a large `.hprof` (with `uploadId` / `chunkIndex` / `chunkTotal`)；提交大型 heap dump 的 Base64 分块。 Starting a new upload opportunistically cleans expired chunk sessions using the configured TTL. |
 | `finalizeOfflineHeapDump` | Merge chunks, verify SHA-256 and size, return absolute path for `heapDumpAbsolutePath`；合并并校验分块，返回可写入草稿的绝对路径。 |
-| `generateOfflineTuningAdvice` | Assemble `MemoryGcEvidencePack` from the draft and run the same `generateAdviceFromEvidence` path as online；从导入材料生成与在线一致的结构化报告。 If `gcLogPathOrText` is present, JDK unified GC pause lines are parsed into `gcLogSummary` and used by pause-history rules; `repeatedSamplesPathOrText` accepts `inspectJvmRuntimeRepeated` output and feeds trend rules; `backgroundNotes.resourceBudget` accepts key=value container/RSS/CPU budget evidence and degrades on malformed values. If `heapDumpAbsolutePath` points to an existing file and heap summary auto-mode is on, the server **indexes the dump with Shark** and feeds **`heapShallowSummary`** into rules and `formattedSummary`; with `analysisDepth=deep`, it also attempts holder-oriented retention evidence and degrades honestly on fallback/failure. |
+| `generateOfflineTuningAdvice` | Assemble `MemoryGcEvidencePack` from the draft and run the same `generateAdviceFromEvidence` path as online；从导入材料生成与在线一致的结构化报告。 If `gcLogPathOrText` is present, JDK unified GC pause lines are parsed into `gcLogSummary` and used by pause-history rules; `repeatedSamplesPathOrText` accepts `inspectJvmRuntimeRepeated` output and feeds trend rules; `jfrPathOrSummary` accepts a `.jfr` recording path or `JfrSummary` JSON and feeds JFR allocation/contention/execution rules; `backgroundNotes.resourceBudget` accepts key=value container/RSS/CPU budget evidence and degrades on malformed values. If `heapDumpAbsolutePath` points to an existing file and heap summary auto-mode is on, the server **indexes the dump with Shark** and feeds **`heapShallowSummary`** into rules and `formattedSummary`; with `analysisDepth=deep`, it also attempts holder-oriented retention evidence and degrades honestly on fallback/failure. |
 | `summarizeOfflineHeapDumpFile` | **Optional** ad-hoc call: return Markdown + structured top shallow-by-class rows for a local `.hprof` without running the full advice pipeline；独立预览本地 heap dump 的浅层按类摘要。 |
 | `analyzeOfflineHeapRetention` | Analyze an existing `.hprof` for holder-oriented retention evidence；面向 holder/引用链/GC root/classloader 的 retention 证据分析，`analysisDepth=deep` attempts retained-style analysis and falls back honestly. Results include `classloaderRetainedGroups` when classloader attribution can be derived from the heap graph. |
 | `startOfflineHeapRetentionAnalysis` | Start heap retention analysis as a background job and return a `jobId` immediately；异步启动可能超时的 `.hprof` retention 分析。 Use this for deep or large heap dumps that may exceed a single MCP `tools/call` timeout. |
@@ -293,6 +293,11 @@ The `scripts/` directory provides both Windows PowerShell and Unix Bash variants
 - Skip heap dump:
   - PowerShell: `-SkipHeapDump`
   - Bash: `--skip-heap-dump`
+- Optional short JFR recording:
+  - PowerShell: `-RecordJfr -JfrDurationSeconds 30 -JfrSettings profile`
+  - Bash: `--record-jfr --jfr-duration-seconds 30 --jfr-settings profile`
+
+The generated `offline-draft-template.json` references `r3-repeated-samples.json` through `repeatedSamplesPathOrText` and, when requested, `optional-jfr-recording.jfr` through `jfrPathOrSummary`, so offline advice can consume the same trend and JFR evidence families as the online workflow.
 
 ### Stop stray `java-tuning-agent` processes
 

@@ -106,7 +106,8 @@ public class OfflineAnalysisService {
 		boolean usesHistogram = draft.classHistogram().isPresent();
 		boolean usesThreadDump = draft.threadDump().isPresent();
 		boolean usesHeap = draft.heapDumpAbsolutePath() != null && !draft.heapDumpAbsolutePath().isBlank();
-		boolean privileged = usesHistogram || usesThreadDump || usesHeap;
+		boolean usesJfr = draft.jfrPathOrSummary() != null && !draft.jfrPathOrSummary().isBlank();
+		boolean privileged = usesHistogram || usesThreadDump || usesHeap || usesJfr;
 		if (!privileged) {
 			return true;
 		}
@@ -129,6 +130,9 @@ public class OfflineAnalysisService {
 		}
 		if (draft.explicitlyNoRepeatedSamples()) {
 			missing.add("recommended: repeatedSamples explicitly marked absent for this run");
+		}
+		if (draft.explicitlyNoJfr()) {
+			missing.add("recommended: jfr explicitly marked absent for this run");
 		}
 	}
 

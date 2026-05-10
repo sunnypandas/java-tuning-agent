@@ -213,7 +213,7 @@ When unknown, use `[]` or `{}` as appropriate; the schema requires all five keys
 
 ## 5. Offline / imported bundle tools
 
-Use when there is **no** local target PID: the user provides exported `jcmd`/`jstat` text, class histogram, thread dump, and/or a **local** `.hprof` path (or uses chunk upload + finalize). **Nine** tools: `validateOfflineAnalysisDraft`, `submitOfflineHeapDumpChunk`, `finalizeOfflineHeapDump`, `generateOfflineTuningAdvice`, `summarizeOfflineHeapDumpFile`, `analyzeOfflineHeapRetention`, `startOfflineHeapRetentionAnalysis`, `getOfflineAnalysisJob`, and `cancelOfflineAnalysisJob`. **Consent:** same `confirmationToken` rules as online when the draft includes histogram, thread dump, or heap path (non-blank token required).
+Use when there is **no** local target PID: the user provides exported `jcmd`/`jstat` text, class histogram, thread dump, and/or a **local** `.hprof` path (or uses chunk upload + finalize). **Nine** tools: `validateOfflineAnalysisDraft`, `submitOfflineHeapDumpChunk`, `finalizeOfflineHeapDump`, `generateOfflineTuningAdvice`, `summarizeOfflineHeapDumpFile`, `analyzeOfflineHeapRetention`, `startOfflineHeapRetentionAnalysis`, `getOfflineAnalysisJob`, and `cancelOfflineAnalysisJob`. **Consent:** same `confirmationToken` rules as online when the draft includes histogram, thread dump, heap path, or JFR evidence (non-blank token required).
 
 **5.1 `validateOfflineAnalysisDraft`**
 
@@ -236,6 +236,7 @@ Validation also performs structural target checks. If B1 JVM identity, B3 runtim
 - `heapDumpAbsolutePath`: plain string path
 - `gcLogPathOrText`: plain string path or inline JDK unified GC log text; parsed into `gcLogSummary` when present
 - `repeatedSamplesPathOrText`: plain string path or inline `inspectJvmRuntimeRepeated` JSON; parsed into `repeatedSamplingResult` when present
+- `jfrPathOrSummary`: plain string path to a `.jfr` recording, path to `JfrSummary` JSON, or inline `JfrSummary` JSON; parsed into `jfrSummary` when present
 - `backgroundNotes.resourceBudget`: key=value resource budget text (`containerMemoryLimitBytes`, `processRssBytes`, `cpuQuotaCores`, optional `estimatedThreadStackBytes`); malformed values degrade to missing budget fields
 
 **OfflineArtifactSource shape:**
@@ -309,7 +310,7 @@ When `heapDumpAbsolutePath` is a real file and heap auto-summary is on, the serv
 
 When `draft.gcLogPathOrText` is present, the server parses JDK unified GC pause lines and uses the resulting `gcLogSummary` for long-pause, Full GC, humongous-allocation, and evacuation-pressure findings.
 
-When `draft.repeatedSamplesPathOrText`, `draft.nativeMemorySummary`, or `draft.backgroundNotes.resourceBudget` is present, the server imports repeated trend, native/NMT, or resource-budget evidence into the same pack. Set `analysisDepth: "deep"` only when holder-oriented heap retention evidence should be attempted and attached; blank uses balanced/default behavior.
+When `draft.repeatedSamplesPathOrText`, `draft.jfrPathOrSummary`, `draft.nativeMemorySummary`, or `draft.backgroundNotes.resourceBudget` is present, the server imports repeated trend, JFR profiling, native/NMT, or resource-budget evidence into the same pack. Set `analysisDepth: "deep"` only when holder-oriented heap retention evidence should be attempted and attached; blank uses balanced/default behavior.
 
 **5.5 `summarizeOfflineHeapDumpFile` (optional)**
 

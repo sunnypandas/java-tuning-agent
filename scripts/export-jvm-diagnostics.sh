@@ -11,6 +11,7 @@ Usage:
                                     [--gc-log-path <path>] [--app-log-path <path>]
                                     [--sample-count <n>] [--sample-interval-seconds <n>]
                                     [--skip-repeated-samples]
+                                    [--record-jfr] [--jfr-duration-seconds <n>] [--jfr-settings <profile|default>]
 
 Options:
   --export-dir <path>              Output directory (created if missing). Required.
@@ -21,6 +22,9 @@ Options:
   --sample-count <n>               Repeated readonly samples to export (default: 3).
   --sample-interval-seconds <n>    Seconds between repeated samples (default: 2).
   --skip-repeated-samples          Omit r3-repeated-samples.json.
+  --record-jfr                     Record optional-jfr-recording.jfr and reference it in offline-draft-template.json.
+  --jfr-duration-seconds <n>       JFR recording duration when --record-jfr is set (default: 30).
+  --jfr-settings <profile|default> JFR settings template when --record-jfr is set (default: profile).
   -h, --help                       Show this help.
 EOF
 }
@@ -33,6 +37,9 @@ APP_LOG_PATH=""
 SAMPLE_COUNT=3
 SAMPLE_INTERVAL_SECONDS=2
 SKIP_REPEATED_SAMPLES=0
+RECORD_JFR=0
+JFR_DURATION_SECONDS=30
+JFR_SETTINGS="profile"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -68,6 +75,18 @@ while [[ $# -gt 0 ]]; do
       SKIP_REPEATED_SAMPLES=1
       shift
       ;;
+    --record-jfr)
+      RECORD_JFR=1
+      shift
+      ;;
+    --jfr-duration-seconds)
+      JFR_DURATION_SECONDS="${2:-}"
+      shift 2
+      ;;
+    --jfr-settings)
+      JFR_SETTINGS="${2:-}"
+      shift 2
+      ;;
     -h|--help)
       usage
       exit 0
@@ -98,6 +117,16 @@ fi
 
 if ! [[ "$SAMPLE_INTERVAL_SECONDS" =~ ^[0-9]+$ ]]; then
   echo "--sample-interval-seconds must be a non-negative integer." >&2
+  exit 2
+fi
+
+if ! [[ "$JFR_DURATION_SECONDS" =~ ^[0-9]+$ ]] || (( JFR_DURATION_SECONDS < 5 )); then
+  echo "--jfr-duration-seconds must be an integer >= 5." >&2
+  exit 2
+fi
+
+if [[ "$JFR_SETTINGS" != "profile" && "$JFR_SETTINGS" != "default" ]]; then
+  echo "--jfr-settings must be profile or default." >&2
   exit 2
 fi
 
@@ -507,6 +536,56 @@ with open(output_file, "w", encoding="utf-8") as fh:
 PY
 }
 
+collect_jfr_recording() {
+  local output_file="$1"
+  local skipped_file="$2"
+  local support_data support_code support_text record_data record_code record_text recording_name
+  support_data="$(run_capture_raw "${jcmd}" "${resolved_pid}" help JFR.start)"
+  support_code="$(printf '%s\n' "${support_data}" | sed -n '1p')"
+  support_text="$(printf '%s\n' "${support_data}" | sed '1d')"
+  if [[ "${support_code}" != "0" || "${support_text}" != *"JFR.start"* ]]; then
+    {
+      echo "JFR.start was not available on the target JVM."
+      echo "jcmd output:"
+      printf '%s\n' "${support_text}"
+    } >"${skipped_file}"
+    return 1
+  fi
+  rm -f "${output_file}"
+  recording_name="java-tuning-agent-export-${resolved_pid}-$(epoch_ms)"
+  record_data="$(run_capture_raw "${jcmd}" "${resolved_pid}" JFR.start "name=${recording_name}" "settings=${JFR_SETTINGS}" "duration=${JFR_DURATION_SECONDS}s" "filename=${output_file}" "disk=true")"
+  record_code="$(printf '%s\n' "${record_data}" | sed -n '1p')"
+  record_text="$(printf '%s\n' "${record_data}" | sed '1d')"
+  if [[ "${record_code}" != "0" ]]; then
+    {
+      echo "JFR recording failed."
+      echo "jcmd output:"
+      printf '%s\n' "${record_text}"
+    } >"${skipped_file}"
+    return 1
+  fi
+  sleep $(( JFR_DURATION_SECONDS + 2 ))
+  if [[ ! -f "${output_file}" ]]; then
+    {
+      echo "JFR recording command finished but file was not found."
+      echo "Expected path: ${output_file}"
+      echo "jcmd output:"
+      printf '%s\n' "${record_text}"
+    } >"${skipped_file}"
+    return 1
+  fi
+  {
+    echo "JFR recording captured."
+    echo "path=${output_file}"
+    echo "settings=${JFR_SETTINGS}"
+    echo "durationSeconds=${JFR_DURATION_SECONDS}"
+    echo
+    echo "jcmd output:"
+    printf '%s\n' "${record_text}"
+  } >"${root}/optional-jfr-recording-jcmd-output.txt"
+  return 0
+}
+
 write_offline_draft_template() {
   local output_file="$1"
   local heap_path=""
@@ -539,12 +618,18 @@ write_offline_draft_template() {
     repeated_path="${root}/r3-repeated-samples.json"
     no_repeated="false"
   fi
-  python3 - "${output_file}" "${root}" "${heap_path}" "${native_path}" "${metaspace_path}" "${gc_log_path}" "${no_gc_log}" "${app_log_path}" "${no_app_log}" "${repeated_path}" "${no_repeated}" <<'PY'
+  local jfr_path=""
+  local no_jfr="true"
+  if [[ -f "${root}/optional-jfr-recording.jfr" ]]; then
+    jfr_path="${root}/optional-jfr-recording.jfr"
+    no_jfr="false"
+  fi
+  python3 - "${output_file}" "${root}" "${heap_path}" "${native_path}" "${metaspace_path}" "${gc_log_path}" "${no_gc_log}" "${app_log_path}" "${no_app_log}" "${repeated_path}" "${no_repeated}" "${jfr_path}" "${no_jfr}" <<'PY'
 import json
 import pathlib
 import sys
 
-output_file, root, heap_path, native_path, metaspace_path, gc_log_path, no_gc_log, app_log_path, no_app_log, repeated_path, no_repeated = sys.argv[1:]
+output_file, root, heap_path, native_path, metaspace_path, gc_log_path, no_gc_log, app_log_path, no_app_log, repeated_path, no_repeated, jfr_path, no_jfr = sys.argv[1:]
 root_path = pathlib.Path(root)
 
 def read_text(name):
@@ -565,11 +650,13 @@ draft = {
     "explicitlyNoGcLog": no_gc_log == "true",
     "explicitlyNoAppLog": no_app_log == "true",
     "explicitlyNoRepeatedSamples": no_repeated == "true",
+    "explicitlyNoJfr": no_jfr == "true",
     "nativeMemorySummary": source(native_path),
     "metaspaceEvidence": source(metaspace_path),
     "gcLogPathOrText": gc_log_path,
     "appLogPathOrText": app_log_path,
     "repeatedSamplesPathOrText": repeated_path,
+    "jfrPathOrSummary": jfr_path,
     "backgroundNotes": {"resourceBudget": resource_budget} if resource_budget.strip() else {},
 }
 with open(output_file, "w", encoding="utf-8") as fh:
@@ -615,6 +702,9 @@ skipHeapDump:    ${SKIP_HEAP_DUMP}
 sampleCount:     ${SAMPLE_COUNT}
 sampleIntervalS: ${SAMPLE_INTERVAL_SECONDS}
 skipRepeated:    ${SKIP_REPEATED_SAMPLES}
+recordJfr:       ${RECORD_JFR}
+jfrDurationS:    ${JFR_DURATION_SECONDS}
+jfrSettings:     ${JFR_SETTINGS}
 gcLogPath:       ${GC_LOG_PATH}
 appLogPath:      ${APP_LOG_PATH}
 jcmd:            ${jcmd}
@@ -692,6 +782,15 @@ else
     echo "Repeated samples were skipped (--skip-repeated-samples)."
     echo "Manual: run inspectJvmRuntimeRepeated or rerun this script without --skip-repeated-samples."
   } >"${root}/r3-repeated-samples-SKIPPED.txt"
+fi
+
+if (( RECORD_JFR == 1 )); then
+  collect_jfr_recording "${root}/optional-jfr-recording.jfr" "${root}/optional-jfr-recording-SKIPPED.txt" || true
+else
+  {
+    echo "JFR recording was skipped (pass --record-jfr to collect it)."
+    echo "Manual: run recordJvmFlightRecording online, or rerun this script with --record-jfr."
+  } >"${root}/optional-jfr-recording-SKIPPED.txt"
 fi
 
 collect_native_memory_summary "${root}/optional-native-memory-summary.txt" "${root}/optional-native-memory-summary-SKIPPED.txt" || true

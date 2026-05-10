@@ -176,6 +176,52 @@ class OfflineEvidenceAssemblerTest {
 	}
 
 	@Test
+	void parsesJfrSummaryPathOrTextIntoEvidencePack() {
+		String jfrSummary = """
+				{
+				  "recordingStartEpochMs": 1000,
+				  "recordingEndEpochMs": 31000,
+				  "durationMs": 30000,
+				  "gcSummary": {
+				    "gcCount": 1,
+				    "totalGcPauseMs": 12.5,
+				    "maxGcPauseMs": 12.5,
+				    "topGcCauses": [],
+				    "heapBeforeAfterSamples": []
+				  },
+				  "allocationSummary": {
+				    "totalAllocationBytesApprox": 4096,
+				    "topAllocatedClasses": [{"name":"[B","count":2,"bytesApprox":4096}],
+				    "topAllocationStacks": [],
+				    "allocationEventCount": 2
+				  },
+				  "threadSummary": {
+				    "parkEventCount": 0,
+				    "monitorEnterEventCount": 0,
+				    "maxBlockedMs": 0.0,
+				    "topBlockedThreads": []
+				  },
+				  "executionSampleSummary": {
+				    "sampleCount": 3,
+				    "topMethods": [{"frame":"com.example.Work.run()","count":3,"bytesApprox":0,"sampleStack":["com.example.Work.run()"]}]
+				  },
+				  "eventCounts": {"jdk.ExecutionSample": 3},
+				  "parserWarnings": []
+				}
+				""";
+		OfflineBundleDraft draft = new OfflineBundleDraft("pid=99999\n-XX:+UseG1GC", "VM.version:\n21.0.2",
+				"garbage-first heap total 262144K, used 218758K", new OfflineArtifactSource(null, null),
+				new OfflineArtifactSource(null, null), null, false, false, false, false, null, null, null, null, null,
+				null, jfrSummary, Map.of());
+
+		MemoryGcEvidencePack pack = assembler.build(draft);
+
+		assertThat(pack.jfrSummary()).isNotNull();
+		assertThat(pack.jfrSummary().allocationSummary().topAllocatedClasses()).hasSize(1);
+		assertThat(pack.jfrSummary().executionSampleSummary().sampleCount()).isEqualTo(3);
+	}
+
+	@Test
 	void parsesMetaspaceEvidenceIntoClassloaderSummary() {
 		OfflineBundleDraft draft = new OfflineBundleDraft("pid=99999\n-XX:+UseG1GC", "VM.version:\n21.0.2",
 				"garbage-first heap total 262144K, used 218758K", new OfflineArtifactSource(null, null),

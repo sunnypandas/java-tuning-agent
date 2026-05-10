@@ -148,6 +148,8 @@ class McpToolSchemaContractTest {
 						.isEqualTo("string");
 					assertThat(draft.path("properties").path("repeatedSamplesPathOrText").path("type").asText())
 						.isEqualTo("string");
+					assertThat(draft.path("properties").path("jfrPathOrSummary").path("type").asText())
+						.isEqualTo("string");
 					assertThat(descriptionOf(classHistogramProperty, classHistogram))
 						.contains("filePath", "inlineText");
 					assertThat(descriptionOf(threadDumpProperty, threadDump))
@@ -184,6 +186,8 @@ class McpToolSchemaContractTest {
 					assertThat(draft.path("properties").path("heapDumpAbsolutePath").path("type").asText())
 						.isEqualTo("string");
 					assertThat(draft.path("properties").path("repeatedSamplesPathOrText").path("type").asText())
+						.isEqualTo("string");
+					assertThat(draft.path("properties").path("jfrPathOrSummary").path("type").asText())
 						.isEqualTo("string");
 					assertThat(descriptionOf(classHistogramProperty, classHistogram))
 						.contains("filePath", "inlineText");
