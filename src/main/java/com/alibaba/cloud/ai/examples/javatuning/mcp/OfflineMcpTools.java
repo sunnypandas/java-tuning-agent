@@ -52,6 +52,8 @@ public class OfflineMcpTools {
 			草稿字段形状以 MCP inputSchema 为准：jvmIdentityText/jdkInfoText/runtimeSnapshotText 为普通字符串；
 			classHistogram/threadDump 为 OfflineArtifactSource 对象，只能传 {"filePath":"..."} 或 {"inlineText":"..."}，不得传 bare string；
 			heapDumpAbsolutePath 为普通字符串路径。若本地文件已存在，优先使用 filePath 而不是 inlineText。
+			若某些客户端的 compact function signature 将 OfflineArtifactSource 字段显示为 string，这是渲染降级；仍必须按 inputSchema/offline-draft-template.json 传对象。
+			Release clients should not inspect java-tuning-agent source code to discover this shape; use this tool description, inputSchema, and the exported offline-draft-template.json.
 			返回缺失必选 ID、是否允许继续（降级）、中文 nextPromptZh。
 			proceedWithMissingRequired=true 时在必选不齐情况下仍 allowedToProceed=true 并带 degradationWarnings。""")
 	public OfflineDraftValidationResult validateOfflineAnalysisDraft(
@@ -102,6 +104,8 @@ public class OfflineMcpTools {
 			analysisDepth 可为空；为空时按 balanced 处理，只有 deep 会在存在 heapDumpAbsolutePath 时附加 retention 证据。
 			草稿字段形状以 MCP inputSchema 为准：classHistogram/threadDump 为 OfflineArtifactSource 对象，只能传 {"filePath":"..."} 或 {"inlineText":"..."}，不得传 bare string；
 			heapDumpAbsolutePath 为普通字符串路径。若本地文件已存在，优先使用 filePath。
+			若某些客户端的 compact function signature 将 OfflineArtifactSource 字段显示为 string，这是渲染降级；仍必须按 inputSchema/offline-draft-template.json 传对象。
+			Release clients should not inspect java-tuning-agent source code to discover this shape; use this tool description, inputSchema, and the exported offline-draft-template.json.
 			当 heapDumpAbsolutePath 指向已存在的 .hprof 时，服务端自动用 Shark 做浅层按类索引，并参与规则诊断与报告（见 java-tuning-agent.heap-summary.auto-enabled）。""")
 	public TuningAdviceReport generateOfflineTuningAdvice(
 			@ToolParam(required = false, description = "可选源码根与包名，用于热点关联。") CodeContextSummary codeContextSummary,

@@ -13,9 +13,9 @@ public record OfflineBundleDraft(
 		String jdkInfoText,
 		@JsonPropertyDescription("Required B3 text. Exported runtime snapshot content such as jcmd/jstat summaries.")
 		String runtimeSnapshotText,
-		@JsonPropertyDescription("Required B4 artifact source. Pass an object with filePath or inlineText; bare string is not allowed. Prefer filePath when the histogram already exists locally.")
+		@JsonPropertyDescription("Required B4 artifact source. Pass an object with filePath or inlineText; bare string is not allowed. Prefer filePath when the histogram already exists locally. If a compact MCP/client function signature renders this nested field as string, ignore that compact rendering and send the object shape from inputSchema/offline-draft-template.json.")
 		OfflineArtifactSource classHistogram,
-		@JsonPropertyDescription("Required B5 artifact source. Pass an object with filePath or inlineText; bare string is not allowed. Prefer filePath when the thread dump already exists locally.")
+		@JsonPropertyDescription("Required B5 artifact source. Pass an object with filePath or inlineText; bare string is not allowed. Prefer filePath when the thread dump already exists locally. If a compact MCP/client function signature renders this nested field as string, ignore that compact rendering and send the object shape from inputSchema/offline-draft-template.json.")
 		OfflineArtifactSource threadDump,
 		@JsonPropertyDescription("Required B6 string path. Absolute or host-readable .hprof path; unlike classHistogram/threadDump this is a plain string, not an OfflineArtifactSource object.")
 		String heapDumpAbsolutePath,
@@ -23,11 +23,11 @@ public record OfflineBundleDraft(
 		boolean explicitlyNoAppLog,
 		boolean explicitlyNoRepeatedSamples,
 		boolean explicitlyNoJfr,
-		@JsonPropertyDescription("Optional native memory source. Pass filePath or inlineText for VM.native_memory summary output.")
+		@JsonPropertyDescription("Optional native memory source. Pass an object with filePath or inlineText for VM.native_memory summary output; compact client signatures may mis-render this nested object as string.")
 		OfflineArtifactSource nativeMemorySummary,
-		@JsonPropertyDescription("Optional direct buffer supporting evidence source. Currently retained for manual context/future expansion; primary direct-buffer rules consume nativeMemorySummary NIO data.")
+		@JsonPropertyDescription("Optional direct buffer supporting evidence source. Pass an object with filePath or inlineText; compact client signatures may mis-render this nested object as string. Currently retained for manual context/future expansion; primary direct-buffer rules consume nativeMemorySummary NIO data.")
 		OfflineArtifactSource directBufferEvidence,
-		@JsonPropertyDescription("Optional offline classloader/metaspace evidence source. Pass VM.classloader_stats or jmap -clstats style text; NMT Class sizing still comes from runtime metaspace and nativeMemorySummary.")
+		@JsonPropertyDescription("Optional offline classloader/metaspace evidence source. Pass an object with filePath or inlineText containing VM.classloader_stats or jmap -clstats style text; compact client signatures may mis-render this nested object as string. NMT Class sizing still comes from runtime metaspace and nativeMemorySummary.")
 		OfflineArtifactSource metaspaceEvidence,
 		String gcLogPathOrText,
 		String appLogPathOrText,

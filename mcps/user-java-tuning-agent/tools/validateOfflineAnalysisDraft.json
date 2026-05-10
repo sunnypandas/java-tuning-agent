@@ -1,6 +1,6 @@
 {
   "name": "validateOfflineAnalysisDraft",
-  "description": "离线模式：校验手工导入的 JVM 诊断草稿（必选 B1-B6 与推荐项标记）。无服务端会话；每次可携带完整草稿 JSON。\nEnglish: Validate an imported offline JVM diagnosis draft and return missing required inputs, degradation status, and the next Chinese prompt.\n草稿字段形状以 MCP inputSchema 为准：jvmIdentityText/jdkInfoText/runtimeSnapshotText 为普通字符串；\nclassHistogram/threadDump 为 OfflineArtifactSource 对象，只能传 {\"filePath\":\"...\"} 或 {\"inlineText\":\"...\"}，不得传 bare string；\nheapDumpAbsolutePath 为普通字符串路径。若本地文件已存在，优先使用 filePath 而不是 inlineText。\n返回缺失必选 ID、是否允许继续（降级）、中文 nextPromptZh。\nproceedWithMissingRequired=true 时在必选不齐情况下仍 allowedToProceed=true 并带 degradationWarnings。",
+  "description": "离线模式：校验手工导入的 JVM 诊断草稿（必选 B1-B6 与推荐项标记）。无服务端会话；每次可携带完整草稿 JSON。\nEnglish: Validate an imported offline JVM diagnosis draft and return missing required inputs, degradation status, and the next Chinese prompt.\n草稿字段形状以 MCP inputSchema 为准：jvmIdentityText/jdkInfoText/runtimeSnapshotText 为普通字符串；\nclassHistogram/threadDump 为 OfflineArtifactSource 对象，只能传 {\"filePath\":\"...\"} 或 {\"inlineText\":\"...\"}，不得传 bare string；\nheapDumpAbsolutePath 为普通字符串路径。若本地文件已存在，优先使用 filePath 而不是 inlineText。\n若某些客户端的 compact function signature 将 OfflineArtifactSource 字段显示为 string，这是渲染降级；仍必须按 inputSchema/offline-draft-template.json 传对象。\nRelease clients should not inspect java-tuning-agent source code to discover this shape; use this tool description, inputSchema, and the exported offline-draft-template.json.\n返回缺失必选 ID、是否允许继续（降级）、中文 nextPromptZh。\nproceedWithMissingRequired=true 时在必选不齐情况下仍 allowedToProceed=true 并带 degradationWarnings。",
   "inputSchema": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "type": "object",
@@ -26,7 +26,7 @@
               "object",
               "null"
             ],
-            "description": "Required B4 artifact source. Pass an object with filePath or inlineText; bare string is not allowed. Prefer filePath when the histogram already exists locally.",
+            "description": "Required B4 artifact source. Pass an object with filePath or inlineText; bare string is not allowed. Prefer filePath when the histogram already exists locally. If a compact MCP/client function signature renders this nested field as string, ignore that compact rendering and send the object shape from inputSchema/offline-draft-template.json.",
             "properties": {
               "filePath": {
                 "type": [
@@ -50,7 +50,7 @@
               "object",
               "null"
             ],
-            "description": "Optional direct buffer supporting evidence source. Currently retained for manual context/future expansion; primary direct-buffer rules consume nativeMemorySummary NIO data.",
+            "description": "Optional direct buffer supporting evidence source. Pass an object with filePath or inlineText; compact client signatures may mis-render this nested object as string. Currently retained for manual context/future expansion; primary direct-buffer rules consume nativeMemorySummary NIO data.",
             "properties": {
               "filePath": {
                 "type": [
@@ -132,7 +132,7 @@
               "object",
               "null"
             ],
-            "description": "Optional offline classloader/metaspace evidence source. Pass VM.classloader_stats or jmap -clstats style text; NMT Class sizing still comes from runtime metaspace and nativeMemorySummary.",
+            "description": "Optional offline classloader/metaspace evidence source. Pass an object with filePath or inlineText containing VM.classloader_stats or jmap -clstats style text; compact client signatures may mis-render this nested object as string. NMT Class sizing still comes from runtime metaspace and nativeMemorySummary.",
             "properties": {
               "filePath": {
                 "type": [
@@ -156,7 +156,7 @@
               "object",
               "null"
             ],
-            "description": "Optional native memory source. Pass filePath or inlineText for VM.native_memory summary output.",
+            "description": "Optional native memory source. Pass an object with filePath or inlineText for VM.native_memory summary output; compact client signatures may mis-render this nested object as string.",
             "properties": {
               "filePath": {
                 "type": [
@@ -194,7 +194,7 @@
               "object",
               "null"
             ],
-            "description": "Required B5 artifact source. Pass an object with filePath or inlineText; bare string is not allowed. Prefer filePath when the thread dump already exists locally.",
+            "description": "Required B5 artifact source. Pass an object with filePath or inlineText; bare string is not allowed. Prefer filePath when the thread dump already exists locally. If a compact MCP/client function signature renders this nested field as string, ignore that compact rendering and send the object shape from inputSchema/offline-draft-template.json.",
             "properties": {
               "filePath": {
                 "type": [

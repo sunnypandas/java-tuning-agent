@@ -389,7 +389,11 @@ class McpToolSchemaContractTest {
 				.contains("filePath")
 				.contains("inlineText")
 				.containsIgnoringCase("bare string")
-				.contains("heapDumpAbsolutePath");
+				.contains("heapDumpAbsolutePath")
+				.contains("compact function signature")
+				.contains("inputSchema")
+				.contains("offline-draft-template.json")
+				.contains("should not inspect java-tuning-agent source code");
 		}
 	}
 

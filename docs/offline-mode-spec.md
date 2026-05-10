@@ -72,7 +72,9 @@
 
 ### 3.4 OfflineBundleDraft JSON 契约
 
-发布后集成方可能**看不到源码**，因此离线草稿的真实 JSON 结构必须以 **MCP tool description + generated inputSchema** 为唯一真相源；本文与 workflow 文档只负责解释和示例，若有冲突，以 schema 为准。
+发布后集成方可能**看不到源码**，因此离线草稿的真实 JSON 结构必须以 **MCP tool description + generated inputSchema + 导出的 `offline-draft-template.json`** 为唯一真相源；本文与 workflow 文档只负责解释和示例，若有冲突，以 schema 为准。Agent / host 不应通过翻看 java-tuning-agent 实现源码来确认 `OfflineBundleDraft` 形状；只能读取目标应用源码来构建 `CodeContextSummary`。
+
+注意：某些 MCP host 或 LLM 工具渲染器会把嵌套对象压成 compact function signature，并可能把 `OfflineArtifactSource` 字段显示成 `string`。这只是显示降级，不改变 JSON 契约；仍必须传下面的对象形态，裸字符串会被服务端拒绝。
 
 字段形状约定如下：
 

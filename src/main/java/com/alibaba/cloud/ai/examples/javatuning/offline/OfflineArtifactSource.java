@@ -7,9 +7,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 
 @JsonInclude(JsonInclude.Include.NON_EMPTY)
 public record OfflineArtifactSource(
-		@JsonPropertyDescription("Absolute or host-readable artifact path. Prefer this when the file already exists locally.")
+		@JsonPropertyDescription("Absolute or host-readable artifact path inside an OfflineArtifactSource object. Prefer this when the file already exists locally.")
 		String filePath,
-		@JsonPropertyDescription("Inline artifact text. Use this only when a file path is unavailable or impractical.")
+		@JsonPropertyDescription("Inline artifact text inside an OfflineArtifactSource object. Use this only when a file path is unavailable or impractical.")
 		String inlineText) {
 
 	@JsonCreator(mode = JsonCreator.Mode.DELEGATING)

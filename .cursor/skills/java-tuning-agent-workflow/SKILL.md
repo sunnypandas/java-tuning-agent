@@ -35,6 +35,10 @@ Use when the user analyzes **production-exported** files (histogram, thread dump
 
 **Schema-first rule:** For offline bundle JSON shape, treat the MCP tool description and generated `inputSchema` as the source of truth. Do **not** infer nested field shapes from prose alone or from memory.
 
+**Release-client rule:** Do **not** inspect the java-tuning-agent implementation source to discover `OfflineBundleDraft` JSON shapes. Released clients may not have source access; use only the MCP tool description, generated `inputSchema`, and the exported `offline-draft-template.json`. Reading the target application's source tree is still appropriate for `CodeContextSummary` (`sourceRoots`, `candidatePackages`, `applicationNames`).
+
+**Compact-renderer caveat:** Some MCP hosts or LLM tool renderers may show nested `OfflineArtifactSource` fields as `string` in a compact function signature even though the real `inputSchema` says `object`. Treat that compact rendering as degraded display. `classHistogram`, `threadDump`, `nativeMemorySummary`, `directBufferEvidence`, and `metaspaceEvidence` must still be objects with `filePath` or `inlineText`; bare strings are rejected.
+
 **Artifact-source rule:** `classHistogram` and `threadDump` are **not** bare strings. They must be `OfflineArtifactSource` objects:
 `{"filePath":"C:/diag/b4-class-histogram.txt"}` or `{"inlineText":"full text..."}`.
 When a local file already exists, prefer `filePath` over `inlineText`.

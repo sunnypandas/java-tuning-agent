@@ -39,6 +39,8 @@ When `nativeMemorySummary` is missing, reports now include command-level next st
 
 Offline validation and advice now include target-consistency checks. The validator warns when B1/B3/B4/B5 PID markers disagree, and offline advice adds an `offlineTargetConsistency` gap plus warning when the imported `java_command` does not match the supplied `CodeContextSummary.applicationNames` or `candidatePackages`. This is intended to catch complete-but-wrong bundles before a report is attributed to the wrong source tree.
 
+For released clients, `OfflineBundleDraft` JSON shape is defined by the MCP tool description, generated `inputSchema`, and the exported `offline-draft-template.json`; clients should not inspect java-tuning-agent source code to discover it. If a compact tool renderer shows `classHistogram`, `threadDump`, `nativeMemorySummary`, `directBufferEvidence`, or `metaspaceEvidence` as `string`, treat that as display degradation: those fields are `OfflineArtifactSource` objects (`{"filePath":"..."}` or `{"inlineText":"..."}`), while `heapDumpAbsolutePath`, `gcLogPathOrText`, `repeatedSamplesPathOrText`, and `jfrPathOrSummary` are plain strings.
+
 **Diagnosis engine note:** Findings and recommendations are produced by **deterministic Java rules** (`MemoryGcDiagnosisEngine`), including optional **heap shallow dominance** when `heapShallowSummary` is present—not by the LLM. The model’s role is tool orchestration and explanation. Shallow totals are **not** MAT retained-size / dominator analysis.
 
 **Configuration (heap shallow summary):**

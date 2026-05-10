@@ -230,6 +230,8 @@ Validation also performs structural target checks. If B1 JVM identity, B3 runtim
 
 **OfflineBundleDraft field shapes that agents must not guess:**
 
+Release clients must not inspect java-tuning-agent implementation source to discover these shapes. Use the MCP tool description, generated `inputSchema`, and the exported `offline-draft-template.json`. If a compact MCP/client function signature renders an `OfflineArtifactSource` field as `string`, treat that as degraded display and follow the object shape below.
+
 - `jvmIdentityText`, `jdkInfoText`, `runtimeSnapshotText`: plain strings
 - `classHistogram`, `threadDump`: `OfflineArtifactSource` objects, not bare strings
 - `nativeMemorySummary`, `directBufferEvidence`, `metaspaceEvidence`: optional `OfflineArtifactSource` objects; `nativeMemorySummary` carries NMT summary/diff data, while `metaspaceEvidence` may carry offline `VM.classloader_stats` / `jmap -clstats` text for classloader/metaspace attribution

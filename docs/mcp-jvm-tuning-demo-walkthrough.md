@@ -225,44 +225,19 @@ heap dump 可以写到 /tmp/memory-leak-demo-<pid>.hprof。
 录制期间我会触发 /api/leak/jfr-workload。
 ```
 
-### deep evidence
-
-```text
-如果 heap dump 已经生成，请用离线 MAT-style retention 能力看 holder / 引用链 / classloader 分组线索。
-```
-
 ---
 
 ## Demo：离线诊断模式
 
 场景：生产环境不能直连 JVM，只拿到了导出材料。
 
-1. 先导出 bundle
+生成离线报告
 
 ```text
-我已经从生产/测试机导出了离线 bundle，目录是 /tmp/memory-leak-demo-offline。
-请基于 offline-draft-template.json 构建 OfflineBundleDraft，并先校验完整性。
-```
-
-2. 处理缺项
-
-```text
-如果缺少推荐项，请明确写入“本次没有”；如果缺少必选项，先告诉我影响，再等我确认是否降级继续。
-```
-
-3. 接入 heap dump
-
-```text
-如果 draft 里有 heapDumpAbsolutePath，请先给我一个 Shark shallow heap summary。
-如果需要 MAT-style holder-oriented 线索，再使用 deep retention；大 dump 请走异步 job。
-如果 draft 里有 jfrPathOrSummary，也请把 JFR allocation / contention / execution sample 证据合并进报告。
-```
-
-4. 生成离线报告
-
-```text
-请用这份离线 bundle 生成 tuning advice。
-源码上下文是 compat/memory-leak-demo，applicationName 是 MemoryLeakDemoApplication，
+请帮我做一个完整的离线JVM tuning分析。
+我已经从生产/测试机导出了离线 bundle，目录是 /tmp/memory-leak-demo-offline。请基于 offline-draft-template.json 构建 OfflineBundleDraft，并先校验完整性。
+然后用这份离线 bundle 生成 tuning advice，源码上下文是 compat/memory-leak-demo，analysisDepth 直接用 deep。
+如果 draft 里有 jfrPathOrSummary，也请合并 JFR 证据；applicationName 是 MemoryLeakDemoApplication，
 candidatePackage 是 com.alibaba.cloud.ai.compat.memoryleakdemo，analysisDepth 可以用 deep。
 ```
 
