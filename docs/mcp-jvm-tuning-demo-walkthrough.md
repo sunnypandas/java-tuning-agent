@@ -108,6 +108,7 @@ flowchart LR
 | classloader growth | `POST /api/leak/classloader/allocate` | class count / metaspace / classloader stats |
 | young GC churn | `POST /api/leak/churn` | repeated sampling 里的 YGC 趋势 |
 | JFR workload | `POST /api/leak/jfr-workload` | JFR allocation / contention / execution sample |
+| CPU burn | `POST /api/leak/cpu/start` | Thread.print CPU rows / JFR execution sample |
 | deadlock | `POST /api/leak/deadlock/trigger` | thread dump deadlock hints |
 
 ---
@@ -127,8 +128,11 @@ curl.exe --% -X POST http://localhost:8091/api/leak/direct/allocate -H "Content-
 curl.exe --% -X POST http://localhost:8091/api/leak/classloader/allocate -H "Content-Type: application/json" -d "{\"loaders\":1000,\"tag\":\"proxy-loaders\"}"
 curl.exe --% -X POST http://localhost:8091/api/leak/churn -H "Content-Type: application/json" -d "{\"iterations\":2000000,\"payloadBytes\":4096}"
 
-# 4. 可选：JFR 录制窗口内打 workload；死锁只触发一次，重复演示需重启 demo。
+# 4. 可选：JFR 录制窗口内打 workload；或启动后台 CPU burn 后采 Thread.print / JFR。
 curl.exe --% -X POST http://localhost:8091/api/leak/jfr-workload -H "Content-Type: application/json" -d "{\"durationSeconds\":20,\"workerThreads\":4,\"payloadBytes\":4096}"
+curl.exe --% -X POST http://localhost:8091/api/leak/cpu/start -H "Content-Type: application/json" -d "{\"durationSeconds\":60,\"workerThreads\":2}"
+curl.exe -X POST http://localhost:8091/api/leak/cpu/status
+curl.exe -X POST http://localhost:8091/api/leak/cpu/stop
 curl.exe -X POST http://localhost:8091/api/leak/deadlock/trigger
 
 # 5. 导出离线 bundle。<pid> 替换成 memory-leak-demo 的 PID；需要离线 JFR 时加 -RecordJfr。
@@ -139,6 +143,7 @@ curl.exe -X POST http://localhost:8091/api/leak/clear
 curl.exe -X POST http://localhost:8091/api/leak/raw/clear
 curl.exe -X POST http://localhost:8091/api/leak/direct/clear
 curl.exe -X POST http://localhost:8091/api/leak/classloader/clear
+curl.exe -X POST http://localhost:8091/api/leak/cpu/stop
 ```
 
 ---
@@ -159,8 +164,11 @@ curl -X POST http://localhost:8091/api/leak/direct/allocate -H 'Content-Type: ap
 curl -X POST http://localhost:8091/api/leak/classloader/allocate -H 'Content-Type: application/json' -d '{"loaders":1000,"tag":"proxy-loaders"}'
 curl -X POST http://localhost:8091/api/leak/churn -H 'Content-Type: application/json' -d '{"iterations":2000000,"payloadBytes":4096}'
 
-# 4. 可选：JFR 录制窗口内打 workload；死锁只触发一次，重复演示需重启 demo。
+# 4. 可选：JFR 录制窗口内打 workload；或启动后台 CPU burn 后采 Thread.print / JFR。
 curl -X POST http://localhost:8091/api/leak/jfr-workload -H 'Content-Type: application/json' -d '{"durationSeconds":20,"workerThreads":4,"payloadBytes":4096}'
+curl -X POST http://localhost:8091/api/leak/cpu/start -H 'Content-Type: application/json' -d '{"durationSeconds":60,"workerThreads":2}'
+curl -X POST http://localhost:8091/api/leak/cpu/status
+curl -X POST http://localhost:8091/api/leak/cpu/stop
 curl -X POST http://localhost:8091/api/leak/deadlock/trigger
 
 # 5. 导出离线 bundle。<pid> 替换成 memory-leak-demo 的 PID；需要离线 JFR 时加 --record-jfr。
@@ -171,6 +179,7 @@ curl -X POST http://localhost:8091/api/leak/clear
 curl -X POST http://localhost:8091/api/leak/raw/clear
 curl -X POST http://localhost:8091/api/leak/direct/clear
 curl -X POST http://localhost:8091/api/leak/classloader/clear
+curl -X POST http://localhost:8091/api/leak/cpu/stop
 ```
 
 ---
@@ -221,6 +230,13 @@ heap dump 可以写到 /tmp/memory-leak-demo-<pid>.hprof。
 ```text
 我同意录制一个 30 秒 JFR，settings 用 profile，输出到 /tmp/memory-leak-demo-<pid>.jfr。
 录制期间我会触发 /api/leak/jfr-workload。
+```
+
+### high CPU
+
+```text
+我会先调用 /api/leak/cpu/start 启动后台 CPU burn。请在它运行期间采集 thread dump，并结合一个 30 秒 profile JFR 生成高 CPU 诊断建议。
+重点看 Thread.print 里的 cpu=...ms / nid / RUNNABLE top frame，以及 JFR ExecutionSample 的 hottest frame。
 ```
 
 ---
