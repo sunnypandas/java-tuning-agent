@@ -216,6 +216,30 @@ class LeakControllerTest {
 	}
 
 	@Test
+	void cpuBurnLifecycleShouldExposeBackgroundRunnableWorkers() throws Exception {
+		mockMvc.perform(post("/api/leak/cpu/start")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+						{"durationSeconds":30,"workerThreads":2}
+						"""))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.running").value(true))
+			.andExpect(jsonPath("$.workerThreads").value(2))
+			.andExpect(jsonPath("$.threadNamePrefix").value("memory-leak-demo-cpu-worker"))
+			.andExpect(jsonPath("$.hotMethod").value("CpuBurnService.burnCpuLoop"))
+			.andExpect(jsonPath("$.hint").exists());
+
+		mockMvc.perform(get("/api/leak/cpu/status"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.running").value(true))
+			.andExpect(jsonPath("$.workerThreads").value(2));
+
+		mockMvc.perform(post("/api/leak/cpu/stop"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.running").value(false));
+	}
+
+	@Test
 	void validationGuideShouldExposeScenarios() throws Exception {
 		mockMvc.perform(get("/api/leak/validation-guide"))
 			.andExpect(status().isOk())
@@ -225,6 +249,7 @@ class LeakControllerTest {
 			.andExpect(jsonPath("$.scenarios[5].id").value("direct-buffer-native-memory"))
 			.andExpect(jsonPath("$.scenarios[6].id").value("classloader-metaspace-growth"))
 			.andExpect(jsonPath("$.scenarios[7].id").value("jfr-allocation-contention-window"))
+			.andExpect(jsonPath("$.scenarios[8].id").value("runnable-high-cpu-thread"))
 			.andExpect(jsonPath("$.mcpHints[?(@ =~ /.*recordJvmFlightRecording.*/)]").exists())
 			.andExpect(jsonPath("$.mcpHints[?(@ =~ /.*inspectJvmRuntimeRepeated.*/)]").exists());
 	}

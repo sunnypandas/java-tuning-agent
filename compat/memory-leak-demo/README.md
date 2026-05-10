@@ -1,6 +1,6 @@
 # Memory Leak Demo
 
-Spring Boot app that intentionally grows heap, retains `byte[]`, retains direct buffers, grows generated proxy classloaders, optionally triggers a Java-level deadlock, and can run allocation/contention workloads for JFR. It gives `java-tuning-agent` a known codebase for MCP tools, histogram, thread dump, repeated sampling, JFR, native-memory, and diagnosis-rule validation.
+Spring Boot app that intentionally grows heap, retains `byte[]`, retains direct buffers, grows generated proxy classloaders, optionally triggers a Java-level deadlock, and can run allocation/contention or background CPU workloads for JFR and `Thread.print`. It gives `java-tuning-agent` a known codebase for MCP tools, histogram, thread dump, repeated sampling, JFR, native-memory, CPU-hotspot, and diagnosis-rule validation.
 
 - **Port:** `8091`  
 - **Application name:** `memory-leak-demo` (for `listJavaApps` / discovery)  
@@ -62,6 +62,9 @@ Use `curl.exe` on Windows so PowerShell does not rewrite `curl`.
 | POST | `/api/leak/classloader/clear` | Clear retained proxy classloaders |
 | POST | `/api/leak/churn` | Short-lived allocations (no retention); increases **young GC** over repeated calls |
 | POST | `/api/leak/jfr-workload` | Short allocation + monitor contention workload for `recordJvmFlightRecording` |
+| POST | `/api/leak/cpu/start` | Start background RUNNABLE CPU workers for `Thread.print` CPU rows and JFR execution samples |
+| GET | `/api/leak/cpu/status` | Current CPU burn worker status |
+| POST | `/api/leak/cpu/stop` | Stop background CPU workers |
 | POST | `/api/leak/deadlock/trigger` | One-shot **deadlock** (two daemon threads); **once per JVM** — restart to repeat |
 | GET | `/api/leak/deadlock/status` | Whether deadlock feature is on and if it already ran |
 | GET | `/api/leak/validation-guide` | JSON checklist for the tuning agent |
@@ -154,6 +157,22 @@ macOS/Linux shell:
 curl -X POST http://localhost:8091/api/leak/jfr-workload -H 'Content-Type: application/json' -d '{"durationSeconds":20,"workerThreads":4,"payloadBytes":4096}'
 ```
 
+Background CPU burn (start first, collect `Thread.print` or JFR while it is running, then stop):
+
+PowerShell:
+
+```powershell
+curl.exe --% -X POST http://localhost:8091/api/leak/cpu/start -H "Content-Type: application/json" -d "{\"durationSeconds\":60,\"workerThreads\":2}"
+curl.exe -X POST http://localhost:8091/api/leak/cpu/stop
+```
+
+macOS/Linux shell:
+
+```bash
+curl -X POST http://localhost:8091/api/leak/cpu/start -H 'Content-Type: application/json' -d '{"durationSeconds":60,"workerThreads":2}'
+curl -X POST http://localhost:8091/api/leak/cpu/stop
+```
+
 Deadlock (then collect thread dump with confirmation in the agent):
 
 PowerShell:
@@ -193,13 +212,13 @@ curl -X POST http://localhost:8091/api/leak/classloader/clear
 1. Start this demo with **G1** (`-XX:+UseG1GC`) and a bounded heap (see above).  
 2. `listJavaApps` → PID for `memory-leak-demo`.  
 3. `inspectJvmRuntime(pid)` — baseline.  
-4. Drive one scenario (allocate, raw allocate, churn loop, or deadlock trigger).  
+4. Drive one scenario (allocate, raw allocate, churn loop, CPU burn, or deadlock trigger).
 5. `inspectJvmRuntime` again **or** `collectMemoryGcEvidence` with:
    - `includeClassHistogram` + non-blank `confirmationToken` when you want histogram-backed findings.
-   - `includeThreadDump` + token after `deadlock/trigger`.
+   - `includeThreadDump` + token after `deadlock/trigger` or while `/api/leak/cpu/start` is running.
 6. For trend and JFR checks, optionally call:
    - `inspectJvmRuntimeRepeated` while `/churn` or `/classloader/allocate` is running.
-   - `recordJvmFlightRecording`, then call `/api/leak/jfr-workload` during the recording window.
+   - `recordJvmFlightRecording`, then call `/api/leak/jfr-workload` or keep `/api/leak/cpu/start` running during the recording window.
 7. `generateTuningAdviceFromEvidence` with the returned evidence pack and `CodeContextSummary` including:
    - `sourceRoots`: `["compat/memory-leak-demo"]` (repo root as cwd for the agent).  
    - Optional text in `dependencies` / `configuration` describing `AllocationRecord`, `/api/leak/*`, and Spring MVC.  

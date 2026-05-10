@@ -2,6 +2,8 @@ package com.alibaba.cloud.ai.compat.memoryleakdemo.web;
 
 import java.util.Optional;
 
+import com.alibaba.cloud.ai.compat.memoryleakdemo.churn.CpuBurnService;
+import com.alibaba.cloud.ai.compat.memoryleakdemo.churn.CpuBurnService.CpuBurnStatus;
 import com.alibaba.cloud.ai.compat.memoryleakdemo.churn.EphemeralChurnService;
 import com.alibaba.cloud.ai.compat.memoryleakdemo.churn.EphemeralChurnService.ChurnResult;
 import com.alibaba.cloud.ai.compat.memoryleakdemo.churn.JfrWorkloadService;
@@ -31,6 +33,8 @@ public class LeakController {
 
 	private static final String JFR_WORKLOAD_HINT = "Start recordJvmFlightRecording first, then call this endpoint while the recording window is open.";
 
+	private static final String CPU_BURN_HINT = "Start this background CPU burn, then collect Thread.print or record a profile JFR to find RUNNABLE CPU frames.";
+
 	private final LeakStore leakStore;
 
 	private final RetainedByteArrayStore retainedByteArrayStore;
@@ -43,11 +47,13 @@ public class LeakController {
 
 	private final JfrWorkloadService jfrWorkloadService;
 
+	private final CpuBurnService cpuBurnService;
+
 	private final Optional<DeadlockDemoTrigger> deadlockDemoTrigger;
 
 	public LeakController(LeakStore leakStore, RetainedByteArrayStore retainedByteArrayStore,
 			DirectBufferStore directBufferStore, ClassloaderPressureStore classloaderPressureStore,
-			EphemeralChurnService churnService, JfrWorkloadService jfrWorkloadService,
+			EphemeralChurnService churnService, JfrWorkloadService jfrWorkloadService, CpuBurnService cpuBurnService,
 			@Autowired(required = false) DeadlockDemoTrigger deadlockDemoTrigger) {
 		this.leakStore = leakStore;
 		this.retainedByteArrayStore = retainedByteArrayStore;
@@ -55,6 +61,7 @@ public class LeakController {
 		this.classloaderPressureStore = classloaderPressureStore;
 		this.churnService = churnService;
 		this.jfrWorkloadService = jfrWorkloadService;
+		this.cpuBurnService = cpuBurnService;
 		this.deadlockDemoTrigger = Optional.ofNullable(deadlockDemoTrigger);
 	}
 
@@ -140,6 +147,21 @@ public class LeakController {
 				result.allocationLoops(), result.contentionLoops(), JFR_WORKLOAD_HINT);
 	}
 
+	@PostMapping("/cpu/start")
+	public CpuBurnResponse startCpuBurn(@Valid @RequestBody CpuBurnRequest request) {
+		return toCpuBurn(cpuBurnService.start(request.durationSeconds(), request.workerThreads()));
+	}
+
+	@GetMapping("/cpu/status")
+	public CpuBurnResponse cpuBurnStatus() {
+		return toCpuBurn(cpuBurnService.status());
+	}
+
+	@PostMapping("/cpu/stop")
+	public CpuBurnResponse stopCpuBurn() {
+		return toCpuBurn(cpuBurnService.stop());
+	}
+
 	@PostMapping("/deadlock/trigger")
 	public ResponseEntity<DeadlockTriggerResponse> triggerDeadlock() {
 		if (deadlockDemoTrigger.isEmpty()) {
@@ -180,5 +202,10 @@ public class LeakController {
 	private static ClassloaderStatsResponse toClassloaderStats(ClassloaderSummary summary) {
 		return new ClassloaderStatsResponse(summary.retainedLoaders(), summary.generatedProxyClasses(),
 				summary.allocationRequests(), summary.recentAllocations());
+	}
+
+	private static CpuBurnResponse toCpuBurn(CpuBurnStatus status) {
+		return new CpuBurnResponse(status.running(), status.workerThreads(), status.threadNamePrefix(),
+				status.hotMethod(), status.loopCount(), CPU_BURN_HINT);
 	}
 }
