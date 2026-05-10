@@ -21,11 +21,9 @@
 |---|---|
 | 靠专家记命令、拼上下文 | 自然语言触发，Agent 按 workflow 编排 |
 | `jcmd` / `jstat` / dump / JFR 输出割裂 | 统一进 `MemoryGcEvidencePack`，最后复用同一份 evidence |
-| 容易一上来就重采集、重操作 | 先轻量快照，再 scope gate，再按需升级证据 |
-| 在线环境不可达时很难复盘 | 离线 bundle 支持导入、校验、降级继续 |
-| heap dump 只留下一个路径 | Shark 浅层摘要自动接入；deep retention 可选接入 |
 | tuning 结论口径不稳定 | Java rule-based engine 产出 findings / recommendations / hotspots |
-| 专家 容易自由发挥 | skill / rules 固化顺序、授权、输出格式 |
+| 专家容易自由发挥 | skill / rules 固化顺序、授权、输出格式 |
+| 步骤繁琐 | 几乎可以做到一键式 |
 
 ---
 
