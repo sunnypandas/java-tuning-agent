@@ -178,6 +178,10 @@ final class TestHeapDumpSupport {
 		return PreferredNode.class.getName() + "[]";
 	}
 
+	static String preferredNodeTypeName() {
+		return PreferredNode.class.getName();
+	}
+
 	static String secondaryNodeArrayTypeName() {
 		return SecondaryNode.class.getName() + "[]";
 	}

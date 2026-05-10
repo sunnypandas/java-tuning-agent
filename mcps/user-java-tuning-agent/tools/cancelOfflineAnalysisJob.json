@@ -1,0 +1,18 @@
+{
+  "name": "cancelOfflineAnalysisJob",
+  "description": "Offline mode: request cancellation for an asynchronous offline analysis job and return its latest snapshot.\n中文：请求取消异步离线分析任务，并返回当前状态快照。底层分析会收到线程中断；若已经完成则保持终态。\n",
+  "inputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "jobId": {
+        "type": "string",
+        "description": "jobId returned by startOfflineHeapRetentionAnalysis."
+      }
+    },
+    "required": [
+      "jobId"
+    ],
+    "additionalProperties": false
+  }
+}

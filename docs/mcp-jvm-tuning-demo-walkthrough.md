@@ -2,7 +2,7 @@
 
 这份文档是一份可直接照着操作的分享脚本，目标是完成三段演示：
 
-1. 先展示当前注册的 MCP，并重点介绍 `java-tuning-agent` 以及它暴露的 tool（**共 13 个**：7 个在线 JVM 链路 + 6 个离线导入；本脚本主线演示在线 evidence 复用链路，并补充 repeated sampling / JFR / native memory 场景）
+1. 先展示当前注册的 MCP，并重点介绍 `java-tuning-agent` 以及它暴露的 tool（**共 16 个**：7 个在线 JVM 链路 + 9 个离线导入；本脚本主线演示在线 evidence 复用链路，并补充 repeated sampling / JFR / native memory 场景）
 2. 先手动完成一次在线 JVM tuning 流程
 3. 补充一段离线模式导入材料测试，再用 `.cursor` 里的 skill 演示一次全流程
 
@@ -15,7 +15,7 @@
 1. `MCP 是什么`
   先展示当前客户端里注册了哪些 MCP server，说明 `java-tuning-agent` 只是其中之一
 2. `java-tuning-agent 能做什么`
-  简单介绍在线排查链路的 7 个核心 tool（完整能力含离线共 **13** 个，见仓库 [README](../README.md)）
+  简单介绍在线排查链路的 7 个核心 tool（完整能力含离线共 **16** 个，见仓库 [README](../README.md)）
 3. `在线流程怎么落地`
   先手动完成一次在线排查流程
 4. `离线流程怎么落地`
@@ -166,7 +166,7 @@ curl -X POST http://localhost:8091/api/leak/deadlock/trigger
 
 ## Part 2: 介绍 `java-tuning-agent`（在线 7 个 tool）
 
-完整注册表里还有 **6 个离线 tool**（草稿校验、heap 分块上传与 finalize、离线 `generateOfflineTuningAdvice`、可选 `summarizeOfflineHeapDumpFile` / `analyzeOfflineHeapRetention`），本段不展开，详见 [README](../README.md) 与 [offline-mode-spec.md](../offline-mode-spec.md)。
+完整注册表里还有 **9 个离线 tool**（草稿校验、heap 分块上传与 finalize、离线 `generateOfflineTuningAdvice`、可选 `summarizeOfflineHeapDumpFile` / `analyzeOfflineHeapRetention`，以及 `startOfflineHeapRetentionAnalysis` / `getOfflineAnalysisJob` / `cancelOfflineAnalysisJob` 异步长任务工具），本段不展开，详见 [README](../README.md) 与 [offline-mode-spec.md](../offline-mode-spec.md)。
 
 ### 讲解重点
 
@@ -449,13 +449,14 @@ curl -X POST http://localhost:8091/api/leak/jfr-workload -H 'Content-Type: appli
 
 ### 离线链路（建议讲解顺序）
 
-建议按下面顺序演示（对应 6 个离线 tool）：
+建议按下面顺序演示（覆盖主要离线 tool）：
 
 1. `validateOfflineAnalysisDraft`
 2. `submitOfflineHeapDumpChunk`（可选，heap dump 很大时）
 3. `finalizeOfflineHeapDump`（仅分块上传时）
 4. `summarizeOfflineHeapDumpFile`（可选，仅看浅层摘要）
 5. `analyzeOfflineHeapRetention`（可选，做 holder/retention 方向证据）
+6. 对 deep 或大 `.hprof`，改用 `startOfflineHeapRetentionAnalysis` → `getOfflineAnalysisJob` 轮询；必要时 `cancelOfflineAnalysisJob`
 6. `generateOfflineTuningAdvice`
 
 ### Step 0. 推荐先用脚本导出离线 bundle
@@ -614,7 +615,7 @@ com.alibaba.cloud.ai.compat.memoryleakdemo.MemoryLeakDemoApplication
 
 如果 `heapDumpAbsolutePath` 指向有效 `.hprof`，报告末尾通常会追加 heap shallow summary 小节。
 
-如果传了 `analysisDepth="deep"`，deep retention 可能会额外给出 holder/引用链/classloader 分组线索。memory-leak-demo 的典型讲解例子可以写成：
+如果传了 `analysisDepth="deep"`，deep retention 可能会额外给出 holder/引用链/classloader 分组线索。当前 deep retained-style 分析会优先保留 `byte[]` / `int[]` 这类大 payload 候选，再用 `candidatePackages` 做 holder/source 排序提示；在资源充足的离线机器上，还可以通过 `java-tuning-agent.offline.heap-retention.deep.*` 调整本地 dominator 预算。memory-leak-demo 的典型讲解例子可以写成：
 
 ```text
 Object[] -> AllocationRecord.payload -> byte[]
@@ -688,7 +689,7 @@ Agent 应该会按固定顺序走：
 如果你想把全程压缩成一段比较自然的分享，可以照下面的节奏：
 
 1. “先看 MCP 列表，我们的 `java-tuning-agent` 是其中一个 server。”
-2. “在线排查链路负责找 JVM、看快照、看趋势、补证据、录 JFR、复用同一份 evidence 出结论（整站共 13 个 tool）。”
+2. “在线排查链路负责找 JVM、看快照、看趋势、补证据、录 JFR、复用同一份 evidence 出结论（整站共 16 个 tool）。”
 3. “我先手动演示一遍主线，再补 direct buffer、classloader 和 JFR 这些扩展场景。”
 4. “接着演示离线模式：校验草稿、可选上传 heap dump、可选 deep retention，最后生成离线结论。”
 5. “现在再用 skill 跑一次在线主线，你会发现 Agent 已经会自己按这条流程去编排。”

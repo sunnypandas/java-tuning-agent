@@ -144,7 +144,8 @@ class OfflineMcpToolsRetentionTest {
 		HeapRetentionAnalysisResult retentionResult = new HeapRetentionAnalysisResult(true, "shark", List.of(), "",
 				sampleSummary(), "markdown");
 		RecordingRetentionAnalyzer analyzer = new RecordingRetentionAnalyzer(retentionResult);
-		OfflineMcpTools tools = new OfflineMcpTools(null, heapDumpChunkRepository(), heapDumpSummarizer(), analyzer);
+		OfflineMcpTools tools = new OfflineMcpTools(null, heapDumpChunkRepository(), heapDumpSummarizer(), analyzer,
+				null);
 
 		var result = tools.analyzeOfflineHeapRetention("C:/tmp/demo.hprof", 12, 8000, "balanced",
 				List.of("byte[]"), List.of("com.demo"));
@@ -154,8 +155,29 @@ class OfflineMcpToolsRetentionTest {
 				"balanced", List.of("byte[]"), List.of("com.demo")));
 	}
 
+	@Test
+	void asyncHeapRetentionToolsDelegateToJobService() {
+		HeapRetentionAnalysisResult retentionResult = new HeapRetentionAnalysisResult(true, "shark", List.of(), "",
+				sampleSummary(), "markdown");
+		RecordingRetentionAnalyzer analyzer = new RecordingRetentionAnalyzer(retentionResult);
+		try (var jobService = new com.alibaba.cloud.ai.examples.javatuning.offline.OfflineAnalysisJobService(analyzer,
+				java.util.concurrent.Executors.newSingleThreadExecutor(), 1234L)) {
+			OfflineMcpTools tools = new OfflineMcpTools(null, heapDumpChunkRepository(), heapDumpSummarizer(), analyzer,
+					jobService);
+
+			var handle = tools.startOfflineHeapRetentionAnalysis("C:/tmp/demo.hprof", 12, 8000, "balanced",
+					List.of("byte[]"), List.of("com.demo"));
+
+			assertThat(handle.jobId()).isNotBlank();
+			assertThat(handle.pollIntervalMillis()).isEqualTo(1234L);
+			assertThat(tools.getOfflineAnalysisJob(handle.jobId()).status().name()).isIn("QUEUED", "RUNNING",
+					"SUCCEEDED");
+			assertThat(tools.cancelOfflineAnalysisJob(handle.jobId()).jobId()).isEqualTo(handle.jobId());
+		}
+	}
+
 	private static OfflineMcpTools tools(OfflineAnalysisService service, HeapRetentionAnalyzer analyzer) {
-		return new OfflineMcpTools(service, heapDumpChunkRepository(), heapDumpSummarizer(), analyzer);
+		return new OfflineMcpTools(service, heapDumpChunkRepository(), heapDumpSummarizer(), analyzer, null);
 	}
 
 	private static HeapDumpChunkRepository heapDumpChunkRepository() {

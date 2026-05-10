@@ -4,7 +4,7 @@ This example exposes MCP tools for local Java discovery, safe JVM inspection, **
 
 ## What MCP clients should discover
 
-After the server is started over stdio, MCP clients should see **13** tools: seven for **live JVM** workflows and six for **offline / imported** bundles. Tool descriptions are bilingual at the MCP surface: English for broad MCP clients, 中文用于本地排障向导与 Agent 编排。
+After the server is started over stdio, MCP clients should see **16** tools: seven for **live JVM** workflows and nine for **offline / imported** bundles. Tool descriptions are bilingual at the MCP surface: English for broad MCP clients, 中文用于本地排障向导与 Agent 编排。
 
 ### Live JVM tools
 
@@ -33,6 +33,9 @@ When `nativeMemorySummary` is missing, reports now include command-level next st
 | `generateOfflineTuningAdvice` | Assemble `MemoryGcEvidencePack` from the draft and run the same `generateAdviceFromEvidence` path as online；从导入材料生成与在线一致的结构化报告。 If `gcLogPathOrText` is present, JDK unified GC pause lines are parsed into `gcLogSummary` and used by pause-history rules; `repeatedSamplesPathOrText` accepts `inspectJvmRuntimeRepeated` output and feeds trend rules; `backgroundNotes.resourceBudget` accepts key=value container/RSS/CPU budget evidence and degrades on malformed values. If `heapDumpAbsolutePath` points to an existing file and heap summary auto-mode is on, the server **indexes the dump with Shark** and feeds **`heapShallowSummary`** into rules and `formattedSummary`; with `analysisDepth=deep`, it also attempts holder-oriented retention evidence and degrades honestly on fallback/failure. |
 | `summarizeOfflineHeapDumpFile` | **Optional** ad-hoc call: return Markdown + structured top shallow-by-class rows for a local `.hprof` without running the full advice pipeline；独立预览本地 heap dump 的浅层按类摘要。 |
 | `analyzeOfflineHeapRetention` | Analyze an existing `.hprof` for holder-oriented retention evidence；面向 holder/引用链/GC root/classloader 的 retention 证据分析，`analysisDepth=deep` attempts retained-style analysis and falls back honestly. Results include `classloaderRetainedGroups` when classloader attribution can be derived from the heap graph. |
+| `startOfflineHeapRetentionAnalysis` | Start heap retention analysis as a background job and return a `jobId` immediately；异步启动可能超时的 `.hprof` retention 分析。 Use this for deep or large heap dumps that may exceed a single MCP `tools/call` timeout. |
+| `getOfflineAnalysisJob` | Poll an asynchronous offline analysis job by `jobId`；查询异步任务状态，完成后 `result` contains the `HeapRetentionAnalysisResult`. |
+| `cancelOfflineAnalysisJob` | Request cancellation for an asynchronous offline analysis job；请求取消异步离线分析任务，已完成任务保持终态。 |
 
 Offline validation and advice now include target-consistency checks. The validator warns when B1/B3/B4/B5 PID markers disagree, and offline advice adds an `offlineTargetConsistency` gap plus warning when the imported `java_command` does not match the supplied `CodeContextSummary.applicationNames` or `candidatePackages`. This is intended to catch complete-but-wrong bundles before a report is attributed to the wrong source tree.
 
@@ -46,12 +49,36 @@ Offline validation and advice now include target-consistency checks. The validat
 | `java-tuning-agent.offline.heap-summary.default-top-classes` | `40` | Max types in the shallow leader table (Markdown + structured entries). |
 | `java-tuning-agent.offline.heap-summary.default-max-output-chars` | `32000` | Max Markdown characters for the summary block. |
 
+**Configuration (offline heap retention):**
+
+| Property | Default | Meaning |
+|----------|---------|--------|
+| `java-tuning-agent.offline.heap-retention.default-top-objects` | `20` | Default holder / chain / retained-type rows for retention output. |
+| `java-tuning-agent.offline.heap-retention.default-max-output-chars` | `16000` | Default Markdown character cap for retention output. |
+| `java-tuning-agent.offline.heap-retention.deep.candidate-multiplier` | `32` | Candidate pool multiplier for deep retained-style analysis. Larger values keep more payload candidates before truncation. |
+| `java-tuning-agent.offline.heap-retention.deep.reverse-depth-limit` | `24` | Maximum reverse-reference depth when building the local dominator slice. |
+| `java-tuning-agent.offline.heap-retention.deep.forward-depth-limit` | `8` | Maximum outbound-reference depth when expanding the local dominator slice. |
+| `java-tuning-agent.offline.heap-retention.deep.min-reverse-node-limit` | `128000` | Minimum reverse slice node budget for deep analysis. |
+| `java-tuning-agent.offline.heap-retention.deep.min-forward-node-limit` | `256000` | Minimum forward slice node budget for deep analysis. |
+| `java-tuning-agent.offline.heap-retention.deep.max-reverse-node-limit` | `2000000` | Hard cap for reverse slice nodes. Raise only on resource-rich hosts. |
+| `java-tuning-agent.offline.heap-retention.deep.max-forward-node-limit` | `4000000` | Hard cap for forward slice nodes. Raise only on resource-rich hosts. |
+| `java-tuning-agent.offline.heap-retention.deep.path-search-node-limit` | `16384` | Per-candidate path reconstruction budget. |
+
+Deep retention uses payload-first candidate selection: large terminal objects such as `byte[]` / `int[]` stay eligible even when `focusPackages` also matches many small business objects. `focusPackages` still improves holder/source prioritization, but it is not a hard filter.
+
 **Configuration (offline heap upload cleanup):**
 
 | Property | Default | Meaning |
 |----------|---------|--------|
 | `java-tuning-agent.offline.heap-dump-upload.ttl-seconds` | `86400` | Age threshold for opportunistic cleanup before a new chunk upload starts. |
 | `java-tuning-agent.offline.heap-dump-upload.cleanup-finalized` | `false` | When `false`, cleanup removes only incomplete upload chunk directories; set `true` to also remove old finalized `.hprof` files under the repository-managed final directory. |
+
+**Configuration (offline async analysis jobs):**
+
+| Property | Default | Meaning |
+|----------|---------|--------|
+| `java-tuning-agent.offline.analysis-jobs.max-threads` | `2` | Maximum concurrent background offline analysis jobs. |
+| `java-tuning-agent.offline.analysis-jobs.poll-interval-ms` | `1000` | Suggested polling interval returned by `startOfflineHeapRetentionAnalysis`. |
 
 **Configuration (command + sampling):**
 
@@ -296,7 +323,7 @@ Client-specific examples live in `agent-pack/java-tuning-agent/mcp/release/`.
 4. Optionally call `inspectJvmRuntimeRepeated` with `sampleCount` and `intervalMillis` when you need short trend evidence.
 5. Optionally call `recordJvmFlightRecording` with `durationSeconds`, `settings`, an absolute `jfrOutputPath`, `maxSummaryEvents`, and `confirmationToken` when you need short profiling evidence.
 6. Call `collectMemoryGcEvidence` for the selected scope, then pass that exact evidence pack to `generateTuningAdviceFromEvidence` with a `CodeContextSummary`.
-7. Use `generateTuningAdvice` only as a one-shot shortcut when you did not already call `collectMemoryGcEvidence`; use `analyzeOfflineHeapRetention` later for a local `heapDumpAbsolutePath` with `analysisDepth`.
+7. Use `generateTuningAdvice` only as a one-shot shortcut when you did not already call `collectMemoryGcEvidence`; use `analyzeOfflineHeapRetention` later for a local `heapDumpAbsolutePath` with `analysisDepth`. For deep or large `.hprof` work that may exceed the client timeout, prefer `startOfflineHeapRetentionAnalysis` → poll `getOfflineAnalysisJob` → optionally `cancelOfflineAnalysisJob`.
 
 ## Troubleshooting
 

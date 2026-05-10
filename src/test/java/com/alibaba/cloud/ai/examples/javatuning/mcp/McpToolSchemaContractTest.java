@@ -223,6 +223,22 @@ class McpToolSchemaContractTest {
 						.contains("reachableSubgraphBytesApprox")
 						.containsIgnoringCase("shallow");
 				}
+				case "startOfflineHeapRetentionAnalysis" -> {
+					assertThat(schema.path("properties").path("heapDumpAbsolutePath").path("type").asText())
+						.isEqualTo("string");
+					assertThat(schema.path("properties").path("topObjectLimit").path("type").asText()).isIn("integer",
+							"number");
+					assertThat(schema.path("properties").path("maxOutputChars").path("type").asText()).isIn("integer",
+							"number");
+					assertThat(schema.path("properties").path("analysisDepth").path("type").asText())
+						.isEqualTo("string");
+					assertThat(schema.path("properties").path("focusTypes").path("type").asText()).isEqualTo("array");
+					assertThat(schema.path("properties").path("focusPackages").path("type").asText())
+						.isEqualTo("array");
+					assertThat(def.description()).contains("jobId").containsIgnoringCase("poll");
+				}
+				case "getOfflineAnalysisJob", "cancelOfflineAnalysisJob" ->
+					assertThat(schema.path("properties").path("jobId").path("type").asText()).isEqualTo("string");
 				default -> throw new AssertionError("Unexpected tool: " + def.name());
 			}
 		}
@@ -307,6 +323,12 @@ class McpToolSchemaContractTest {
 		JsonNode retentionSchema = publishedInputSchema("analyzeOfflineHeapRetention");
 		assertThat(requiredFields(retentionSchema)).contains("heapDumpAbsolutePath")
 			.doesNotContain("topObjectLimit", "maxOutputChars", "analysisDepth", "focusTypes", "focusPackages");
+
+		JsonNode asyncRetentionSchema = publishedInputSchema("startOfflineHeapRetentionAnalysis");
+		assertThat(requiredFields(asyncRetentionSchema)).contains("heapDumpAbsolutePath")
+			.doesNotContain("topObjectLimit", "maxOutputChars", "analysisDepth", "focusTypes", "focusPackages");
+		assertThat(requiredFields(publishedInputSchema("getOfflineAnalysisJob"))).containsExactly("jobId");
+		assertThat(requiredFields(publishedInputSchema("cancelOfflineAnalysisJob"))).containsExactly("jobId");
 	}
 
 	@Test
@@ -371,6 +393,13 @@ class McpToolSchemaContractTest {
 	void analyzeOfflineHeapRetentionShouldBeRegistered() {
 		assertThat(Arrays.stream(toolCallbackProvider.getToolCallbacks()).map(callback -> callback.getToolDefinition())
 			.map(def -> def.name())).contains("analyzeOfflineHeapRetention");
+	}
+
+	@Test
+	void asyncOfflineAnalysisToolsShouldBeRegistered() {
+		assertThat(Arrays.stream(toolCallbackProvider.getToolCallbacks()).map(callback -> callback.getToolDefinition())
+			.map(def -> def.name())).contains("startOfflineHeapRetentionAnalysis", "getOfflineAnalysisJob",
+					"cancelOfflineAnalysisJob");
 	}
 
 	@Test

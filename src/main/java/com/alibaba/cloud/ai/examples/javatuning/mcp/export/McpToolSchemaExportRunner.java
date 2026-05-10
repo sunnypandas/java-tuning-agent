@@ -139,6 +139,8 @@ public class McpToolSchemaExportRunner implements ApplicationRunner {
 			case "summarizeOfflineHeapDumpFile" -> markOptional(schema, "topClassLimit", "maxOutputChars");
 			case "analyzeOfflineHeapRetention" -> markOptional(schema, "topObjectLimit", "maxOutputChars",
 					"analysisDepth", "focusTypes", "focusPackages");
+			case "startOfflineHeapRetentionAnalysis" -> markOptional(schema, "topObjectLimit", "maxOutputChars",
+					"analysisDepth", "focusTypes", "focusPackages");
 			default -> {
 			}
 		}

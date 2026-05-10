@@ -1,16 +1,14 @@
 ---
 name: java-tuning-agent-workflow
 description: >-
-  Runs the java-tuning-agent MCP pipeline in order: listJavaApps → inspectJvmRuntime →
-  optional inspectJvmRuntimeRepeated → optional recordJvmFlightRecording → mandatory step-3 scope gate (AskQuestion or prior chat) →
-  collectMemoryGcEvidence → generateTuningAdviceFromEvidence. No silent quick pass: user must choose quick-only or privileged scopes.
-  PID disambiguation, canonical confirmation tokens, formattedSummary as Markdown (no outer fence).
-  Triggers:
-  JVM tuning, GC pause or footprint goals, memory leak diagnosis, heap pressure, local Java
-  process analysis, jcmd/jstat/MCP tools user-java-tuning-agent or java-tuning-agent.
-  中文场景：JVM调优、内存、堆、GC、垃圾回收、内存泄漏、Full GC、Java进程、结合源码诊断。
-  Also when the user names an app or provides a source path for deeper CodeContextSummary.
-  Offline / imported bundle: validateOfflineAnalysisDraft → optional submitOfflineHeapDumpChunk + finalizeOfflineHeapDump → generateOfflineTuningAdvice; optional summarizeOfflineHeapDumpFile and analyzeOfflineHeapRetention (see [Offline mode](#offline-mode-imported-bundle)).
+  Use for JVM tuning, GC pause/footprint goals, memory leak diagnosis, heap pressure,
+  local Java process analysis, jcmd/jstat, or java-tuning-agent MCP tools.
+  Runs the safe workflow: listJavaApps → inspectJvmRuntime → optional repeated/JFR →
+  mandatory scope gate → collectMemoryGcEvidence → generateTuningAdviceFromEvidence.
+  Requires PID disambiguation, no silent quick pass, explicit approval for histogram,
+  thread dump, heap dump, or JFR, and Markdown rendering of formattedSummary. Also
+  covers offline/imported bundles with validateOfflineAnalysisDraft and
+  generateOfflineTuningAdvice. 中文：JVM调优、内存、堆、GC、内存泄漏、Full GC。
 ---
 
 # Java tuning agent — end-to-end MCP workflow
@@ -23,7 +21,7 @@ description: >-
 
 ## Current public surface
 
-The server exposes **13 MCP tools**: 7 live JVM tools (`listJavaApps`, `inspectJvmRuntime`, `inspectJvmRuntimeRepeated`, `recordJvmFlightRecording`, `collectMemoryGcEvidence`, `generateTuningAdvice`, `generateTuningAdviceFromEvidence`) and 6 offline/import tools (`validateOfflineAnalysisDraft`, `submitOfflineHeapDumpChunk`, `finalizeOfflineHeapDump`, `generateOfflineTuningAdvice`, `summarizeOfflineHeapDumpFile`, `analyzeOfflineHeapRetention`). Tool descriptions and checked-in schemas should remain bilingual enough for English MCP clients and 中文排障向导.
+The server exposes **16 MCP tools**: 7 live JVM tools (`listJavaApps`, `inspectJvmRuntime`, `inspectJvmRuntimeRepeated`, `recordJvmFlightRecording`, `collectMemoryGcEvidence`, `generateTuningAdvice`, `generateTuningAdviceFromEvidence`) and 9 offline/import tools (`validateOfflineAnalysisDraft`, `submitOfflineHeapDumpChunk`, `finalizeOfflineHeapDump`, `generateOfflineTuningAdvice`, `summarizeOfflineHeapDumpFile`, `analyzeOfflineHeapRetention`, `startOfflineHeapRetentionAnalysis`, `getOfflineAnalysisJob`, `cancelOfflineAnalysisJob`). Tool descriptions and checked-in schemas should remain bilingual enough for English MCP clients and 中文排障向导.
 
 Advice can reuse optional evidence already gathered in the same diagnosis window: `baselineEvidence`, `jfrSummary`, `repeatedSamplingResult`, `nativeMemorySummary`, `resourceBudgetEvidence`, `heapShallowSummary`, `heapRetentionAnalysis`, `gcLogSummary`, and `diagnosisWindow`. Prefer evidence reuse over recollection whenever a `MemoryGcEvidencePack` already exists.
 
@@ -53,6 +51,10 @@ When a local file already exists, prefer `filePath` over `inlineText`.
 **Large heap:** `submitOfflineHeapDumpChunk` — first call leave `uploadId` empty and set `chunkTotal`; reuse returned `uploadId` for chunks `0 .. chunkTotal-1` (Base64). Starting a new upload triggers opportunistic TTL cleanup for stale incomplete uploads (`java-tuning-agent.offline.heap-dump-upload.ttl-seconds`, default 86400); finalized dumps are retained unless `cleanup-finalized=true`. Then `finalizeOfflineHeapDump(uploadId, sha256Hex, sizeBytes)` → put `finalizeHeapDumpPath` into `draft.heapDumpAbsolutePath`.
 
 **Heap dump shallow analysis (automatic):** When `heapDumpAbsolutePath` points to an **existing** `.hprof` file and **`java-tuning-agent.heap-summary.auto-enabled`** is `true` (default), the server **indexes the dump with Shark** (LeakCanary), fills **`heapShallowSummary`** on the evidence pack, runs rules that consume it (e.g. shallow dominance), and **appends** a bounded Markdown table **after** the main report sections inside `formattedSummary`. This is **shallow-by-class** statistics only—not MAT retained-size analysis. Raw binary is **not** sent to the LLM. To **only** preview a summary without running the full offline advice pipeline, call **`summarizeOfflineHeapDumpFile`** (returns Markdown + structured top rows). Holder-oriented retention outputs may include `classloaderRetainedGroups` when `.hprof` classloader ids can be attributed.
+
+**Long-running heap retention:** For deep retention or large `.hprof` files that may exceed a single MCP request timeout, prefer `startOfflineHeapRetentionAnalysis` → poll `getOfflineAnalysisJob(jobId)` until `SUCCEEDED` / `FAILED` / `CANCELLED` → optionally `cancelOfflineAnalysisJob(jobId)`. Use synchronous `analyzeOfflineHeapRetention` only when the work is expected to fit inside the client timeout.
+
+**Deep retention behavior:** Deep retained-style analysis keeps large payload candidates first (for example `byte[]` / `int[]`) and then uses `focusPackages` as a holder/source prioritization hint, not a hard filter. On resource-rich offline hosts, local dominator budgets are configurable through `java-tuning-agent.offline.heap-retention.deep.*`.
 
 **Advice:** `generateOfflineTuningAdvice` requires the same **consent semantics** as online privileged collection: non-blank `confirmationToken` when the draft includes class histogram, thread dump, or heap path (use canonical `java-tuning-agent:ui-approval:v1:pid=0:scopes=...` style with offline-appropriate scope names if the host encodes selections, or the user’s verbatim phrase). Leave `analysisDepth` blank for balanced/default behavior; set `analysisDepth: "deep"` only when the user wants holder-oriented retention evidence attached to the offline advice path.
 

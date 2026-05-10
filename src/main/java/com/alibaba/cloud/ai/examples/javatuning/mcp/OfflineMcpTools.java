@@ -10,6 +10,9 @@ import com.alibaba.cloud.ai.examples.javatuning.offline.HeapDumpChunkRepository;
 import com.alibaba.cloud.ai.examples.javatuning.offline.HeapDumpChunkSubmissionResult;
 import com.alibaba.cloud.ai.examples.javatuning.offline.HeapDumpFileSummaryResult;
 import com.alibaba.cloud.ai.examples.javatuning.offline.HeapRetentionAnalyzer;
+import com.alibaba.cloud.ai.examples.javatuning.offline.OfflineAnalysisJobHandle;
+import com.alibaba.cloud.ai.examples.javatuning.offline.OfflineAnalysisJobService;
+import com.alibaba.cloud.ai.examples.javatuning.offline.OfflineAnalysisJobSnapshot;
 import com.alibaba.cloud.ai.examples.javatuning.offline.OfflineAnalysisService;
 import com.alibaba.cloud.ai.examples.javatuning.offline.OfflineBundleDraft;
 import com.alibaba.cloud.ai.examples.javatuning.offline.OfflineDraftValidationResult;
@@ -31,13 +34,16 @@ public class OfflineMcpTools {
 
 	private final HeapRetentionAnalyzer heapRetentionAnalyzer;
 
+	private final OfflineAnalysisJobService offlineAnalysisJobService;
+
 	public OfflineMcpTools(OfflineAnalysisService offlineAnalysisService,
 			HeapDumpChunkRepository heapDumpChunkRepository, SharkHeapDumpSummarizer heapDumpSummarizer,
-			HeapRetentionAnalyzer heapRetentionAnalyzer) {
+			HeapRetentionAnalyzer heapRetentionAnalyzer, OfflineAnalysisJobService offlineAnalysisJobService) {
 		this.offlineAnalysisService = offlineAnalysisService;
 		this.heapDumpChunkRepository = heapDumpChunkRepository;
 		this.heapDumpSummarizer = heapDumpSummarizer;
 		this.heapRetentionAnalyzer = heapRetentionAnalyzer;
+		this.offlineAnalysisJobService = offlineAnalysisJobService;
 	}
 
 	@Tool(description = """
@@ -147,6 +153,45 @@ public class OfflineMcpTools {
 				: Path.of(heapDumpAbsolutePath.trim());
 		return heapRetentionAnalyzer.analyze(path, topObjectLimit, maxOutputChars, analysisDepth, focusTypes,
 				focusPackages);
+	}
+
+	@Tool(description = """
+			Offline mode: start a background heap retention analysis job for long-running .hprof work and return a jobId immediately.
+			中文：异步启动离线 heap retention 分析，适合 deep / 大 .hprof 等可能超过 MCP 请求超时的长任务。
+			Poll getOfflineAnalysisJob(jobId) until status is SUCCEEDED / FAILED / CANCELLED; call cancelOfflineAnalysisJob(jobId) to request cancellation.
+			Use this instead of the synchronous analyzeOfflineHeapRetention when the analysis may exceed the client timeout.
+			""")
+	public OfflineAnalysisJobHandle startOfflineHeapRetentionAnalysis(
+			@ToolParam(description = "Absolute path to an existing .hprof file on the host.") String heapDumpAbsolutePath,
+			@ToolParam(required = false, description = "Maximum number of holder / chain rows to include in the retention result.") Integer topObjectLimit,
+			@ToolParam(required = false, description = "Maximum Markdown characters to return in the retention summary.") Integer maxOutputChars,
+			@ToolParam(required = false, description = "Analysis depth hint: fast, balanced, or deep.") String analysisDepth,
+			@ToolParam(required = false, description = "Optional terminal types to prioritize, such as byte[] or java.lang.String[].") List<String> focusTypes,
+			@ToolParam(required = false, description = "Optional business package prefixes used to prioritize candidates before bounded truncation; not a hard filter.") List<String> focusPackages) {
+		Path path = heapDumpAbsolutePath == null || heapDumpAbsolutePath.isBlank()
+				? null
+				: Path.of(heapDumpAbsolutePath.trim());
+		return offlineAnalysisJobService.startHeapRetentionAnalysis(path, topObjectLimit, maxOutputChars,
+				analysisDepth, focusTypes, focusPackages);
+	}
+
+	@Tool(description = """
+			Offline mode: get the latest status/result for an asynchronous offline analysis job.
+			中文：查询异步离线分析任务状态；完成后 result 字段包含 HeapRetentionAnalysisResult，失败时 errorMessage 说明原因。
+			Clients should poll this tool using the pollIntervalMillis returned by startOfflineHeapRetentionAnalysis.
+			""")
+	public OfflineAnalysisJobSnapshot getOfflineAnalysisJob(
+			@ToolParam(description = "jobId returned by startOfflineHeapRetentionAnalysis.") String jobId) {
+		return offlineAnalysisJobService.getJob(jobId);
+	}
+
+	@Tool(description = """
+			Offline mode: request cancellation for an asynchronous offline analysis job and return its latest snapshot.
+			中文：请求取消异步离线分析任务，并返回当前状态快照。底层分析会收到线程中断；若已经完成则保持终态。
+			""")
+	public OfflineAnalysisJobSnapshot cancelOfflineAnalysisJob(
+			@ToolParam(description = "jobId returned by startOfflineHeapRetentionAnalysis.") String jobId) {
+		return offlineAnalysisJobService.cancelJob(jobId);
 	}
 
 }

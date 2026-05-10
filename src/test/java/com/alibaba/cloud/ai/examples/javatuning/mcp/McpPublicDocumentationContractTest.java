@@ -43,7 +43,7 @@ class McpPublicDocumentationContractTest {
 		int toolCount = toolCallbackProvider.getToolCallbacks().length;
 		String readme = Files.readString(Path.of("README.md"));
 
-		assertThat(toolCount).isEqualTo(13);
+		assertThat(toolCount).isEqualTo(16);
 		assertThat(readme).contains("**" + toolCount + "** tools");
 	}
 
@@ -55,17 +55,20 @@ class McpPublicDocumentationContractTest {
 		String offlineSpec = Files.readString(Path.of("docs/offline-mode-spec.md"));
 		String walkthrough = Files.readString(Path.of("docs/mcp-jvm-tuning-demo-walkthrough.md"));
 
-		assertThat(readme).contains("**13** tools", "seven for **live JVM**", "six for **offline / imported**",
+		assertThat(readme).contains("**16** tools", "seven for **live JVM**", "nine for **offline / imported**",
 				"baselineEvidence", "jfrSummary", "repeatedSamplingResult", "resourceBudgetEvidence",
-				"nativeMemorySummary", "analysisDepth=deep", "heap-dump-upload");
+				"nativeMemorySummary", "analysisDepth=deep", "heap-dump-upload",
+				"startOfflineHeapRetentionAnalysis", "getOfflineAnalysisJob", "cancelOfflineAnalysisJob");
 		assertThat(skill).contains("inspectJvmRuntimeRepeated", "recordJvmFlightRecording", "nativeMemorySummary",
-				"backgroundNotes.resourceBudget", "analysisDepth: \"deep\"", "heap-dump-upload");
+				"backgroundNotes.resourceBudget", "analysisDepth: \"deep\"", "heap-dump-upload",
+				"startOfflineHeapRetentionAnalysis");
 		assertThat(reference).contains("nativeMemorySummary", "repeatedSamplesPathOrText",
 				"backgroundNotes.resourceBudget", "resourceBudgetEvidence", "`fast`, `balanced`, or `deep`",
-				"heap-dump-upload");
-		assertThat(offlineSpec).contains("13", "7 个在线 + 6 个离线", "repeatedSamplesPathOrText",
-				"backgroundNotes.resourceBudget", "nativeMemorySummary", "analysisDepth=deep", "heap-dump-upload");
-		assertThat(walkthrough).contains("共 13 个", "repeatedSamplesPathOrText", "nativeMemorySummary",
+				"heap-dump-upload", "getOfflineAnalysisJob");
+		assertThat(offlineSpec).contains("16", "7 个在线 + 9 个离线", "repeatedSamplesPathOrText",
+				"backgroundNotes.resourceBudget", "nativeMemorySummary", "analysisDepth=deep", "heap-dump-upload",
+				"startOfflineHeapRetentionAnalysis");
+		assertThat(walkthrough).contains("共 16 个", "repeatedSamplesPathOrText", "nativeMemorySummary",
 				"backgroundNotes.resourceBudget", "analysisDepth=\"deep\"", "MemoryLeakDemoApplication",
 				"Object[] -> AllocationRecord.payload -> byte[]");
 	}
@@ -78,6 +81,7 @@ class McpPublicDocumentationContractTest {
 				.doesNotContain("**10** tools")
 				.doesNotContain("**11** tools")
 				.doesNotContain("**12** tools")
+				.doesNotContain("**13** tools")
 				.doesNotContain("does not feed JFR findings into `generateTuningAdvice` yet")
 				.doesNotContain("Do not make `generateTuningAdvice` consume JFR summaries in this phase")
 				.doesNotContain("thread dump 未实现")

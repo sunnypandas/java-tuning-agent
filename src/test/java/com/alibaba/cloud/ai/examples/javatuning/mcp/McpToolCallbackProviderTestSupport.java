@@ -7,6 +7,7 @@ import com.alibaba.cloud.ai.examples.javatuning.advice.MemoryGcDiagnosisEngine;
 import com.alibaba.cloud.ai.examples.javatuning.agent.JavaTuningWorkflowService;
 import com.alibaba.cloud.ai.examples.javatuning.offline.HeapDumpChunkRepository;
 import com.alibaba.cloud.ai.examples.javatuning.offline.HeapRetentionAnalyzer;
+import com.alibaba.cloud.ai.examples.javatuning.offline.OfflineAnalysisJobService;
 import com.alibaba.cloud.ai.examples.javatuning.offline.OfflineAnalysisService;
 import com.alibaba.cloud.ai.examples.javatuning.offline.OfflineDraftValidator;
 import com.alibaba.cloud.ai.examples.javatuning.offline.SharkHeapDumpSummarizer;
@@ -49,7 +50,9 @@ final class McpToolCallbackProviderTestSupport {
 				new OfflineAnalysisService(new OfflineDraftValidator(), null, retentionAnalyzer, workflowService),
 				new HeapDumpChunkRepository(Path.of(System.getProperty("java.io.tmpdir"))
 					.resolve("mcp-schema-contract-unused")),
-				new SharkHeapDumpSummarizer(40, 32_000), retentionAnalyzer);
+				new SharkHeapDumpSummarizer(40, 32_000), retentionAnalyzer,
+				new OfflineAnalysisJobService(retentionAnalyzer, java.util.concurrent.Executors.newSingleThreadExecutor(),
+						1000L));
 		return MethodToolCallbackProvider.builder().toolObjects(liveTools, offlineTools).build();
 	}
 

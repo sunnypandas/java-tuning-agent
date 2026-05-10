@@ -42,30 +42,30 @@ public final class DominatorStyleHeapRetentionAnalyzer implements HeapRetentionA
 
 	private static final long PSEUDO_ROOT_OBJECT_ID = Long.MIN_VALUE;
 
-	private static final int CANDIDATE_MULTIPLIER = 8;
-
-	private static final int REVERSE_DEPTH_LIMIT = 24;
-
-	private static final int FORWARD_DEPTH_LIMIT = 8;
-
-	private static final int PATH_SEARCH_NODE_LIMIT = 1024;
-
 	private static final String NOTES = "Retained-style bytes come from a bounded local dominator approximation, not MAT exact retained size.";
 
 	private final int defaultTopObjects;
 
 	private final int defaultMaxOutputChars;
 
+	private final DominatorStyleHeapRetentionOptions options;
+
 	private final HeapRetentionMarkdownRenderer markdownRenderer;
 
 	public DominatorStyleHeapRetentionAnalyzer(int defaultTopObjects, int defaultMaxOutputChars) {
-		this(defaultTopObjects, defaultMaxOutputChars, new HeapRetentionMarkdownRenderer());
+		this(defaultTopObjects, defaultMaxOutputChars, DominatorStyleHeapRetentionOptions.defaults());
+	}
+
+	public DominatorStyleHeapRetentionAnalyzer(int defaultTopObjects, int defaultMaxOutputChars,
+			DominatorStyleHeapRetentionOptions options) {
+		this(defaultTopObjects, defaultMaxOutputChars, options, new HeapRetentionMarkdownRenderer());
 	}
 
 	DominatorStyleHeapRetentionAnalyzer(int defaultTopObjects, int defaultMaxOutputChars,
-			HeapRetentionMarkdownRenderer markdownRenderer) {
+			DominatorStyleHeapRetentionOptions options, HeapRetentionMarkdownRenderer markdownRenderer) {
 		this.defaultTopObjects = defaultTopObjects > 0 ? defaultTopObjects : 20;
 		this.defaultMaxOutputChars = defaultMaxOutputChars > 0 ? defaultMaxOutputChars : 16_000;
+		this.options = options == null ? DominatorStyleHeapRetentionOptions.defaults() : options;
 		this.markdownRenderer = markdownRenderer;
 	}
 
@@ -112,7 +112,7 @@ public final class DominatorStyleHeapRetentionAnalyzer implements HeapRetentionA
 		List<CandidateAnalysis> analyses = analysisPass.analyses();
 		List<String> warnings = new ArrayList<>();
 		if (analyses.isEmpty()) {
-			warnings.add("No candidate objects matched the requested focus types inside the bounded dominator slice.");
+			warnings.add(emptyAnalysisWarning(analysisPass));
 		}
 		if (focusPackages != null && !focusPackages.isEmpty()) {
 			warnings.add("focusPackages prioritizes candidate selection before bounded truncation; it is not a hard filter.");
@@ -137,7 +137,14 @@ public final class DominatorStyleHeapRetentionAnalyzer implements HeapRetentionA
 		HeapRetentionConfidence confidence = new HeapRetentionConfidence(analyses.isEmpty() ? "low" : "medium",
 				List.of("Retained-style bytes are computed from a local graph approximation, not MAT exact retained size."),
 				List.of("Engine=dominator-style", "Deep analysis requested explicitly.",
-						"focusTypes=" + normalizedFocusTypes(focusTypes), "sliceNodes=" + slice.nodeIds().size()));
+						"focusTypes=" + normalizedFocusTypes(focusTypes), "candidateObjects="
+								+ analysisPass.candidateCount(),
+						"sliceNodes=" + slice.nodeIds().size(), "candidateMultiplier=" + options.candidateMultiplier(),
+						"reverseDepthLimit=" + options.reverseDepthLimit(),
+						"forwardDepthLimit=" + options.forwardDepthLimit(),
+						"reverseNodeLimit=" + slice.reverseNodeLimit(),
+						"forwardNodeLimit=" + slice.forwardNodeLimit(),
+						"pathSearchNodeLimit=" + options.pathSearchNodeLimit()));
 
 		HeapRetentionSummary withoutMarkdown = new HeapRetentionSummary(dominantTypes, holders, classloaderGroups,
 				chains, rootHints, confidence, "", true, warnings, "");
@@ -146,12 +153,29 @@ public final class DominatorStyleHeapRetentionAnalyzer implements HeapRetentionA
 				markdown, true, warnings, "");
 	}
 
+	private static String emptyAnalysisWarning(AnalysisPass analysisPass) {
+		if (analysisPass.candidateCount() == 0) {
+			return "No candidate objects matched the requested focus types.";
+		}
+		if (analysisPass.unreachableCandidateCount() == analysisPass.candidateCount()) {
+			return "Candidate objects matched the requested focus types, but none entered the reachable dominator slice.";
+		}
+		if (analysisPass.emptyPathCandidateCount() + analysisPass.unreachableCandidateCount() >= analysisPass
+			.candidateCount()) {
+			return "Candidate objects matched the requested focus types, but holder paths could not be reconstructed in the bounded dominator slice.";
+		}
+		return "Candidate objects matched the requested focus types, but no analyzable holder chains were produced.";
+	}
+
 	private AnalysisPass analyzeCandidates(GraphIndex index, Slice slice, DominatorIndex dominatorIndex,
 			List<Candidate> candidates, int depthLimit) {
 		List<CandidateAnalysis> analyses = new ArrayList<>();
 		int pathSearchLimitHits = 0;
+		int unreachableCandidateCount = 0;
+		int emptyPathCandidateCount = 0;
 		for (Candidate candidate : candidates) {
 			if (!dominatorIndex.reachableNodeIds().contains(candidate.objectId())) {
+				unreachableCandidateCount++;
 				continue;
 			}
 			HolderSelection holder = selectHolder(index, dominatorIndex, candidate.objectId());
@@ -162,6 +186,7 @@ public final class DominatorStyleHeapRetentionAnalyzer implements HeapRetentionA
 			}
 			List<RefEdge> path = pathResult.path();
 			if (path.isEmpty()) {
+				emptyPathCandidateCount++;
 				continue;
 			}
 			long candidateRetainedBytes = dominatorIndex.retainedBytesByNodeId()
@@ -181,7 +206,8 @@ public final class DominatorStyleHeapRetentionAnalyzer implements HeapRetentionA
 			.reversed()
 			.thenComparing(CandidateAnalysis::holderType)
 			.thenComparing(analysis -> analysis.candidate().typeName()));
-		return new AnalysisPass(List.copyOf(analyses), pathSearchLimitHits);
+		return new AnalysisPass(List.copyOf(analyses), pathSearchLimitHits, candidates.size(), unreachableCandidateCount,
+				emptyPathCandidateCount);
 	}
 
 	private List<RetainedTypeSummary> buildDominantTypes(List<CandidateAnalysis> analyses, int topN) {
@@ -320,8 +346,10 @@ public final class DominatorStyleHeapRetentionAnalyzer implements HeapRetentionA
 	}
 
 	private Slice buildSlice(GraphIndex index, List<Candidate> candidates, int topN) {
-		int reverseNodeLimit = Math.max(4_000, topN * 512);
-		int forwardNodeLimit = Math.max(8_000, topN * 1_024);
+		int reverseNodeLimit = boundedLimit(Math.max(options.minReverseNodeLimit(),
+				Math.max(topN * 8_192, candidates.size() * 512)), options.maxReverseNodeLimit());
+		int forwardNodeLimit = boundedLimit(Math.max(options.minForwardNodeLimit(),
+				Math.max(topN * 16_384, candidates.size() * 1_024)), options.maxForwardNodeLimit());
 		Set<Long> nodeIds = new LinkedHashSet<>();
 		record QueueNode(long objectId, int depth) {
 		}
@@ -341,7 +369,7 @@ public final class DominatorStyleHeapRetentionAnalyzer implements HeapRetentionA
 			if (!nodeIds.add(node.objectId())) {
 				continue;
 			}
-			if (node.depth() >= REVERSE_DEPTH_LIMIT) {
+			if (node.depth() >= options.reverseDepthLimit()) {
 				continue;
 			}
 			for (RefEdge edge : index.inboundEdges().getOrDefault(node.objectId(), List.of())) {
@@ -361,7 +389,7 @@ public final class DominatorStyleHeapRetentionAnalyzer implements HeapRetentionA
 			if (!expandedForward.add(node.objectId())) {
 				continue;
 			}
-			if (node.depth() >= FORWARD_DEPTH_LIMIT) {
+			if (node.depth() >= options.forwardDepthLimit()) {
 				continue;
 			}
 			for (RefEdge edge : index.outboundEdges().getOrDefault(node.objectId(), List.of())) {
@@ -400,7 +428,8 @@ public final class DominatorStyleHeapRetentionAnalyzer implements HeapRetentionA
 			}
 		}
 
-		return new Slice(Set.copyOf(nodeIds), Set.copyOf(rootIds), ancestorTruncated, forwardTruncated);
+		return new Slice(Set.copyOf(nodeIds), Set.copyOf(rootIds), ancestorTruncated, forwardTruncated,
+				reverseNodeLimit, forwardNodeLimit);
 	}
 
 	private DominatorIndex computeDominators(GraphIndex index, Slice slice) {
@@ -641,7 +670,7 @@ public final class DominatorStyleHeapRetentionAnalyzer implements HeapRetentionA
 				if (!dominatorIndex.dominates(holderObjectId, edge.targetId()) && edge.targetId() != candidateObjectId) {
 					continue;
 				}
-				if (!visited.contains(edge.targetId()) && visited.size() >= PATH_SEARCH_NODE_LIMIT) {
+				if (!visited.contains(edge.targetId()) && visited.size() >= options.pathSearchNodeLimit()) {
 					return new PathSearchResult(List.of(), true);
 				}
 				if (!visited.add(edge.targetId())) {
@@ -755,14 +784,35 @@ public final class DominatorStyleHeapRetentionAnalyzer implements HeapRetentionA
 	}
 
 	private List<Candidate> selectCandidates(GraphIndex index, Set<String> focusTypes, List<String> focusPackages, int topN) {
-		return index.objectsById().entrySet().stream()
+		List<Candidate> matchingCandidates = index.objectsById().entrySet().stream()
 			.filter(entry -> !entry.getValue().heapClass())
 			.map(entry -> new Candidate(entry.getKey(), entry.getValue().typeName(), entry.getValue().shallowBytes(),
 					entry.getValue().classLoaderObjectId(), classLoaderName(index.objectsById(),
 							entry.getValue().classLoaderObjectId())))
 			.filter(candidate -> isCandidateType(candidate.typeName(), focusTypes))
-			.sorted(candidateComparator(focusPackages))
-			.limit(Math.max(topN * CANDIDATE_MULTIPLIER, topN))
+			.toList();
+
+		int candidateLimit = Math.max(topN * options.candidateMultiplier(), topN);
+		Map<Long, Candidate> selected = new LinkedHashMap<>();
+		matchingCandidates.stream()
+			.sorted(Comparator.comparingLong(Candidate::shallowBytes).reversed().thenComparing(Candidate::typeName))
+			.limit(candidateLimit)
+			.forEach(candidate -> selected.put(candidate.objectId(), candidate));
+
+		if (focusPackages != null && !focusPackages.isEmpty()) {
+			matchingCandidates.stream()
+				.filter(candidate -> packagePreference(candidate.typeName(), focusPackages) > 0)
+				.sorted(candidateComparator(focusPackages))
+				.limit(candidateLimit)
+				.forEach(candidate -> selected.putIfAbsent(candidate.objectId(), candidate));
+		}
+
+		return selected.values()
+			.stream()
+			.sorted(Comparator.comparingLong(Candidate::shallowBytes)
+				.reversed()
+				.thenComparing(candidateComparator(focusPackages)))
+			.limit(candidateLimit)
 			.toList();
 	}
 
@@ -1045,6 +1095,10 @@ public final class DominatorStyleHeapRetentionAnalyzer implements HeapRetentionA
 		return value != null && value > 0 ? value : defaultValue;
 	}
 
+	private static int boundedLimit(int value, int maxValue) {
+		return Math.min(Math.max(value, 1), maxValue);
+	}
+
 	private static long saturatingAdd(long left, long right) {
 		long sum = left + right;
 		if (((left ^ sum) & (right ^ sum)) < 0) {
@@ -1078,7 +1132,8 @@ public final class DominatorStyleHeapRetentionAnalyzer implements HeapRetentionA
 			Set<Long> rootLikeObjectIds) {
 	}
 
-	private record Slice(Set<Long> nodeIds, Set<Long> rootIds, boolean ancestorTruncated, boolean forwardTruncated) {
+	private record Slice(Set<Long> nodeIds, Set<Long> rootIds, boolean ancestorTruncated, boolean forwardTruncated,
+			int reverseNodeLimit, int forwardNodeLimit) {
 	}
 
 	private record DominatorIndex(Set<Long> reachableNodeIds, Map<Long, Long> immediateDominatorByNodeId,
@@ -1126,7 +1181,8 @@ public final class DominatorStyleHeapRetentionAnalyzer implements HeapRetentionA
 			String notes) {
 	}
 
-	private record AnalysisPass(List<CandidateAnalysis> analyses, int pathSearchLimitHits) {
+	private record AnalysisPass(List<CandidateAnalysis> analyses, int pathSearchLimitHits, int candidateCount,
+			int unreachableCandidateCount, int emptyPathCandidateCount) {
 	}
 
 	private record PathSearchResult(List<RefEdge> path, boolean truncated) {

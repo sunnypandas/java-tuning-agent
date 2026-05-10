@@ -29,7 +29,8 @@ class JavaTuningAgentApplicationTests {
 			.map(callback -> callback.getToolDefinition().name())).contains("listJavaApps", "inspectJvmRuntime",
 					"collectMemoryGcEvidence", "generateTuningAdvice", "generateTuningAdviceFromEvidence",
 					"validateOfflineAnalysisDraft", "submitOfflineHeapDumpChunk", "finalizeOfflineHeapDump",
-					"generateOfflineTuningAdvice", "summarizeOfflineHeapDumpFile", "analyzeOfflineHeapRetention");
+					"generateOfflineTuningAdvice", "summarizeOfflineHeapDumpFile", "analyzeOfflineHeapRetention",
+					"startOfflineHeapRetentionAnalysis", "getOfflineAnalysisJob", "cancelOfflineAnalysisJob");
 	}
 
 	@Test

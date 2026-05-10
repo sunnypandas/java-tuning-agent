@@ -5,6 +5,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import com.alibaba.cloud.ai.examples.javatuning.advice.MemoryGcDiagnosisEngine;
 import com.alibaba.cloud.ai.examples.javatuning.agent.JavaTuningWorkflowService;
@@ -19,7 +23,9 @@ import com.alibaba.cloud.ai.examples.javatuning.offline.HeapDumpChunkRepository;
 import com.alibaba.cloud.ai.examples.javatuning.offline.HeapRetentionAnalysisOrchestrator;
 import com.alibaba.cloud.ai.examples.javatuning.offline.HeapRetentionAnalyzer;
 import com.alibaba.cloud.ai.examples.javatuning.offline.DominatorStyleHeapRetentionAnalyzer;
+import com.alibaba.cloud.ai.examples.javatuning.offline.DominatorStyleHeapRetentionOptions;
 import com.alibaba.cloud.ai.examples.javatuning.offline.OfflineAnalysisService;
+import com.alibaba.cloud.ai.examples.javatuning.offline.OfflineAnalysisJobService;
 import com.alibaba.cloud.ai.examples.javatuning.offline.OfflineDraftValidator;
 import com.alibaba.cloud.ai.examples.javatuning.offline.OfflineEvidenceAssembler;
 import com.alibaba.cloud.ai.examples.javatuning.offline.OfflineJvmSnapshotAssembler;
@@ -172,8 +178,18 @@ public class JavaTuningAgentConfig {
 	@Bean
 	DominatorStyleHeapRetentionAnalyzer dominatorStyleHeapRetentionAnalyzer(
 			@Value("${java-tuning-agent.offline.heap-retention.default-top-objects:20}") int defaultTopObjects,
-			@Value("${java-tuning-agent.offline.heap-retention.default-max-output-chars:16000}") int defaultMaxOutputChars) {
-		return new DominatorStyleHeapRetentionAnalyzer(defaultTopObjects, defaultMaxOutputChars);
+			@Value("${java-tuning-agent.offline.heap-retention.default-max-output-chars:16000}") int defaultMaxOutputChars,
+			@Value("${java-tuning-agent.offline.heap-retention.deep.candidate-multiplier:32}") int candidateMultiplier,
+			@Value("${java-tuning-agent.offline.heap-retention.deep.reverse-depth-limit:24}") int reverseDepthLimit,
+			@Value("${java-tuning-agent.offline.heap-retention.deep.forward-depth-limit:8}") int forwardDepthLimit,
+			@Value("${java-tuning-agent.offline.heap-retention.deep.min-reverse-node-limit:128000}") int minReverseNodeLimit,
+			@Value("${java-tuning-agent.offline.heap-retention.deep.min-forward-node-limit:256000}") int minForwardNodeLimit,
+			@Value("${java-tuning-agent.offline.heap-retention.deep.max-reverse-node-limit:2000000}") int maxReverseNodeLimit,
+			@Value("${java-tuning-agent.offline.heap-retention.deep.max-forward-node-limit:4000000}") int maxForwardNodeLimit,
+			@Value("${java-tuning-agent.offline.heap-retention.deep.path-search-node-limit:16384}") int pathSearchNodeLimit) {
+		var options = new DominatorStyleHeapRetentionOptions(candidateMultiplier, reverseDepthLimit, forwardDepthLimit,
+				minReverseNodeLimit, minForwardNodeLimit, maxReverseNodeLimit, maxForwardNodeLimit, pathSearchNodeLimit);
+		return new DominatorStyleHeapRetentionAnalyzer(defaultTopObjects, defaultMaxOutputChars, options);
 	}
 
 	@Bean
@@ -191,12 +207,32 @@ public class JavaTuningAgentConfig {
 		return new OfflineAnalysisService(validator, evidenceAssembler, heapRetentionAnalyzer, workflowService);
 	}
 
+	@Bean(destroyMethod = "shutdownNow")
+	ExecutorService offlineAnalysisJobExecutor(
+			@Value("${java-tuning-agent.offline.analysis-jobs.max-threads:2}") int maxThreads) {
+		int threads = Math.max(1, maxThreads);
+		AtomicInteger sequence = new AtomicInteger();
+		ThreadFactory threadFactory = runnable -> {
+			Thread thread = new Thread(runnable, "java-tuning-offline-analysis-" + sequence.incrementAndGet());
+			thread.setDaemon(true);
+			return thread;
+		};
+		return Executors.newFixedThreadPool(threads, threadFactory);
+	}
+
+	@Bean
+	OfflineAnalysisJobService offlineAnalysisJobService(HeapRetentionAnalyzer heapRetentionAnalyzer,
+			ExecutorService offlineAnalysisJobExecutor,
+			@Value("${java-tuning-agent.offline.analysis-jobs.poll-interval-ms:1000}") long pollIntervalMillis) {
+		return new OfflineAnalysisJobService(heapRetentionAnalyzer, offlineAnalysisJobExecutor, pollIntervalMillis);
+	}
+
 	@Bean
 	OfflineMcpTools offlineMcpTools(OfflineAnalysisService offlineAnalysisService,
 			HeapDumpChunkRepository heapDumpChunkRepository, SharkHeapDumpSummarizer sharkHeapDumpSummarizer,
-			HeapRetentionAnalyzer heapRetentionAnalyzer) {
+			HeapRetentionAnalyzer heapRetentionAnalyzer, OfflineAnalysisJobService offlineAnalysisJobService) {
 		return new OfflineMcpTools(offlineAnalysisService, heapDumpChunkRepository, sharkHeapDumpSummarizer,
-				heapRetentionAnalyzer);
+				heapRetentionAnalyzer, offlineAnalysisJobService);
 	}
 
 	@Bean

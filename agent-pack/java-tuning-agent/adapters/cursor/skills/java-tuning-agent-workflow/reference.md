@@ -4,7 +4,7 @@ Server name in config is often **`java-tuning-agent`**; Cursor may expose it as 
 
 **Workflow:** See **SKILL.md** — `collectMemoryGcEvidence` requires the **mandatory step-3 scope gate** first (AskQuestion or explicit chat choice), including **snapshot-only**; the agent must not silently use all-`false` without user selection.
 
-**Public surface:** Current schema export is **13 tools** (7 live JVM + 6 offline/import). Top-level tool descriptions should stay bilingual (English + 中文) in Java annotations and checked-in `mcps/user-java-tuning-agent/tools/*.json` so both MCP clients and Chinese troubleshooting guides remain understandable.
+**Public surface:** Current schema export is **16 tools** (7 live JVM + 9 offline/import). Top-level tool descriptions should stay bilingual (English + 中文) in Java annotations and checked-in `mcps/user-java-tuning-agent/tools/*.json` so both MCP clients and Chinese troubleshooting guides remain understandable.
 
 **Evidence reuse:** When an existing `MemoryGcEvidencePack` is available, preserve optional fields such as `baselineEvidence`, `jfrSummary`, `repeatedSamplingResult`, `nativeMemorySummary`, `resourceBudgetEvidence`, `heapShallowSummary`, `heapRetentionAnalysis`, `gcLogSummary`, and `diagnosisWindow`; call `generateTuningAdviceFromEvidence` rather than recollecting.
 
@@ -213,7 +213,7 @@ When unknown, use `[]` or `{}` as appropriate; the schema requires all five keys
 
 ## 5. Offline / imported bundle tools
 
-Use when there is **no** local target PID: the user provides exported `jcmd`/`jstat` text, class histogram, thread dump, and/or a **local** `.hprof` path (or uses chunk upload + finalize). **Six** tools: `validateOfflineAnalysisDraft`, `submitOfflineHeapDumpChunk`, `finalizeOfflineHeapDump`, `generateOfflineTuningAdvice`, `summarizeOfflineHeapDumpFile`, and `analyzeOfflineHeapRetention`. **Consent:** same `confirmationToken` rules as online when the draft includes histogram, thread dump, or heap path (non-blank token required).
+Use when there is **no** local target PID: the user provides exported `jcmd`/`jstat` text, class histogram, thread dump, and/or a **local** `.hprof` path (or uses chunk upload + finalize). **Nine** tools: `validateOfflineAnalysisDraft`, `submitOfflineHeapDumpChunk`, `finalizeOfflineHeapDump`, `generateOfflineTuningAdvice`, `summarizeOfflineHeapDumpFile`, `analyzeOfflineHeapRetention`, `startOfflineHeapRetentionAnalysis`, `getOfflineAnalysisJob`, and `cancelOfflineAnalysisJob`. **Consent:** same `confirmationToken` rules as online when the draft includes histogram, thread dump, or heap path (non-blank token required).
 
 **5.1 `validateOfflineAnalysisDraft`**
 
@@ -336,4 +336,31 @@ Use for a **standalone** shallow table / `topByShallowBytes` without running the
 }
 ```
 
-Use this when you need holder-oriented retention evidence instead of only shallow-by-class output. `analysisDepth` may be `fast`, `balanced`, or `deep`; deep mode attempts a retained-style analysis and falls back honestly if the dump cannot support it. The structured summary may include `classloaderRetainedGroups` with classloader-level holder/target examples.
+Use this when you need holder-oriented retention evidence instead of only shallow-by-class output. `analysisDepth` may be `fast`, `balanced`, or `deep`; deep mode attempts a retained-style analysis and falls back honestly if the dump cannot support it. The structured summary may include `classloaderRetainedGroups` with classloader-level holder/target examples. Deep mode uses payload-first candidate selection so large terminal objects such as `byte[]` / `int[]` stay eligible even when `focusPackages` matches many small business objects; `focusPackages` is a prioritization hint, not a hard filter. On resource-rich offline hosts, the retained-style budgets can be tuned with `java-tuning-agent.offline.heap-retention.deep.*` properties.
+
+**5.7 Async heap retention jobs**
+
+Use these for deep or large `.hprof` retention work that may exceed a single MCP `tools/call` timeout.
+
+Start:
+
+```json
+{
+  "heapDumpAbsolutePath": "C:/data/heap.hprof",
+  "topObjectLimit": 20,
+  "maxOutputChars": 16000,
+  "analysisDepth": "deep",
+  "focusTypes": ["byte[]"],
+  "focusPackages": ["com.example"]
+}
+```
+
+Then poll:
+
+```json
+{
+  "jobId": "offline-retention-..."
+}
+```
+
+`getOfflineAnalysisJob` returns `status`, `message`, `pollIntervalMillis`, and `result` when `status` is `SUCCEEDED`. `cancelOfflineAnalysisJob` accepts the same `jobId` and returns the latest snapshot.

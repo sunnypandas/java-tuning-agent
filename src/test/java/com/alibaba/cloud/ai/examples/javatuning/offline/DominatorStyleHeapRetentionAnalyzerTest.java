@@ -51,4 +51,40 @@ class DominatorStyleHeapRetentionAnalyzerTest {
 			.contains("Likely source holder:");
 	}
 
+	@Test
+	void keepsLargePayloadCandidatesWhenFocusPackagesAlsoMatchManySmallBusinessObjects(@TempDir Path dir)
+			throws Exception {
+		Path heap = TestHeapDumpSupport.dumpFocusPackagePreferenceHeap(dir);
+		var analyzer = new DominatorStyleHeapRetentionAnalyzer(20, 12000);
+		String businessType = TestHeapDumpSupport.preferredNodeTypeName();
+
+		var result = analyzer.analyze(heap, 1, 12000, "deep", List.of("byte[]", businessType),
+				List.of("com.alibaba.cloud.ai.examples.javatuning.offline"));
+
+		assertThat(result.analysisSucceeded()).as(result.errorMessage()).isTrue();
+		assertThat(result.retentionSummary().dominantRetainedTypes())
+			.extracting(type -> type.typeName())
+			.contains("byte[]");
+		assertThat(result.retentionSummary().retentionChains())
+			.anySatisfy(chain -> assertThat(chain.terminalType()).isEqualTo("byte[]"));
+	}
+
+	@Test
+	void exposesConfiguredDeepBudgetInEngineNotes(@TempDir Path dir) throws Exception {
+		Path heap = TestHeapDumpSupport.dumpDominatingStaticOwnerHeap(dir);
+		var options = new DominatorStyleHeapRetentionOptions(7, 5, 4, 1_001, 1_002, 2_001, 2_002, 123);
+		var analyzer = new DominatorStyleHeapRetentionAnalyzer(20, 12000, options);
+
+		var result = analyzer.analyze(heap, 2, 12000, "deep", List.of("byte[]"), List.of());
+
+		assertThat(result.analysisSucceeded()).as(result.errorMessage()).isTrue();
+		assertThat(result.retentionSummary().confidenceAndLimits().engineNotes())
+			.contains("candidateMultiplier=7")
+			.contains("reverseDepthLimit=5")
+			.contains("forwardDepthLimit=4")
+			.contains("reverseNodeLimit=2001")
+			.contains("forwardNodeLimit=2002")
+			.contains("pathSearchNodeLimit=123");
+	}
+
 }

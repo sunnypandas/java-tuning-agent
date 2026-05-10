@@ -1,0 +1,18 @@
+{
+  "name": "getOfflineAnalysisJob",
+  "description": "Offline mode: get the latest status/result for an asynchronous offline analysis job.\n中文：查询异步离线分析任务状态；完成后 result 字段包含 HeapRetentionAnalysisResult，失败时 errorMessage 说明原因。\nClients should poll this tool using the pollIntervalMillis returned by startOfflineHeapRetentionAnalysis.\n",
+  "inputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "jobId": {
+        "type": "string",
+        "description": "jobId returned by startOfflineHeapRetentionAnalysis."
+      }
+    },
+    "required": [
+      "jobId"
+    ],
+    "additionalProperties": false
+  }
+}

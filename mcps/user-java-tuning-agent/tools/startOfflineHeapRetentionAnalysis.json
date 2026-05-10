@@ -1,0 +1,59 @@
+{
+  "name": "startOfflineHeapRetentionAnalysis",
+  "description": "Offline mode: start a background heap retention analysis job for long-running .hprof work and return a jobId immediately.\n中文：异步启动离线 heap retention 分析，适合 deep / 大 .hprof 等可能超过 MCP 请求超时的长任务。\nPoll getOfflineAnalysisJob(jobId) until status is SUCCEEDED / FAILED / CANCELLED; call cancelOfflineAnalysisJob(jobId) to request cancellation.\nUse this instead of the synchronous analyzeOfflineHeapRetention when the analysis may exceed the client timeout.\n",
+  "inputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "heapDumpAbsolutePath": {
+        "type": "string",
+        "description": "Absolute path to an existing .hprof file on the host."
+      },
+      "topObjectLimit": {
+        "type": [
+          "integer",
+          "null"
+        ],
+        "description": "Maximum number of holder / chain rows to include in the retention result."
+      },
+      "maxOutputChars": {
+        "type": [
+          "integer",
+          "null"
+        ],
+        "description": "Maximum Markdown characters to return in the retention summary."
+      },
+      "analysisDepth": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "description": "Analysis depth hint: fast, balanced, or deep."
+      },
+      "focusTypes": {
+        "type": [
+          "array",
+          "null"
+        ],
+        "items": {
+          "type": "string"
+        },
+        "description": "Optional terminal types to prioritize, such as byte[] or java.lang.String[]."
+      },
+      "focusPackages": {
+        "type": [
+          "array",
+          "null"
+        ],
+        "items": {
+          "type": "string"
+        },
+        "description": "Optional business package prefixes used to prioritize candidates before bounded truncation; not a hard filter."
+      }
+    },
+    "required": [
+      "heapDumpAbsolutePath"
+    ],
+    "additionalProperties": false
+  }
+}

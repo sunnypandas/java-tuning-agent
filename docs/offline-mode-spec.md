@@ -121,7 +121,7 @@
 
 ## 5. 新增工具与 Consent
 
-- 离线分析通过**新增专用工具**（当前共 **六个**：`validateOfflineAnalysisDraft`、`submitOfflineHeapDumpChunk`、`finalizeOfflineHeapDump`、`generateOfflineTuningAdvice`、`summarizeOfflineHeapDumpFile`、`analyzeOfflineHeapRetention`）实现输入收集与分析触发，**不替换**现有 7 个在线工具（`listJavaApps`、`inspectJvmRuntime`、`inspectJvmRuntimeRepeated`、`recordJvmFlightRecording`、`collectMemoryGcEvidence`、`generateTuningAdvice`、`generateTuningAdviceFromEvidence`）的语义。
+- 离线分析通过**新增专用工具**（当前共 **九个**：`validateOfflineAnalysisDraft`、`submitOfflineHeapDumpChunk`、`finalizeOfflineHeapDump`、`generateOfflineTuningAdvice`、`summarizeOfflineHeapDumpFile`、`analyzeOfflineHeapRetention`、`startOfflineHeapRetentionAnalysis`、`getOfflineAnalysisJob`、`cancelOfflineAnalysisJob`）实现输入收集与分析触发，**不替换**现有 7 个在线工具（`listJavaApps`、`inspectJvmRuntime`、`inspectJvmRuntimeRepeated`、`recordJvmFlightRecording`、`collectMemoryGcEvidence`、`generateTuningAdvice`、`generateTuningAdviceFromEvidence`）的语义。
 - **Consent 语义与线上一致**：继续使用同一套 `confirmationToken`（及 heap 路径等既有规则中与授权相关的字段）表达用户同意；离线场景下应对齐为「用户确认使用本批导入材料进行相应分析」，**不**另起一套审批模型，以免调用方混乱。
 
 ### 5.1 堆转储（`.hprof`）自动浅层摘要（Shark）
@@ -139,7 +139,17 @@
 - 该工具可返回 `retainedBytesApprox` 等 **retained-style 近似值**；当分析器无法给出可辩护的 retained 语义时，`retainedBytesApprox` 可为空。
 - `classloaderRetainedGroups` 会按候选对象的 defining classloader 聚合 holder/target 示例；deep retained-style 引擎可给出 `retainedBytesApprox`，Shark fallback 只给 `reachableSubgraphBytesApprox`。
 - `reachableSubgraphBytesApprox` 仅表示**有界可达子图大小近似值**，用于 phase 1 排序与提示；**不是** exact retained size。
-- **phase 1 边界**：该能力当前以**独立 MCP 工具**交付；现有 `generateOfflineTuningAdvice` / `MemoryGcEvidencePack` 路径继续只自动消费浅层摘要，shared `MemoryGcEvidencePack` 集成延后到 retention 契约稳定后再做。
+- `generateOfflineTuningAdvice(..., analysisDepth=deep)` 会复用同一套 retention orchestrator，并在成功时把 `heapRetentionAnalysis` 接入 `MemoryGcEvidencePack`，供规则、源码热点和 Markdown 报告使用；默认/空 `analysisDepth` 仍只自动消费 shallow-by-class 摘要。
+- deep retained-style 分析使用 payload-first candidate selection：`byte[]` / `int[]` 等大 payload 不会因为 `focusPackages` 匹配大量业务小对象而被优先级挤掉；`focusPackages` 继续用于 holder/source 排序提示，但不是硬过滤。
+- deep 分析预算可通过 `java-tuning-agent.offline.heap-retention.deep.*` 调整，包括 `candidate-multiplier`、`reverse-depth-limit`、`forward-depth-limit`、`min-reverse-node-limit`、`min-forward-node-limit`、`max-reverse-node-limit`、`max-forward-node-limit`、`path-search-node-limit`。默认值面向本机离线分析更宽松，但仍保留硬上限，避免极端 dump 使 MCP server 无界扩张。
+
+### 5.3 长耗时 retention 分析的异步 job 模式
+
+- 对于 deep retention 或大 `.hprof`，同步 `analyzeOfflineHeapRetention` / `generateOfflineTuningAdvice(analysisDepth=deep)` 可能超过 MCP client 的单次 `tools/call` 等待上限。最佳实践是使用 job 化接口，而不是拉长同步调用。
+- `startOfflineHeapRetentionAnalysis` 只负责登记任务并快速返回 `jobId`、初始 `status` 和建议 `pollIntervalMillis`。
+- 客户端用 `getOfflineAnalysisJob(jobId)` 轮询状态；终态为 `SUCCEEDED`、`FAILED`、`CANCELLED`。成功时 `result` 字段包含 `HeapRetentionAnalysisResult`，失败时 `errorMessage` 给出原因。
+- `cancelOfflineAnalysisJob(jobId)` 请求取消任务。底层分析线程会收到中断；如果任务已完成，状态保持已有终态。
+- 该 job store 当前为 MCP server 进程内内存状态，不承诺跨进程或重启持久化；这与本离线模式“不做跨会话持久化状态”的边界一致。
 
 ---
 
@@ -195,7 +205,7 @@
 
 - **推荐项 R1–R3：** 服务端仅在草稿中 **`explicitlyNoGcLog` / `explicitlyNoAppLog` / `explicitlyNoRepeatedSamples` 为 true** 时，向 `missingData` 写入「本次没有」类说明。若用户**既未填写内容也未勾选「本次没有」**，MCP 层**不会**自动生成「推荐项缺失」条目；**宿主向导（Agent 对话 UI）应对每个推荐项强制二选一：提供路径或粘贴，或显式「本次没有」**，以免静默遗漏。
 - **草稿中的扩展字段：** `gcLogPathOrText` 现在会从文件路径或内联文本解析 JDK unified GC pause 行，生成 `gcLogSummary` 并进入 `MemoryGcEvidencePack` 与现有 advice 规则；无法识别的 GC 日志会降级为 warning / `missingData`。`repeatedSamplesPathOrText` 现在会解析 `inspectJvmRuntimeRepeated` 输出并进入趋势规则；`backgroundNotes.resourceBudget` 可携带容器内存、RSS、CPU quota 等 key=value 资源预算证据。`appLogPathOrText` 仍保留在 `OfflineBundleDraft` 中，暂不参与引擎自动推理。
-- **retention 结果接入：** phase 1 中 `analyzeOfflineHeapRetention` 的输出**不会**自动写回 `MemoryGcEvidencePack`、`generateOfflineTuningAdvice` 或现有 advice 规则；如需统一证据包消费，后续需单独收敛字段与契约。
+- **retention 结果接入：** 默认离线 advice 仍只自动消费 `heapShallowSummary`；当调用方显式传入 `analysisDepth=deep` 时，`generateOfflineTuningAdvice` 会把成功的 `HeapRetentionAnalysisResult` 写入 `MemoryGcEvidencePack.heapRetentionAnalysis`，供 rules、source hotspot correlation 和 Markdown 报告消费。`analyzeOfflineHeapRetention` / async job 仍可作为独立工具返回同一结果模型。
 - **回退编辑：** 无服务端会话与草稿版本历史；用户通过在同一会话内**重发完整草稿 JSON** 实现回退或改某一步，与设计「无状态方案 C」一致。
 - **文案语言：** 校验接口的 `nextPromptZh` 为中文；写入 `missingData` 的部分技术短句当前为英文，与 `formattedSummary` 中英混排可并存，后续可统一为中文键名。
 
@@ -205,7 +215,7 @@
 
 - 分块的**默认块大小**、超时与错误码约定（首版实现已采用 SHA-256 + 调用方提供总长度；块大小由宿主决定）。
 
-**MCP 工具 JSON 同步：** 运行 `mvn -q package`（确保未设置 `mcp.schema.export.skip=true`）会在 `target/mcp-tool-schemas.json` 生成全部工具的 client-safe `inputSchema`（当前共 **13** 个工具：7 个在线 + 6 个离线）；将条目同步到 Cursor 工程内 `mcps/user-java-tuning-agent/tools/`，并保持每个工具一个同名 JSON 文件。
+**MCP 工具 JSON 同步：** 运行 `mvn -q package`（确保未设置 `mcp.schema.export.skip=true`）会在 `target/mcp-tool-schemas.json` 生成全部工具的 client-safe `inputSchema`（当前共 **16** 个工具：7 个在线 + 9 个离线）；将条目同步到 Cursor 工程内 `mcps/user-java-tuning-agent/tools/`，并保持每个工具一个同名 JSON 文件。
 
 **中英文描述同步：** 公开 MCP tool 顶层描述应同时包含 English + 中文关键句；Java `@Tool` 注解、导出后的 `mcps/user-java-tuning-agent/tools/*.json`、README 与 `.cursor` skill/reference/rule 需要一起更新，避免客户端 schema 与 Agent workflow 文档脱节。
 
@@ -220,7 +230,8 @@
 | 2026-04-19 | 增加与 `docs/superpowers/plans/2026-04-19-offline-mode.md` 实现计划链接。 |
 | 2026-04-19 | 待定项更新：工具名与 advice 对接已落地；补充 MCP schema 同步说明。 |
 | 2026-04-19 | 新增 §8.1 实现边界与已知局限（评审后固化）。 |
-| 2026-04-19 | 新增 §5.1：`.hprof` 自动 Shark 浅层摘要、配置项说明、当前 13 个 MCP 工具（7 在线 + 6 离线）与 schema 同步文案更新。 |
+| 2026-04-19 | 新增 §5.1：`.hprof` 自动 Shark 浅层摘要、配置项说明、当时 13 个 MCP 工具（7 在线 + 6 离线）与 schema 同步文案更新。 |
+| 2026-05-09 | 新增 §5.3：长耗时 heap retention 改为异步 job 模式，公开工具面更新为 16 个（7 在线 + 9 离线）。 |
 | 2026-04-22 | 同步 phase-1 工具拆分：`summarizeOfflineHeapDumpFile` 保持 shallow-only，新增 `analyzeOfflineHeapRetention` 的 holder 语义与近似指标说明，并将 shared `MemoryGcEvidencePack` 集成标记为后续阶段。 |
 | 2026-04-25 | P1 更新：`gcLogPathOrText` 开始解析 JDK unified GC pause 行并接入 `MemoryGcEvidencePack.gcLogSummary` 与 advice 规则；应用日志和 repeated samples 导入仍保持预留字段。 |
 | 2026-04-28 | P2 更新：`repeatedSamplesPathOrText` 接入趋势规则；`backgroundNotes.resourceBudget` 可导入资源预算证据。 |
@@ -234,4 +245,6 @@
 
 Revision note 2026-04-23: phase 2 keeps default shallow behavior unchanged while allowing explicit deep offline advice to reuse holder-oriented retention evidence.
 
-Public surface sync note 2026-04-28: the server now exposes **13** tools total: **7** live tools (`listJavaApps`, `inspectJvmRuntime`, `inspectJvmRuntimeRepeated`, `recordJvmFlightRecording`, `collectMemoryGcEvidence`, `generateTuningAdvice`, `generateTuningAdviceFromEvidence`) and **6** offline tools (`validateOfflineAnalysisDraft`, `submitOfflineHeapDumpChunk`, `finalizeOfflineHeapDump`, `generateOfflineTuningAdvice`, `summarizeOfflineHeapDumpFile`, `analyzeOfflineHeapRetention`). For retention-specific offline work, `analyzeOfflineHeapRetention` accepts `heapDumpAbsolutePath`, `analysisDepth`, `focusTypes`, `focusPackages`, `topObjectLimit`, and `maxOutputChars`.
+Public surface sync note 2026-04-28: the server exposes **16** tools total: **7** live tools (`listJavaApps`, `inspectJvmRuntime`, `inspectJvmRuntimeRepeated`, `recordJvmFlightRecording`, `collectMemoryGcEvidence`, `generateTuningAdvice`, `generateTuningAdviceFromEvidence`) and **9** offline tools (`validateOfflineAnalysisDraft`, `submitOfflineHeapDumpChunk`, `finalizeOfflineHeapDump`, `generateOfflineTuningAdvice`, `summarizeOfflineHeapDumpFile`, `analyzeOfflineHeapRetention`, `startOfflineHeapRetentionAnalysis`, `getOfflineAnalysisJob`, `cancelOfflineAnalysisJob`). For retention-specific offline work, `analyzeOfflineHeapRetention` and `startOfflineHeapRetentionAnalysis` accept `heapDumpAbsolutePath`, `analysisDepth`, `focusTypes`, `focusPackages`, `topObjectLimit`, and `maxOutputChars`.
+
+Revision note 2026-05-09: deep retention now keeps large payload candidates before applying business-package prioritization, raises the default local dominator budgets for resource-rich offline hosts, and exposes those budgets through `java-tuning-agent.offline.heap-retention.deep.*` configuration properties.

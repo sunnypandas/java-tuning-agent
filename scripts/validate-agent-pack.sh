@@ -23,6 +23,9 @@ expected_tools=(
   generateOfflineTuningAdvice
   summarizeOfflineHeapDumpFile
   analyzeOfflineHeapRetention
+  startOfflineHeapRetentionAnalysis
+  getOfflineAnalysisJob
+  cancelOfflineAnalysisJob
 )
 
 [[ -f "$PACK/.codex-plugin/plugin.json" ]] || fail "missing Codex plugin manifest"
@@ -37,7 +40,8 @@ expected_tools=(
 
 schema_dir="$ROOT/mcps/user-java-tuning-agent/tools"
 actual_count="$(find "$schema_dir" -maxdepth 1 -name '*.json' | wc -l | tr -d ' ')"
-[[ "$actual_count" == "13" ]] || fail "expected 13 tool schemas, found $actual_count"
+[[ "$actual_count" == "${#expected_tools[@]}" ]] \
+  || fail "expected ${#expected_tools[@]} tool schemas, found $actual_count"
 
 for tool in "${expected_tools[@]}"; do
   [[ -f "$schema_dir/$tool.json" ]] || fail "missing tool schema: $tool"
