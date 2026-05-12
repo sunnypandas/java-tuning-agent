@@ -17,13 +17,15 @@
 
 ## 相比传统 JVM tuning，我们解决了什么
 
-| 传统方式 | Java Tuning Agent |
-|---|---|
-| 靠专家记命令、拼上下文 | 自然语言触发，Agent 按 workflow 编排 |
-| `jcmd` / `jstat` / dump / JFR 输出割裂 | 统一进 `MemoryGcEvidencePack`，最后复用同一份 evidence |
-| tuning 结论口径不稳定 | Java rule-based engine 产出 findings / recommendations / hotspots |
-| 专家容易自由发挥 | skill / rules 固化顺序、授权、输出格式 |
-| 步骤繁琐 | 几乎可以做到一键式 |
+
+| 传统方式                               | Java Tuning Agent                                               |
+| ---------------------------------- | --------------------------------------------------------------- |
+| 靠专家记命令、拼上下文                        | 自然语言触发，Agent 按 workflow 编排                                      |
+| `jcmd` / `jstat` / dump / JFR 输出割裂 | 统一进 `MemoryGcEvidencePack`，最后复用同一份 evidence                     |
+| tuning 结论口径不稳定                     | Java rule-based engine 产出 findings / recommendations / hotspots |
+| 专家容易自由发挥                           | skill / rules 固化顺序、授权、输出格式                                      |
+| 步骤繁琐                               | 几乎可以做到一键式                                                       |
+
 
 ---
 
@@ -62,37 +64,43 @@ flowchart LR
   Report --> Client
 ```
 
+
+
 ---
 
 ## MCP Tools 总览
 
-| 类别 | Tools | 分享时一句话 |
-|---|---|---|
-| 在线发现 | `listJavaApps` | 先找到要分析的 JVM |
-| 在线轻量快照 | `inspectJvmRuntime` | 只读 baseline：堆、GC、flags |
-| 在线趋势 | `inspectJvmRuntimeRepeated` | 短窗口重复采样，看趋势而不是单点 |
-| 在线 profiling | `recordJvmFlightRecording` | 需要 allocation / contention / CPU sample 时开短 JFR |
-| 在线证据采集 | `collectMemoryGcEvidence` | histogram、thread dump、heap dump、NMT、classloader stats |
-| 在线建议 | `generateTuningAdvice` | 一步式快速体验 |
-| 在线证据复用建议 | `generateTuningAdviceFromEvidence` | 推荐主线：用刚才那份 evidence 出报告 |
-| 离线草稿校验 | `validateOfflineAnalysisDraft` | 检查 B1-B6 / 推荐项 / 目标一致性 |
-| 离线 heap 上传 | `submitOfflineHeapDumpChunk`, `finalizeOfflineHeapDump` | 大 `.hprof` 分块上传、合并校验 |
-| 离线建议 | `generateOfflineTuningAdvice` | 导入 bundle 后走同一套诊断引擎 |
-| 离线 heap 浅层 | `summarizeOfflineHeapDumpFile` | Shark shallow-by-class，快看堆里什么类型大 |
-| 离线 retention | `analyzeOfflineHeapRetention` | MAT-style holder / 引用链 / classloader 维度线索 |
-| 离线异步任务 | `startOfflineHeapRetentionAnalysis`, `getOfflineAnalysisJob`, `cancelOfflineAnalysisJob` | deep 或大 dump 不堵单次 MCP call |
+
+| 类别           | Tools                                                                                    | 分享时一句话                                                |
+| ------------ | ---------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| 在线发现         | `listJavaApps`                                                                           | 先找到要分析的 JVM                                           |
+| 在线轻量快照       | `inspectJvmRuntime`                                                                      | 只读 baseline：堆、GC、flags                                |
+| 在线趋势         | `inspectJvmRuntimeRepeated`                                                              | 短窗口重复采样，看趋势而不是单点                                      |
+| 在线 profiling | `recordJvmFlightRecording`                                                               | 需要 allocation / contention / CPU sample 时开短 JFR       |
+| 在线证据采集       | `collectMemoryGcEvidence`                                                                | histogram、thread dump、heap dump、NMT、classloader stats |
+| 在线建议         | `generateTuningAdvice`                                                                   | 一步式快速体验                                               |
+| 在线证据复用建议     | `generateTuningAdviceFromEvidence`                                                       | 推荐主线：用刚才那份 evidence 出报告                               |
+| 离线草稿校验       | `validateOfflineAnalysisDraft`                                                           | 检查 B1-B6 / 推荐项 / 目标一致性                                |
+| 离线 heap 上传   | `submitOfflineHeapDumpChunk`, `finalizeOfflineHeapDump`                                  | 大 `.hprof` 分块上传、合并校验                                  |
+| 离线建议         | `generateOfflineTuningAdvice`                                                            | 导入 bundle 后走同一套诊断引擎                                   |
+| 离线 heap 浅层   | `summarizeOfflineHeapDumpFile`                                                           | Shark shallow-by-class，快看堆里什么类型大                      |
+| 离线 retention | `analyzeOfflineHeapRetention`                                                            | MAT-style holder / 引用链 / classloader 维度线索             |
+| 离线异步任务       | `startOfflineHeapRetentionAnalysis`, `getOfflineAnalysisJob`, `cancelOfflineAnalysisJob` | deep 或大 dump 不堵单次 MCP call                            |
+
 
 ---
 
 ## Skills / Rules 总览
 
-| 资产 | 位置 | 作用 |
-|---|---|---|
-| `java-tuning-agent-workflow` skill | `.cursor/skills/java-tuning-agent-workflow/SKILL.md` | 固化在线/离线诊断顺序、授权 gate、报告渲染要求 |
-| Tool reference | `.cursor/skills/java-tuning-agent-workflow/reference.md` | 记录参数形状、offline draft JSON、token 约定 |
-| Cursor MCP rule | `.cursor/rules/java-tuning-agent-mcp.mdc` | 让 Cursor Agent 优先使用正确 MCP server 和 workflow |
-| Agent pack skill | `agent-pack/java-tuning-agent/skills/java-tuning-agent-workflow/` | 发布给 Codex / Cursor / Copilot 的可安装 skill |
-| MCP schema JSON | `mcps/user-java-tuning-agent/tools/*.json` | 客户端可读的 tool input schema，16 个工具逐个导出 |
+
+| 资产                                 | 位置                                                                | 作用                                          |
+| ---------------------------------- | ----------------------------------------------------------------- | ------------------------------------------- |
+| `java-tuning-agent-workflow` skill | `.cursor/skills/java-tuning-agent-workflow/SKILL.md`              | 固化在线/离线诊断顺序、授权 gate、报告渲染要求                  |
+| Tool reference                     | `.cursor/skills/java-tuning-agent-workflow/reference.md`          | 记录参数形状、offline draft JSON、token 约定          |
+| Cursor MCP rule                    | `.cursor/rules/java-tuning-agent-mcp.mdc`                         | 让 Cursor Agent 优先使用正确 MCP server 和 workflow |
+| Agent pack skill                   | `agent-pack/java-tuning-agent/skills/java-tuning-agent-workflow/` | 发布给 Codex / Cursor / Copilot 的可安装 skill     |
+| MCP schema JSON                    | `mcps/user-java-tuning-agent/tools/*.json`                        | 客户端可读的 tool input schema，16 个工具逐个导出         |
+
 
 ---
 
@@ -100,16 +108,18 @@ flowchart LR
 
 `compat/memory-leak-demo` 是一个 Spring Boot demo，默认端口 `8091`。
 
-| 场景 | Endpoint | 用来展示 |
-|---|---|---|
-| retained records | `POST /api/leak/allocate` | 业务对象持有 payload，映射源码热点 |
-| raw bytes | `POST /api/leak/raw/allocate` | `[B` / `byte[]` 在 histogram 和 heap summary 里突出 |
-| direct buffer | `POST /api/leak/direct/allocate` | NMT `NIO` / direct memory pressure |
-| classloader growth | `POST /api/leak/classloader/allocate` | class count / metaspace / classloader stats |
-| young GC churn | `POST /api/leak/churn` | repeated sampling 里的 YGC 趋势 |
-| JFR workload | `POST /api/leak/jfr-workload` | JFR allocation / contention / execution sample |
-| CPU burn | `POST /api/leak/cpu/start` | Thread.print CPU rows / JFR execution sample |
-| deadlock | `POST /api/leak/deadlock/trigger` | thread dump deadlock hints |
+
+| 场景                 | Endpoint                              | 用来展示                                           |
+| ------------------ | ------------------------------------- | ---------------------------------------------- |
+| retained records   | `POST /api/leak/allocate`             | 业务对象持有 payload，映射源码热点                          |
+| raw bytes          | `POST /api/leak/raw/allocate`         | `[B` / `byte[]` 在 histogram 和 heap summary 里突出 |
+| direct buffer      | `POST /api/leak/direct/allocate`      | NMT `NIO` / direct memory pressure             |
+| classloader growth | `POST /api/leak/classloader/allocate` | class count / metaspace / classloader stats    |
+| young GC churn     | `POST /api/leak/churn`                | repeated sampling 里的 YGC 趋势                    |
+| JFR workload       | `POST /api/leak/jfr-workload`         | JFR allocation / contention / execution sample |
+| CPU burn           | `POST /api/leak/cpu/start`            | Thread.print CPU rows / JFR execution sample   |
+| deadlock           | `POST /api/leak/deadlock/trigger`     | thread dump deadlock hints                     |
+
 
 ---
 
@@ -167,7 +177,7 @@ curl -X POST http://localhost:8091/api/leak/churn -H 'Content-Type: application/
 # 4. 可选：JFR 录制窗口内打 workload；或启动后台 CPU burn 后采 Thread.print / JFR。
 curl -X POST http://localhost:8091/api/leak/jfr-workload -H 'Content-Type: application/json' -d '{"durationSeconds":20,"workerThreads":4,"payloadBytes":4096}'
 curl -X POST http://localhost:8091/api/leak/cpu/start -H 'Content-Type: application/json' -d '{"durationSeconds":60,"workerThreads":2}'
-curl -X POST http://localhost:8091/api/leak/cpu/status
+curl -X GET http://localhost:8091/api/leak/cpu/status
 curl -X POST http://localhost:8091/api/leak/cpu/stop
 curl -X POST http://localhost:8091/api/leak/deadlock/trigger
 
@@ -289,11 +299,13 @@ candidatePackage 是 com.alibaba.cloud.ai.compat.memoryleakdemo，analysisDepth 
 
 后续可以分三层做：
 
-| 层次 | 做法 | 价值 |
-|---|---|---|
-| Sidecar / same pod | Agent 或诊断 helper 与目标 JVM 同 pod，共享 PID / volume | 最接近当前在线模式，可直接 `jcmd` / `jstat` |
-| Kubernetes exec | MCP tool 通过 `kubectl exec` 或平台 API 在目标 pod 内执行受控诊断命令 | 不侵入应用镜像，适合临时排查 |
-| Offline export | 在容器内生成 bundle，再复制到分析端走离线模式 | 生产权限更可控，也适合跨网络隔离场景 |
+
+| 层次                 | 做法                                                   | 价值                             |
+| ------------------ | ---------------------------------------------------- | ------------------------------ |
+| Sidecar / same pod | Agent 或诊断 helper 与目标 JVM 同 pod，共享 PID / volume       | 最接近当前在线模式，可直接 `jcmd` / `jstat` |
+| Kubernetes exec    | MCP tool 通过 `kubectl exec` 或平台 API 在目标 pod 内执行受控诊断命令 | 不侵入应用镜像，适合临时排查                 |
+| Offline export     | 在容器内生成 bundle，再复制到分析端走离线模式                           | 生产权限更可控，也适合跨网络隔离场景             |
+
 
 需要补齐的能力：
 
@@ -313,3 +325,4 @@ candidatePackage 是 com.alibaba.cloud.ai.compat.memoryleakdemo，analysisDepth 
 - 把在线和离线放进同一套证据模型
 - 把 Agent 的自由发挥约束成可审计 workflow
 - 让 tuning 从个人经验，变成团队可复用的工程资产
+
